@@ -20,6 +20,7 @@ public class RouteConfigController : ConfigControllerBase
 {
     private readonly ILogger<RouteConfigController> _logger;
     private readonly IGatewayIdentityService _identityService;
+    private readonly IConfigurationValidator _validator;
 
     public RouteConfigController(
         IConfigPersistenceService persistenceService,
@@ -28,11 +29,13 @@ public class RouteConfigController : ConfigControllerBase
         IMemoryCache memoryCache,
         IGatewayIdentityService identityService,
         IConfigSnapshotScheduler snapshotScheduler,
-        IOptionsMonitor<ConfigHistoryOptions> configHistoryOptions)
+        IOptionsMonitor<ConfigHistoryOptions> configHistoryOptions,
+        IConfigurationValidator validator)
         : base(persistenceService, dynamicConfig, memoryCache, snapshotScheduler, configHistoryOptions)
     {
         _logger = logger;
         _identityService = identityService;
+        _validator = validator;
     }
 
     /// <summary>
@@ -45,6 +48,8 @@ public class RouteConfigController : ConfigControllerBase
         {
             _logger.LogInformation("Save route requested: {RouteId}", routeId);
 
+            if (TryRejectStaleWrite(out var stale)) return stale!;
+
             RouteConfig? route;
             try
             {
@@ -52,7 +57,11 @@ public class RouteConfigController : ConfigControllerBase
             }
             catch (Exception parseEx)
             {
-                return BadRequest(new { code = 400, message = "Invalid route configuration: " + parseEx.Message });
+                var where = parseEx is JsonException jsonEx && !string.IsNullOrEmpty(jsonEx.Path)
+                    ? $" at '{jsonEx.Path}'"
+                    : string.Empty;
+                _logger.LogWarning(parseEx, "Route configuration rejected: {RouteId}", routeId);
+                return BadRequest(new { code = 400, message = $"Invalid route configuration{where}: {parseEx.Message}" });
             }
 
             if (route == null)
@@ -65,6 +74,24 @@ public class RouteConfigController : ConfigControllerBase
 
             if (route.Match == null || (string.IsNullOrWhiteSpace(route.Match.Path) && (route.Match.Hosts == null || route.Match.Hosts.Count == 0)))
                 return BadRequest(new { code = 400, message = "Match.Path or Match.Hosts is required" });
+
+            // Validate before touching the live config: a policy name that does not resolve,
+            // or a cluster that does not exist, used to be accepted here and then fail at
+            // request time where nobody can see why.
+            var clusterWillBeCreated = DynamicConfig.GetCluster(route.ClusterId!) == null
+                                       && HasDestinations(config);
+            var validation = await _validator.ValidateRouteAsync(route, clusterWillBeCreated);
+            if (!validation.Ok)
+            {
+                _logger.LogWarning("Route configuration rejected by validation: {RouteId} ({Count} error(s))",
+                    routeId, validation.Errors.Count);
+                return BadRequest(new
+                {
+                    code = 400,
+                    message = validation.Errors[0].Message,
+                    validation
+                });
+            }
 
             await EnsureClusterForRouteAsync(route.ClusterId!, config);
 
@@ -98,6 +125,8 @@ public class RouteConfigController : ConfigControllerBase
             var enabled = enabledProp.GetBoolean();
             _logger.LogInformation("Set route {RouteId} enabled={Enabled}", routeId, enabled);
 
+            if (TryRejectStaleWrite(out var stale)) return stale!;
+
             await SnapshotLowRiskMutationAsync($"Before route '{routeId}' {(enabled ? "enabled" : "disabled")} via dashboard");
 
             var result = await DynamicConfig.TrySetRouteEnabled(routeId, enabled, "dashboard-user");
@@ -124,6 +153,8 @@ public class RouteConfigController : ConfigControllerBase
         {
             _logger.LogInformation("Delete route requested: {RouteId}", routeId);
 
+            if (TryRejectStaleWrite(out var stale)) return stale!;
+
             await PersistenceService.SaveSnapshotAsync($"Before route '{routeId}' deleted via dashboard", GetClientIp());
 
             var result = await DynamicConfig.TryRemoveRoute(routeId, null, removeOrphanedCluster);
@@ -149,6 +180,8 @@ public class RouteConfigController : ConfigControllerBase
         try
         {
             _logger.LogInformation("Rename route requested: {OldRouteId}", routeId);
+
+            if (TryRejectStaleWrite(out var stale)) return stale!;
 
             string? newRouteId = null;
             if (config.TryGetProperty("newRouteId", out var newIdProp))

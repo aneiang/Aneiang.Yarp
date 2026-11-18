@@ -19,6 +19,8 @@
             config.baseUrl = dashboard.basePath || '';
             config.token = dashboard.token || null;
         }
+        // Warm the config version so the first save already carries a precondition.
+        setTimeout(() => window.DashboardApi.loadConfigVersion(), 0);
     };
 
     window.DashboardApi.setToken = function(token) {
@@ -33,6 +35,50 @@
     window.DashboardApi.getToken = function() {
         return config.token || localStorage.getItem('dashboard_token');
     };
+
+    /*
+     * Optimistic concurrency for configuration writes.
+     *
+     * The version is captured when the page loads and echoed back on every config
+     * mutation. If another operator saved in the meantime the server answers 409 and
+     * the user is told to reload instead of both writes silently merging.
+     *
+     * Read-only config helpers (state / validate / policies) are excluded even though
+     * some of them use POST.
+     */
+    let configVersion = null;
+
+    // Both API families mutate configuration: /api/config/* is the dashboard's own CRUD,
+    // /api/gateway/* is the client self-registration surface (register-route, clusters,
+    // batch). The second one used to be missed, so the register page could overwrite a
+    // concurrent edit unnoticed. Deletion counts too — that is how "I saved and it vanished"
+    // happens.
+    function isConfigMutation(method, url) {
+        if (!method || method.toUpperCase() === 'GET') return false;
+        if (/\/api\/config\//.test(url)) {
+            return !/\/(state|validate|policies|integrity)(\/|\?|$)/.test(url);
+        }
+        if (/\/api\/gateway\//.test(url)) {
+            // Heartbeats and pings fire on a timer; stamping them would race with real
+            // edits and make every save look stale.
+            if (/\/(heartbeat|ping)(\/|\?|$)/.test(url)) return false;
+            if (/\/routes(\/|\?|$)/.test(url) && method.toUpperCase() === 'GET') return false;
+            return true;
+        }
+        return false;
+    }
+
+    window.DashboardApi.loadConfigVersion = async function() {
+        try {
+            const state = await window.DashboardApi.request('/api/config/state', { silent: true });
+            configVersion = state && typeof state.version === 'number' ? state.version : null;
+        } catch (_) {
+            configVersion = null;
+        }
+        return configVersion;
+    };
+
+    window.DashboardApi.getConfigVersion = function() { return configVersion; };
 
     window.DashboardApi.request = async function(url, options = {}) {
         const {
@@ -57,6 +103,14 @@
             if (token) {
                 requestHeaders['Authorization'] = `Bearer ${token}`;
             }
+        }
+
+        if (isConfigMutation(method, url)) {
+            // Fall back to a single fetch when no version was captured yet (e.g. the page
+            // initialised before the token was restored). A version captured at page load
+            // is deliberately kept — that is what makes a stale write detectable.
+            if (configVersion == null) await window.DashboardApi.loadConfigVersion();
+            if (configVersion != null) requestHeaders['X-Config-Version'] = String(configVersion);
         }
 
         const fetchOptions = {
@@ -98,6 +152,12 @@
 
             if (response.status >= 500) {
                 throw new Error(`Server error: ${response.status}`);
+            }
+
+            if (isConfigMutation(method, url) && response.ok) {
+                // Keep the local version in step with the server. Failures here must never
+                // fail the user's save, hence the fire-and-forget.
+                setTimeout(() => window.DashboardApi.loadConfigVersion(), 0);
             }
 
             if (parseJson && response.status !== 204) {

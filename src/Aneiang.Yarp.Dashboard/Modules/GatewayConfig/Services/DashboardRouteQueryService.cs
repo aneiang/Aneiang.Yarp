@@ -1,5 +1,6 @@
 using Aneiang.Yarp.Dashboard.Modules.Dashboard.Models;
 using Aneiang.Yarp.Services;
+using Aneiang.Yarp.Storage;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
@@ -28,6 +29,7 @@ internal sealed class DashboardRouteQueryService : IDashboardRouteQueryService
 {
     private readonly DynamicYarpConfigService _dynamicConfig;
     private readonly IMemoryCache _memoryCache;
+    private readonly IStorageEnvironmentResolver _environments;
     private readonly ILogger<DashboardRouteQueryService> _logger;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(5);
 
@@ -36,21 +38,32 @@ internal sealed class DashboardRouteQueryService : IDashboardRouteQueryService
     /// </summary>
     /// <param name="dynamicConfig">Dynamic YARP config service.</param>
     /// <param name="memoryCache">Unified memory cache for all query services.</param>
+    /// <param name="environments">Resolves which environment the cache key belongs to.</param>
     /// <param name="logger">Logger instance.</param>
     public DashboardRouteQueryService(
         DynamicYarpConfigService dynamicConfig,
         IMemoryCache memoryCache,
+        IStorageEnvironmentResolver environments,
         ILogger<DashboardRouteQueryService> logger)
     {
         _dynamicConfig = dynamicConfig;
         _memoryCache = memoryCache;
+        _environments = environments;
         _logger = logger;
     }
+
+    /// <summary>
+    /// The cache key carries the environment name on purpose. Switching the editing view changes
+    /// what this query returns, and a key that ignored the environment would serve the previous
+    /// environment's routes for the next five seconds — long enough to make someone believe the
+    /// switch did not work, or worse, to save against the wrong list.
+    /// </summary>
+    private string CacheKey => "dashboard:routes:query:" + _environments.CurrentEnvironment;
 
     /// <inheritdoc />
     public IReadOnlyList<DashboardRouteResponse> GetRoutes()
     {
-        const string cacheKey = "dashboard:routes:query";
+        var cacheKey = CacheKey;
 
         // Use IMemoryCache for unified caching with configurable TTL
         if (_memoryCache.TryGetValue(cacheKey, out IReadOnlyList<DashboardRouteResponse>? cached) && cached is not null)
@@ -67,7 +80,7 @@ internal sealed class DashboardRouteQueryService : IDashboardRouteQueryService
     /// <summary>
     /// Invalidates the routes query cache. Call after configuration changes.
     /// </summary>
-    public void Invalidate() => _memoryCache.Remove("dashboard:routes:query");
+    public void Invalidate() => _memoryCache.Remove(CacheKey);
 
     private IReadOnlyList<DashboardRouteResponse> BuildRoutes()
     {

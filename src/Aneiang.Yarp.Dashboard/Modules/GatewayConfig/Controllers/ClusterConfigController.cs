@@ -20,6 +20,7 @@ public class ClusterConfigController : ConfigControllerBase
 {
     private readonly ILogger<ClusterConfigController> _logger;
     private readonly IGatewayIdentityService _identityService;
+    private readonly IConfigurationValidator _validator;
 
     public ClusterConfigController(
         IConfigPersistenceService persistenceService,
@@ -28,11 +29,13 @@ public class ClusterConfigController : ConfigControllerBase
         IMemoryCache memoryCache,
         IGatewayIdentityService identityService,
         IConfigSnapshotScheduler snapshotScheduler,
-        IOptionsMonitor<ConfigHistoryOptions> configHistoryOptions)
+        IOptionsMonitor<ConfigHistoryOptions> configHistoryOptions,
+        IConfigurationValidator validator)
         : base(persistenceService, dynamicConfig, memoryCache, snapshotScheduler, configHistoryOptions)
     {
         _logger = logger;
         _identityService = identityService;
+        _validator = validator;
     }
 
     /// <summary>
@@ -45,6 +48,8 @@ public class ClusterConfigController : ConfigControllerBase
         {
             _logger.LogInformation("Save cluster requested: {ClusterId}", clusterId);
 
+            if (TryRejectStaleWrite(out var stale)) return stale!;
+
             ClusterConfig? cluster;
             try
             {
@@ -52,7 +57,13 @@ public class ClusterConfigController : ConfigControllerBase
             }
             catch (Exception parseEx)
             {
-                return BadRequest(new { code = 400, message = "Invalid cluster configuration: " + parseEx.Message });
+                // Point at the offending property: "Cannot convert string '' to boolean"
+                // alone gives no hint which field of a 20-field cluster form is wrong.
+                var where = parseEx is JsonException jsonEx && !string.IsNullOrEmpty(jsonEx.Path)
+                    ? $" at '{jsonEx.Path}'"
+                    : string.Empty;
+                _logger.LogWarning(parseEx, "Cluster configuration rejected: {ClusterId}", clusterId);
+                return BadRequest(new { code = 400, message = $"Invalid cluster configuration{where}: {parseEx.Message}" });
             }
 
             if (cluster == null)
@@ -74,6 +85,22 @@ public class ClusterConfigController : ConfigControllerBase
 
             if (cluster.Destinations == null || cluster.Destinations.Count == 0)
                 return BadRequest(new { code = 400, message = "At least one destination is required" });
+
+            // Same pre-flight as routes: malformed addresses, a session affinity key that is
+            // missing, an unparsable health-check interval — all rejected here instead of
+            // surfacing as 502s from a cluster nobody can debug.
+            var validation = await _validator.ValidateClusterAsync(cluster);
+            if (!validation.Ok)
+            {
+                _logger.LogWarning("Cluster configuration rejected by validation: {ClusterId} ({Count} error(s))",
+                    clusterId, validation.Errors.Count);
+                return BadRequest(new
+                {
+                    code = 400,
+                    message = validation.Errors[0].Message,
+                    validation
+                });
+            }
 
             SnapshotScheduler.QueueSnapshot($"After cluster '{clusterId}' saved via dashboard", GetClientIp());
 
@@ -100,6 +127,8 @@ public class ClusterConfigController : ConfigControllerBase
         try
         {
             _logger.LogInformation("Delete cluster requested: {ClusterId}", clusterId);
+
+            if (TryRejectStaleWrite(out var stale)) return stale!;
 
             await PersistenceService.SaveSnapshotAsync($"Before cluster '{clusterId}' deleted via dashboard", GetClientIp());
 

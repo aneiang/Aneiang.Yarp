@@ -158,7 +158,6 @@
   "notif.noRules": "No notification rules, click to add",
   "notif.of": "of",
   "notif.page": "Page",
-  "notif.page.help": "Notification management pushes gateway events and alerts via DingTalk, WeCom, Feishu, Slack, Discord, Telegram, Teams and more, with per-platform event subscriptions, cooldown deduplication and delivery history.",
   "notif.pageUnit": "",
   "notif.platforms.title": "Notification Platforms",
   "notif.platforms.connected": "Connected",

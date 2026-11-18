@@ -4,6 +4,14 @@
 (function() {
     'use strict';
 
+    /* Escape dynamic text before injecting it into generated table markup. */
+    function escText(value) {
+        var text = String(value == null ? '' : value);
+        return window.DashboardUtils && window.DashboardUtils.escapeHtml
+            ? window.DashboardUtils.escapeHtml(text)
+            : text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
     var ClusterMetricsModule = {
         initialized: false,
         autoRefreshInterval: null,
@@ -39,12 +47,31 @@
             if (Array.isArray(clusters) && clusters.length > 0) {
                 clusters.forEach(function(c) {
                     var destCount = c.destinations ? c.destinations.length : 0;
-                    var health = c.healthCheck ? (c.healthCheck.enabled ? __('common.enabled') : __('common.disabled')) : __('clusterMetrics.notConfigured');
+                    var healthy = Number(c.healthyCount) || 0;
+                    var unknown = Number(c.unknownCount) || 0;
+                    var unhealthy = Number(c.unhealthyCount) || 0;
+                    // Any unhealthy destination marks the cluster unhealthy; healthy nodes must not mask partial failures.
+                    var badgeCss, badgeIcon, statusKey;
+                    if (unhealthy > 0) {
+                        badgeCss = 'bg-danger'; badgeIcon = 'bi-x-circle-fill';
+                        statusKey = 'index.cluster.health.unhealthy';
+                    } else if (healthy > 0) {
+                        badgeCss = 'bg-success'; badgeIcon = 'bi-check-circle-fill';
+                        statusKey = 'index.cluster.health.healthy';
+                    } else {
+                        badgeCss = 'bg-secondary'; badgeIcon = 'bi-question-circle-fill';
+                        statusKey = 'index.cluster.health.unknown';
+                    }
+                    var statusLabel = __(statusKey);
+                    // Counts follow the "Healthy / Unknown / Unhealthy" order used elsewhere in the dashboard.
+                    var countsHint = escText(__('index.stat.health'));
+                    var healthHtml = '<span class="badge ' + badgeCss + '"><i class="bi ' + badgeIcon + '"></i> ' + escText(statusLabel) + '</span>'
+                        + (destCount > 0 ? '<span class="text-muted small ms-1" title="' + countsHint + '">' + healthy + '/' + unknown + '/' + unhealthy + '</span>' : '');
                     var lb = c.loadBalancingPolicy || 'PowerOfTwoChoices';
-                    html += '<tr><td><code>' + (c.id || c.clusterId || '-') + '</code></td>';
+                    html += '<tr><td><code>' + escText(c.clusterId || c.id || '-') + '</code></td>';
                     html += '<td>' + destCount + '</td>';
-                    html += '<td>' + health + '</td>';
-                    html += '<td>' + lb + '</td></tr>';
+                    html += '<td>' + healthHtml + '</td>';
+                    html += '<td>' + escText(lb) + '</td></tr>';
                 });
             } else {
                 html += '<tr><td colspan="4" class="text-center text-muted py-3">' + __('clusterMetrics.noData') + '</td></tr>';

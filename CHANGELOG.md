@@ -1,5 +1,233 @@
 # 更新日志
 
+## [2.3.0.40] - 2026-11-18
+
+> **统一发布版本**：`2.3.0` 是 YARP 的版本，`40` 是 Aneiang.Yarp 的版本，合起来就是 `2.3.0.40`。2.3.0.30 之后的所有改动都归入本版，不再按里程碑分开发布 —— 原 2.4.0、2.4.1、2.5.0、2.6.0 四批一次交付。下文出现的 2.4.x / 2.5.x / 2.6.x 指开发过程中的里程碑批次，对外版本一律是 `2.3.0.40`；历史小节（2.3.0.30 及更早）保持原版本号不变。
+
+### 📌 本版概览
+
+**多环境配置隔离（原 v2.6 第 1 项，前两批）** —— v2.6 的第一项「多环境配置隔离」拆成三批，本次交付前两批 —— 环境隔离与切换。核心是一条边界：**网关转发哪个环境是启动时定死的，切环境只切"你在编辑哪个"**。这条边界不是设计洁癖 —— 如果切面板会改转发，那"打开 staging 看一眼"就等于把生产流量切走了。批三（环境间 diff + 一键提升 + 审批）未做，见文末进度表。
+
+**灰度与可观测（原 v2.5 六项）** —— v2.5 六项全部交付 —— 插件扩展点、权重灰度、灰度应用与自动回滚、指标告警阈值、OpenTelemetry 追踪、故障注入。核心是一条新策略 `Weighted`：按节点权重**精确**分流，配合 `X-Gateway-Canary` 头可以先把一个真实用户钉到新版本验证，再动权重；在此之上是一台靠指标说话的灰度状态机，观察窗口内错误率超阈值就自己退回去；再往外一层是阈值告警，负责在**没有人盯着灰度**的时候把 5xx 率、P99、熔断开闸叫出来。最外层是链路追踪 —— 告警说"错了多少"，span 说"错在哪一跳"。最后是故障注入：前面这些能力都是"等真故障发生时才验证"，而它可以主动把故障造出来，把重试、熔断、告警、自动回滚一次性演练一遍。
+
+**写路径护栏下沉（原 v2.4.1）** —— 2.4.0 的预检与版本号只覆盖了 Dashboard 表单，而真正危险的写入（客户端自注册、批量导入、历史回滚、AI 助手）全部绕过了它们。本版把护栏下沉到核心库，让所有写路径共用同一条闸门，并补上 2.4.0 承诺但未兑现的三项。
+
+**生产化底座（原 v2.4.0）** —— 不再只是"装得上"，而是"敢上线"。核心是把过去只在请求时才暴露的失败提前到保存时，并让指标出得去。
+
+### 🚀 新增
+
+- **多环境配置隔离**（`Gateway:Storage:Environments`）
+  - **每环境一个 SQLite 文件，不是每表加一列**。`prod` 用原连接串（`gateway-store.db`），其余环境派生后缀（`gateway-store.dev.db`）。好处有三个：存量部署升级时**零迁移**，数据还在原处；dev 库损坏不影响 prod（爆炸半径隔离）；不需要动任何表结构、任何 SQL、任何仓储
+  - **两个概念，显式拆开**：`RuntimeEnvironment`（启动即固定，决定转发）与 `CurrentEnvironment`（可切换，决定面板读写）。构造时二者相等，切换后不等，此时**发布快照会被拒绝**
+  - **发布守卫落在唯一收口点**：`DynamicConfigPublisher.Publish` 开头判断"正在编辑的是不是运行环境"。放这里而不是每个调用点，是因为写入路径有单条 / 批量 / 导入 / 回滚 / 自注册五条，漏一条就等于漏掉一次生产事故
+  - **切换时重载工作集，不只是换连接**。工作集是后续每次保存的数据源；不重载就会把上一个环境的全量配置写进新环境 —— 这是反方向的泄漏。读库失败时把视图回滚到切换前，不留下一个半开的环境
+  - **环境名白名单**（`A-Za-z0-9_-`）。名字要进文件名，这是唯一能拦住路径穿越的地方，配置期就抛错而不是等到 `Data Source=../../prod.db`
+  - **面板查询缓存按环境分键**（`dashboard:routes:query:{env}`）。缓存不带环境名的话，切完 5 秒内看到的还是上一个环境的路由列表 —— 足够让人以为切换没生效，然后对着错误的列表保存
+  - Dashboard 顶部新增环境切换器：编辑运行环境时是灰色 + 绿色 `LIVE` 徽标；编辑非运行环境时变琥珀色并写明"仍在转发 prod"。单环境部署时**整个控件不显示**，行为与升级前完全一致
+  - 切换确认框显式说明"页面数据会换成该环境的配置，正在转发的流量不受影响，未保存内容会丢失"
+  - `<prefix>/api/environments`（读）与 `<prefix>/api/environments/switch`（写）
+- **故障注入插件**（`Aneiang.Yarp.Plugin.FaultInjection`）
+  - 按路由注入三件事：**延迟**（上下限随机）、**错误状态码**（400–599 + 自定义响应体）、**连接中断**（模拟传输层故障，而不是上游 5xx）
+  - **位置是刻意的：它排在代理管线最内侧，紧挨 forwarder**。这样注入的故障对管线外层与真实上游故障无法区分 —— 重试会重试它、熔断会记它、指标记一次 5xx、告警会响、灰度会因此回滚。放到最外层就变成一场什么都没验证的演练，因为被演练的组件根本没看见故障
+  - **默认什么都不做**：`enabled` 之外每个字段都关着，只勾了启用框的绑定不会把请求变成 200 —— 否则演练会"看起来通过了"，比没做更糟
+  - **触发请求头**：配置 `requiredHeader` 后只有带上该头的请求才被注入，真实流量不受影响。这是"敢在生产演练"的前提
+  - **注入比例**：`probability` 支持"10% 的请求失败"，不必为了证明一件事把整条路由打死
+  - `abortConnection` 与状态码同时配置时以中断为准（自相矛盾的配置不做猜测）
+  - `announce`（默认开）在响应头加 `X-Fault-Injected`，避免演练被误认为真实故障；要绝对真实可以关掉
+  - **一键关闭是绑定的启用开关，不是插件的开关**：插件管理器会拒绝"还有绑定的插件"被禁用（提示先解绑），这是为了防止误点丢掉演练配置；关掉绑定则下一个请求立刻不再注入，配置保留，随时再演练
+  - 延迟遵守 `RequestAborted`：客户端放弃就停止计时，否则长延迟会攒下一堆只能等超时的任务；延迟上限 2 分钟，防止一个手滑把请求挂住
+  - 日志只在每个路由首次注入时打 `Warning`，之后降到 `Debug` —— 100% 演练不该把解释演练的日志淹掉
+  - 配置走插件中心的绑定编辑器（JSON Schema 校验 + 中英文案），绑定表单在「插件中心 → 稳定性」
+- **OpenTelemetry 追踪**（`Aneiang.Yarp.Infrastructure.Observability` + `Aneiang.Yarp.Dashboard.Modules.Tracing`）
+  - **埋点在核心库，导出在 Dashboard**：核心库只 `new ActivitySource("Aneiang.Yarp")`，用的是框架自带的 `System.Diagnostics.DiagnosticSource`，**零新依赖**；OTel SDK、instrumentation、OTLP exporter 全部落在 `Aneiang.Yarp.Dashboard`。不开追踪的网关不该被动背上 exporter 的依赖图，更不该在半夜刷"连不上 collector"
+  - **分层 span**：`GET /path`（ASP.NET Core）→ `gateway.forward` → `gateway.plugin <id>` × N → `proxy.forwarder` → `GET`（System.Net.Http）。`gateway.forward` 带 `gateway.route.id` / `gateway.cluster.id` / `gateway.destination.id` / `http.response.status_code` / `gateway.short_circuited`
+  - **第三方插件零改动即被追踪**：`TracedProxyPipelineBuilder` 包住 `IReverseProxyApplicationBuilder`，插件拿到的 `Use()` 自动套一层以插件 id 命名的 span，`ConfigureProxyPipeline` 的签名不变
+  - **状态语义**：只有 5xx 或转发错误才标 `Error`，4xx 不标（OTel 约定 —— 客户端错误不是网关失败）；`gateway.short_circuited=true` 表示请求被插件拦下（既没有目标节点也没有转发错误），与"上游挂了"明确区分
+  - **采样是确定性的**：按 traceId 哈希判定，同一条 trace 永远同一结论，不会记了父 span 丢了子 span；**入站 `traceparent` 的 sampled 标记优先于本地比例** —— 覆盖它会把链路正好在网关处劈成两半
+  - 采样率运行期可改（面板滑杆），下一个请求即生效，不需要重启
+  - **控制面请求不追踪**：`AddAspNetCoreInstrumentation(options => options.Filter = ...)` 排除 `/{prefix}`、`/_content`、`/metrics`、`/health|/ready|/live`、`/favicon.ico`。追踪页 5 秒轮询否则会把自己填满、把真实流量挤出去；健康检查也不需要一个瀑布图
+  - **仅内存模式**：不配 endpoint 也能看瀑布图。`TraceRingBuffer` 三重上限（trace 数 / 每 trace span 数 / 每 span tag 数与 tag 长度），**绝不持有 `Activity` 引用**（那会 pin 住 `HttpContext` 和请求体），span 一结束就拍平成字符串
+  - **span 到达顺序是子先父后**，根永远最后到，所以渲染时按 `StartedAt` + 父链深度定层，不假设根已经存在
+  - 启动失败不阻断进程：endpoint 不合法或 collector 不可达时只记 `StartError`，网关照常转发，错误显示在追踪页而不是让进程起不来
+  - **数字要说实话**：`sampledTraces` / `droppedTraces` 是**采样判定次数**，含被 filter 丢弃的控制面请求（采样发生在 filter 之前），所以会大于实际捕获的链路数 —— 页签文案写作"采样判定 / 丢弃判定"并给出原因，"我有多少条链路"看 `bufferCount`；`clear` 连计数器一起归零，避免出现"0 条 trace / 20 个 span"
+  - Dashboard：新增 `/tracing` 页 —— 列表 + 瀑布图 + 点 span 看 tags + 点 traceId 复制 + 自动刷新开关；轮询刷新时已展开的 trace 保持展开
+  - API：`GET /api/tracing`、`GET /api/tracing/traces/{traceId}`、`POST /api/tracing/sampling`、`POST /api/tracing/clear`
+  - 配置段 `Gateway:Dashboard:Tracing`，默认 `Enabled: false`（缺省不产生任何 span，也不注册 exporter）
+- **指标告警阈值**（`Aneiang.Yarp.Dashboard.Modules.Alerting`）
+  - 三类规则：`ErrorRate`（窗口内 5xx 占比）、`LatencyP99`（窗口内 P99 延迟）、`CircuitOpen`（范围内的开闸数量），范围可选 `Global` / `Cluster` / `Route`
+  - **判定顺序是产品语义**：窗口是否填满 → 样本量是否够 → 是否越线 → 是否持续够久。少任何一步，告警都会退化成噪声源：
+    - 一个失败请求就是 100% 错误率，所以 `MinSamples` 以下**不判断**；`LatencyP99` 强制最少 20 个样本，否则"P99"只是"最慢的那一次"
+    - 窗口没填满时不拿 15 秒的数据冒充 60 秒的速率，返回 `windowNotReady` 并继续等
+    - `ForSeconds` 内的越线只是 `Pending`，不通知；持续够久才升级为 `Firing`
+  - **无数据不等于恢复**：窗口内没有流量时返回 `InsufficientData`，正在 `Firing` 的告警**原地保持**，不会因为"上游全挂了、错误计数也停了"而发出"已恢复"
+  - **窗口滑动**：每跳留一份计数器快照，取"至少一个窗口之前的最新快照"做差。这样每一跳都能判断，而不是滚动窗口里一簇流量被平均掉；`ObservedSeconds` 如实上报实际覆盖的时长（tick 会越过窗口，面板上写的是 74s 而不是 60s）
+  - 通知走现有 7 家渠道（`MetricAlert` 事件）。`Critical` 映射成 `Error` 下发 —— 渠道只认 `Error` / `Warning`，其它字符串会落到"一切正常"的绿色勾上
+  - **投递状态可见**：`GET /api/alerts` 返回 `delivery.subscribedPlatforms`，没有平台订阅这个事件时面板顶部直接告警"这些告警只会写进日志"，而不是等真实故障时才发现没人收到
+  - **恢复通知**：`Firing → Resolved` 发第二条，带持续时长与峰值；只在 `Pending` 阶段就恢复的不发 —— 没人知道它开始过，也就不该有人收到它结束
+  - `RenotifyMinutes` 让持续未恢复的告警按间隔再提醒（一次通知等于一条日志）；静默只关通知，不停测量，静默到期后补一条
+  - 规则与历史落盘到 SQLite 同目录的 `metric-alerts.json`；重启时残留的 `Firing` 会关闭并标记 `gatewayRestarted`（原来的计数器基线已经不在了，没法可信地续上）
+  - API：`GET /api/alerts`、`POST /api/alerts/rules`、`DELETE /api/alerts/rules/{id}`、`POST /api/alerts/rules/{id}/test`（验证渠道是否真的通）、`POST /api/alerts/incidents/{id}/mute`
+  - Dashboard：通知管理页新增「指标告警」页签 —— 进行中的告警在前、规则表在后、最近恢复垫底；阈值输入按指标切换单位（百分比 / 秒 / 个数），避免"在比率字段里填 5"
+- **`gateway_route_failures_total{route,cluster}`**：按路由的 5xx 计数。告警引用的数字必须在 `/metrics` 里看得见，否则运维没法反驳一条告警
+- **灰度应用 + 自动回滚**（`Aneiang.Yarp.Dashboard.Modules.Canary`）
+  - 状态机 `Observing → Paused / Completed / RolledBack / Aborted`，阶梯默认 `10 / 30 / 50 / 100`，每一步先写权重再开观察窗口
+  - 默认窗口 120s、错误率阈值 20%、最小样本 50 —— 样本不足只 `Hold` 并延长窗口（最多 3 次），不在 3 个请求上就回滚，否则自动回滚会变成抖动
+  - **判定顺序即产品语义**：样本量 → 绝对阈值 → 归因。基线自己也在挂时 `Pause` 而不是 `Rollback`（回滚既救不了火，还把现场销毁了），原因码分别为 `baselineDegraded` / `canaryDegraded`
+  - 权重没生效（灰度侧一个请求都没收到）单独诊断成 `NoCanaryTraffic` 并点名 `Weighted`，不伪装成"健康"
+  - 窗口内增量用「开窗快照 → 关窗相减」从进程级累计计数器里算，负值钳 0；`TimeProvider` 注入，所以"等两分钟看是否回滚"在测试里是 `FakeClock.Advance()`
+  - **回滚精确还原**：开始灰度时记录 `BaselineExplicitWeights`，回滚时对原本没有 `Weight` 键的节点**删除该键**，而不是写死默认值 1；集群策略一并还原成灰度前的值
+  - 状态以不可变 record + `with` 迁移，`SemaphoreSlim` 守护全部状态迁移；落盘到 SQLite 同目录的 `canary-rollouts.json`（写临时文件再 `File.Move`）
+  - 进程内监督器（`PeriodicTimer`，5s 一跳）。**单实例语义**：指标是进程级的，一个集群三台网关就是三次独立 rollout
+  - API：`GET /api/canary/rollouts`、`GET /api/canary/candidates/{clusterId}`，`POST /api/canary/rollouts`、`/rollouts/{id}/promote|resume|abort`。灰度接口故意不接 `X-Config-Version` 守卫 —— 灰度自己会推进版本，接了会让"人工 promote"全部 409
+  - Dashboard：集群列表每行一个灰度入口，勾节点、填阶梯/窗口/阈值/最小样本即可开跑；面板 5s 轮询，响应未变化时只更新倒计时不动 DOM，结束的 rollout 保留 30 分钟可手动收起
+- **`Weighted` 负载均衡策略**（`Aneiang.Yarp.Services.WeightedLoadBalancingPolicy`）
+  - 平滑加权轮询（nginx 式）：每 100 次请求，90/10 就是 90 次与 10 次，且交错分布而不是先连发 90 次
+  - 权重取自目标节点 `Metadata.Weight`，缺省值可配（`Weighted.DefaultWeight`，默认 1）；`0` 表示"已注册但不接流量"
+  - 全部权重为 0 时回退到第一个可用节点 —— 权重表坏了不该变成 503 风暴
+  - 每集群状态加锁维护，目标集合变化（健康状态翻转、配置重载）时自动重置累加器，不会带着旧偏置继续跑
+  - 与 `IpBased` 一起进入 `ClusterSchema.json` / `ConfigurationSchema.json` 的枚举
+- **按人钉住灰度和节点**：请求头 `X-Gateway-Canary` 填 `Tag` 或目标节点名，命中即绕过权重。头的名字、Tag 的键都可经集群 metadata 覆盖（`Weighted.HeaderName` / `Weighted.TagKey`）
+- **按目标分组的指标**：`gateway_destination_requests_total{cluster,destination}`、`gateway_destination_failures_total{cluster,destination}`，以及 `gateway_metrics_dropped_destination_series`。数据来自 `IReverseProxyFeature.ProxiedDestination`，只在真正选出节点后才记账
+- **Grafana 面板 +2**：「Canary split by destination」「Canary error rate by destination」，新增 `cluster` 变量；面板总数 13
+- **插件宿主扩展点**：`PluginCapability` 增加 `LoadBalancingPolicy` / `Transform`；新接口 `IGatewayPluginHostServices` + `PluginHostServiceExtensions.AddPluginHostServices(...)`，让插件能在容器构建期注册 LB 策略与 Transform provider
+- **预检覆盖权重表**：非整数权重、负权重、全部为 0、以及"写了 `Tag` 但策略不是 `Weighted`"都会在保存前给出带字段定位的提示（`Destinations.canary.Metadata.Weight` 级）
+- **上游连接池指标**：`UpstreamConnectionMonitor` 用 `MeterListener` 订阅 `System.Net.Http` 内置 Meter，输出 `gateway_upstream_connections{host,state}`、`gateway_upstream_connections_created_total{host}`、`gateway_upstream_metrics_available`
+  - 同时处理两种语义：.NET 8 的 `open_connections` 是 UpDownCounter（增量），更新版本是 observable gauge（绝对值），按 `Instrument.IsObservable` 区分
+  - 主机数上限 100，超出并入 `host="other"`；`gateway_upstream_metrics_available=0` 明确表示"运行时没有这类指标"，避免把 0 误读为"池是空的"
+- **TTFR 指标**：`gateway_serving`（0/1）与 `gateway_first_success_seconds` —— 从进程启动到第一个成功的代理请求。此前"装好了但一条都没转发"这种状态在所有指标上都看不出来。
+- **Grafana 模板随包提供**：`content/observability/grafana-dashboard.json`（`contentFiles` 同步一份），面板从 8 个扩到 11 个（TTFR、Serving、上游连接池）
+- **CI 流水线**：`.github/workflows/ci.yml`
+  - net8.0 / net9.0 双 TFM 矩阵编译 + 跑测试
+  - 测试数下限断言（< 100 直接 fail）—— 防止将来过滤条件写错导致"0 个用例也算通过"
+  - `dotnet pack` + 包内容检查，抓"仓库里有、包里没有"这类问题
+- **Prometheus 指标端点**：`GET /metrics` 输出 Prometheus 文本格式 0.0.4
+  - `gateway_requests_total{route,cluster}`、`gateway_request_duration_seconds`（13 桶直方图 + `_sum` + `_count`）、`gateway_responses_total{class}`、`gateway_inflight_requests`、`gateway_uptime_seconds`
+  - 由 `GatewayMetricsRenderer` 追加需要 DI 的 gauge：`gateway_build_info`、`gateway_routes_configured`、`gateway_clusters_configured`、`gateway_config_version`、`gateway_circuits{state}`
+  - 采集点在反向代理管道内（`GatewayMetricsMiddleware`），**不依赖任何插件是否绑定**；此前仪表盘数据只在 metrics / proxy-log 插件启用时才有
+  - 基数上界 `MaxTrackedSeries = 300`，超出并入 `route="other",cluster="other"` 并计入 `gateway_metrics_dropped_series`，防止路由模板写错把 Prometheus 打挂
+  - `DashboardUseOptions` 新增 `UseMetricsCollection` / `MapMetricsEndpoint` 开关，默认开启
+- **配置预检（dry-run validate）**：`POST /api/config/validate` 返回 `ConfigValidationReport`，每条问题带 `field`（可精确到 `Destinations.d1.Address`）、`message`、`hint`
+  - 路由侧：RouteId / ClusterId 为空、Path 与 Hosts 全空、Methods 空数组、Header 缺 Name、Timeout 与 TimeoutPolicy 同时设置、Timeout ≤ 0、集群不存在、四个策略名不可解析、`Metadata.Enabled=false` 的禁用路由
+  - 集群侧：无目标节点、地址为空或非 http/https、非内置负载均衡策略、会话亲和缺 AffinityKeyName 或策略未知、健康探测间隔/超时为 0、关闭上游证书校验、HTTP 版本越界
+- **全量配置体检**：`GET /api/config/integrity` 交叉检查指向不存在集群的路由、无目标节点的集群、无人引用的孤儿集群、重复的 `Match.Path`（后者只有优先级最高的一条会命中，其余是死路由）
+- **策略名可用性校验 + 9 个内置策略**：`GET /api/config/policies`
+  - 授权 / CORS / 限流 / 输出缓存四个字段由自由文本改为下拉（`dashboard-form-builder.js` + `data-kind="policy"`）
+  - 内置 `gw-anonymous`、`gw-authenticated`、`gw-cors-open`、`gw-rl-100pm`、`gw-rl-1000pm`、`gw-rl-10ps`、`gw-cache-30s`、`gw-cache-5m`、`gw-cache-1h`
+  - 授权走 `IAuthorizationPolicyProvider`（权威：null 即未注册），CORS 走 `ICorsPolicyProvider`；限流与输出缓存因 `PolicyMap`/`Policies` 是 internal，返回 `Unverifiable` 而非谎报 `Unknown`，避免误杀宿主自定义策略
+  - **补上 `app.UseRateLimiter()`** —— 此前策略即使注册也永不下发，等于换个地方继续静默失败
+  - 下拉支持"自定义名称…"（`window.prompt`），未注册的名字保存时被拒绝并标注
+- **变更差异预览**：保存前用自然语言列出变化（`删除目标节点 d1：http://…` / `匹配路径：/a → /b` / `策略 RateLimiterPolicy：不启用 → gw-rl-100pm`），含"删除"的变更额外二次确认；差异同时写入配置历史的 summary
+- **配置版本号 + 乐观并发**：`GET /api/config/state` 返回 `{ version, lastModified, routes, clusters }`；所有写操作读取 `X-Config-Version`（或 `expectedVersion` 查询参数），版本不一致返回 `409` 与 `currentVersion`；`dashboard-api.js` 自动注入并在写成功后回读
+
+### 🔧 架构改进
+
+- 新增 `Modules/GatewayConfig/Services/ConfigurationValidator.cs`（`IConfigurationValidator`），写路径统一为"校验通过才落盘"
+- 新增 `Infrastructure/Policies/GatewayPolicyCatalog.cs`，`AddGatewayPolicies()` 追加式注册（与宿主已有的 `AddAuthorization` / `AddCors` 共存），全部 `TryAdd`/`AddXxx(options)` 语义
+- 新增 `Infrastructure/Observability/`：`GatewayMetricsCollector`（无 DI 依赖、线程安全、有界基数）、`GatewayMetricsMiddleware`、`GatewayMetricsRenderer`
+- `ConfigControllerBase` 新增 `TryRejectStaleWrite()` 与 `HasDestinations()`（后者避免"首次建集群 + 建路由"时误报集群不存在）
+
+### 🐛 修复
+
+- **连接串为空时所有环境会共用同一个库文件**（写这个特性时被测试抓出来）。原本空串直接 `return "Data Source=gateway-store.db"`，于是 dev 与 prod 指向同一文件，隔离形同虚设 —— 而这种配置在实际部署里很常见（只写了 `Provider` 没写连接串）。改为先补默认串再走派生
+- **面板的路由 / 集群列表跨环境串味**（端到端撞出来）。两个查询服务把缓存键硬编码成 `dashboard:routes:query`，切环境后 5 秒内仍返回上一个环境的内容。现在键里带环境名，并且 `InvalidateQueryCaches()` 改成向服务要失效，不再按硬编码键名删
+- **重试耗尽后请求变成未处理异常，真实 5xx 被吞掉（严重，由故障注入演练暴露）**。`RequestRetryMiddleware` 在把缓冲响应拷回客户端**之后**才写 `X-Retry-Count`：
+  ```csharp
+  await responseStream.CopyToAsync(originalResponseBody, context.RequestAborted);
+  context.Response.Headers["X-Retry-Count"] = attempt.ToString();  // 此时响应已启动
+  ```
+  `CopyToAsync` 一写就把响应启动了，随后设置响应头抛 `InvalidOperationException: Headers are read-only, response has already started`。结果是**只要重试次数耗尽**（也就是最需要看清上游回了什么的时候），客户端拿到的是一个 500 加一条未处理异常，而真正的 503 / 502 完全丢失。已把写头移到拷贝之前。这个 bug 存在以来一直没被发现，因为要触发它需要"路由配了重试"且"上游连续失败到用尽重试"，正常流量里几乎不会同时出现 —— 是注入 503 的演练把它撞出来的
+- **权重热更新不生效：写了权重，流量照旧（严重）**。`WeightedLoadBalancingPolicy` 原先用 `DestinationState` 的引用判断"目标集合是否变了、要不要重算权重表"。但 YARP 重载配置时**保留** `DestinationState` 实例、只替换它的 `Model`：
+  ```csharp
+  // ProxyConfigManager.UpdateRuntimeDestinations
+  if (currentDestination.Model.HasChanged(incomingDestination.Value))
+      currentDestination.Model = new DestinationModel(incomingDestination.Value);
+  ```
+  于是那个引用判断永远为 false，权重表在集群第一次收到请求后就被**永久冻结**：把 90/10 改成 0/100，实测仍是 50/50，而且没有任何日志、没有任何报错。灰度每一步改的都是权重，这个 bug 会让整个灰度功能"看起来在跑、实际一步都没动"。现在判断依据改成 `DestinationModel` 引用 + destination id + `weightKey` + `defaultWeight`，权重在下一个请求就生效
+- **集群接口不再返回 `"Default"` 这个不存在的策略名**。此前没有显式配置策略的集群会被返回 `LoadBalancingPolicy: "Default"`，而 JSON 编辑器会把它原样写回 —— 于是"只改一个权重再保存"就会把集群改成一个 YARP 解析不到的策略。现在返回空串，编辑器不再写回该字段
+- **插件在错误的位置注册扩展点会被无声丢弃的问题，改成显式契约**：`IGatewayPlugin.ConfigureServices` 跑在插件自己的运行时容器里，那里注册的 `ILoadBalancingPolicy` YARP 永远看不见；新增的 `IGatewayPluginHostServices` 才是正确入口，缺少无参构造时启动即抛错而不是静默跳过
+- **四条机器写入路径现在都受同一个守卫管辖**：
+  | 写入路径 | 2.4.0 | 2.4.1 |
+  |:--|:--:|:--:|
+  | Dashboard 路由 / 集群 CRUD | ✅ | ✅ |
+  | 客户端自注册 `POST api/gateway/register-route` | ❌ | ✅ |
+  | 批量导入 `ImportFullConfigAsync` | ❌ | ✅ |
+  | 历史回滚 `RollbackAsync` | ❌ | ✅ |
+  | AI 助手 `create_route` | ❌ | ✅ |
+- 新增核心库抽象 `Aneiang.Yarp.Validation.IConfigurationGuard`（`ConfigurationGuardResult` / `ConfigurationGuardIssue`），默认实现 `PermissiveConfigurationGuard` 全部放行 —— **只引核心库不引 Dashboard 的部署行为完全不变**；Dashboard 通过 `services.Replace(...)` 换成 `ConfigurationValidatorGuard`。
+- 批量校验新增 `IConfigurationValidator.ValidateBatchAsync(routes, clusters)`：把"本批次要创建的集群"算作已存在，避免导入/回滚时整批误报"集群不存在"；错误字段带归属前缀（`Clusters.c1.Destinations.d1.Address`），30 个集群同时出错时能定位。
+- `ConfigConcurrency` 统一了版本头的解析与 409 载荷，核心控制器与 Dashboard 共用一份实现。
+- **回滚前预检**：快照可能是几个月前的，指向已改名的集群或已删除的策略。校验不通过直接拒绝回滚并记 warning —— "恢复配置"把故障放大是最坏的情况。
+- 移除全站 10 处静态说明条（集群/路由/插件/插件资源/日志/熔断/设置/通知/概览等页），同时清理 `.page-help-bar` 相关 CSS 与 10 个 i18n 死键，避免页面跳转后又冒出一条
+- 保留带状态与操作的提示条（配置应用失败告警 `config-alert-bar`、`ov-proxy-alert`、数据来源诊断 `ds-host`）
+
+### 📝 文档
+
+- `README.md` / `README.zh-CN.md` 新增「Multi-Environment （2.3.0.40）」/「多环境（2.3.0.40）」：运行时与编辑视角的区别、文件布局、切换用法与代价、升级零迁移的保证
+- `samples/SampleGateway/appsettings.examples/appsettings.MultiEnvironment.json`：可直接用的三环境配置
+- 路线图 §6 v2.6 第 1 项标记为分批交付，写明已完成与未完成的部分
+- `README.md` / `README.zh-CN.md` 新增「Metric Alerts （2.3.0.40）」/「指标告警（2.3.0.40）」，含规则示例、判定顺序、无数据语义与配置块
+- `README.md` / `README.zh-CN.md` 新增「Distributed Tracing （2.3.0.40）」/「链路追踪（2.3.0.40）」，含 span 层级、采样语义、控制面过滤、仅内存模式与配置块
+- `README.md` / `README.zh-CN.md` 新增「Canary Releases （2.3.0.40）」/「灰度发布（2.3.0.40）」，含完整配置示例与钉住用法
+- `README.md` / `README.zh-CN.md` 新增「Fault Injection （2.3.0.40）」/「故障注入（2.3.0.40）」，含配置块、触发请求头用法、「一键关闭指的是绑定」、注入点位于重试内侧、`announce` 与 `X-Fault-Injected` 语义
+- 两处 README 补「Automatic ramp and rollback」/「自动放量与自动回滚」：状态机用法、判定顺序为什么是这个顺序、精确回滚、进程内语义、`Aneiang:Yarp:Dashboard:Canary` 配置块
+- `docs/adr/ADR-002-open-lb-and-transform.md` 补充「实施记录」：原决策假设 `ConfigureServices` 可用于容器构建期注册，实施时核实该假设不成立，因此改成独立接口
+- 路线图 §0.1 / §3 / §4.5 / §6 v2.5 按实际状态更新
+- **README 增加「我们明确不做的事」**（中英同步，6 条非目标 + 理由 + 替代方案）：API 门户、自带 IdP、日志存储与检索、Service Mesh 控制面、K8s Ingress Controller、分布式限流
+- **三个 ADR 落地** `docs/adr/`：ADR-001 单控制面、ADR-002 开放 LB/Transform 扩展点、ADR-003 限流只留扩展位
+- 路线图 `docs/product/yarp-product-roadmap.md` 逐项标记交付状态
+
+### ✅ 测试
+
+- 用量 387 个（2.5.0 为 358）：新增 `GatewayEnvironmentRegistryTests`（13 个）、`SqliteEnvironmentConnectionStringTests`（11 个）、`EnvironmentIsolationIntegrationTests`（4 个，真实容器 + 真实 SQLite 文件）
+- `SqliteEnvironmentConnectionStringTests` 钉的是几条会被想当然的地方：运行环境**原样返回**配置串（这是零迁移的根据）、后缀加在扩展名之前（`store.dev.sqlite` 而不是 `store.sqlite.dev`）、SQLCipher 的 `Password` 与其他参数在派生后仍然保留（丢了就只有切过去时才发现打不开）、`:memory:` 与不可解析串不做猜测
+- `GatewayEnvironmentRegistryTests` 钉住 `Runtime` 永远在列表里（否则切走就切不回来）、大小写不敏感去重、以及 7 种可能逃出库目录的名字必须被拒绝
+- `EnvironmentIsolationIntegrationTests` 是这批里最重要的一组：它不信任何单点，而是把容器、库、工作集、已发布快照串起来跑。其中 `Switching_to_a_non_runtime_environment_does_not_publish_or_forward_its_config` **在临时停用发布守卫后确实变红**（1 failed / 3 passed），确认它不是靠巧合绿着
+- 另跑了一遍真实网关（SampleGateway + 两个真实 SQLite 文件，11 项断言全过）：`api/environments` 报 `runtime=prod multi=true`；prod 建 `prod-only` → 切 dev（`published=false`，列表为空）→ dev 建 `dev-only` → `prod.db` 与 `prod.dev.db` 两个文件同时存在 → 切回 prod（`published=true`）→ 列表回到 `prod-only`，`dev-only` 未出现；`../prod`、`..`、`pr od`、`prod.db`、`nope` 五种非法名全部 400；全程无未处理异常
+- `dotnet build Aneiang.Yarp.sln` 0 警告 0 错误
+- 用量 358 个（2.4.1 为 158）：新增 `WeightedLoadBalancingPolicyTests`（25 个，含 90/10、99/1、并发 400 次仍精确、表变更重置、**权重在同一个 `DestinationState` 上被就地替换后仍然生效**）、`PluginHostServiceTests`（12 个）、`CanaryRolloutEvaluatorTests`（9 个）、`CanaryWeightPlannerTests`（10 个）、`CanaryRolloutServiceTests`（11 个，`FakeClock` 驱动）、`MetricAlertEvaluatorTests` + `MetricAlertRuleValidatorTests` + `GatewayMetricsPercentileTests`（31 个）、`MetricAlertServiceTests`（16 个，`FakeClock` 驱动）、`GatewayTracingTests`（7 个）、`TraceRingBufferTests`（9 个）、`TracingSamplerAndServiceTests`（10 个）、`FaultInjectionPlannerTests`（20 个）、`FaultInjectionMiddlewareTests`（11 个）、`RequestRetryResponseTests`（2 个），`ConfigurationValidatorTests` 补 8 个权重用例
+- `MetricAlertServiceTests` 钉住的是语义而不只是数字：`Pending` 阶段恢复不发通知、静默期间数值继续更新、持续未恢复按间隔重复提醒、无流量时不判定恢复、重启后残留告警关闭
+- `GatewayTracingTests` / `TraceRingBufferTests` / `TracingSamplerAndServiceTests`（26 个）钉住的是几条"看起来对但会骗人"的语义：span 子先父后到达仍能拼出完整 trace、**根不在缓冲区时按父链深度选根而不是按 `ParentSpanId is null`**、`ShortCircuited` 必须区分"插件拦下"与"上游失败"、被丢弃采样（`!Recorded`）的 span 不入缓冲、非法 endpoint 只记 `StartError` 不抛；采样侧钉住 ratio 0/1/0.5 的分布（400 次落在 140~260）、同一 traceId 结论一致、**入站 sampled 标记覆盖本地比例**
+- 追踪另跑了一遍真实网关（SampleGateway + 假 OTLP 接收端，非单测）：`/api/tracing/traces/{id}` 返回 10 层嵌套瀑布图；`:4318` 收到 1 个 http/protobuf 请求，内含 `gateway.forward` / `gateway.plugin`×N / `proxy.forwarder` / `service.name`；禁用态 `enabled=false running=false buffer=0` 且不产出任何 span；`ratio=0` 后连发 3 个请求缓冲区不增长；未知 traceId 返回 404
+- 新增 `LoadBalancingIntegrationTests`（6 个）：真实 Kestrel 代理 + 两个真实 Kestrel 后端，覆盖"启动时就带策略"和"运行中改策略 / 改权重"两条路径。上一条那个 bug 单测抓不到，因为单测每次都会新建 `DestinationState`；只有跑在真 YARP 上才会露出"实例被复用"
+- `FaultInjectionPlannerTests`（20 个）钉的是**概率边界而不是统计分布**：`sample` 由调用方传入，所以 0.5 的边界可以精确断言（`0.49` 命中、`0.5` 不命中），不用发 1000 个请求看比例像不像；另包含"启用了但一条规则都没配"必须什么都不做、"延迟上下限写反了按小的那个算"、"只要 400–599 之外的码"、"`abortConnection` 与状态码冲突时以中断为准"
+- `FaultInjectionMiddlewareTests`（11 个）钉的是**中间件层的行为契约**：注入时不调 `Next`、自定义 body 走 `text/plain`、`announce` 关掉后没有 `X-Fault-Injected`、只加延迟时仍然转发（实测耗时 ≥60ms）、abort 走 `IHttpRequestLifetimeFeature.Abort`、请求头门放行与拦截两侧、以及 `/dashboard/plugins` 永不被注入（控制面不该被自己的演练打死）
+- `RequestRetryResponseTests`（2 个）钉住上面那个重试 bug：用一个 `HeaderProbeStream` 在**第一次 Write 时**检查 `X-Retry-Count` 是否已经存在 —— 换句话说，测的不是"最终有响应头"，而是"写在响应启动之前"。修复前该用例确实是红的（`1 failed, 1 passed`），修复后转绿
+- 故障注入另跑了一遍真实网关（SampleGateway + 真实上游，非单测，11 项断言全过）：插件被自动发现（列表 11 个）、无绑定时 200、绑 `errorStatusCode:503` 后返回 503 且带 `X-Fault-Injected: 503`、请求头门无头 200 / 带头 503、`delayMinMs:400` 实测 `0.445s`、`gateway_route_failures_total{route="baidu_api_route"} 2` 能看见注入的失败、**关掉绑定后不仅状态码回 200、耗时也回到 `0.028s`**（证明延迟确实不再注入，而不只是码变了）、重新启用后配置仍在（`0.441s`）、删除绑定回到 200、全程 `fatal-lines=0` 无未处理异常
+- `dotnet build Aneiang.Yarp.sln` 0 警告 0 错误
+- 158 个用例全绿（2.4.0 为 117），新增：批量校验 7 例、并发契约 15 例、守卫适配器 4 例、TTFR 8 例、连接池监控 7 例
+
+---
+
+- 新增 `tests/Aneiang.Yarp.UnitTests`（xUnit，net9.0，**117 个用例**，全绿）
+  - `YarpJsonConfigTests`：空串/空白布尔、`"true"`/`"True"`、`""` 与 `00:00:30`/`30`/`30s`/`5m`/`2h`/`1d` 的 TimeSpan 解析、裸数字必须是秒而非天、空 JSON 不抛、非法 JSON 抛、SessionAffinity 往返
+  - `ConfigurationValidatorTests`：路由/集群/全量体检共 40+ 断言点，含"同一 payload 内新建集群不误报"
+  - `GatewayMetricsCollectorTests`：直方图累积性、`_sum` 单位为秒、负耗时钳制、标签转义（引号/反斜杠/换行）、基数上界与 overflow
+  - `GatewayPolicyCatalogTests`：9 个内置策略全部可解析、大小写敏感、`Unverifiable` 语义、`AddGatewayPolicies` 与宿主 `AddCors` 共存
+- 测试工程已加入 `Aneiang.Yarp.sln`
+
+### 📊 交付进度
+
+| 批次 | 内容 | 状态 |
+|:--:|:--|:--|
+| 1a | 环境模型 + 每环境独立存储 + 运行时/编辑视角分离 + 切换 | ✅ **2.6.0** |
+| 1b | 环境间 diff（路由/集群/绑定逐项差异） | ⬜ 未开始 |
+| 1c | 一键提升 + 审批（依赖 1b 与 RBAC） | ⬜ 未开始 |
+
+---
+
+| # | 项 | 状态 |
+|:--:|:--|:--|
+| 1 | 插件扩展点（LB 策略 / Transform） | ✅ **2.5.0**：`IGatewayPluginHostServices` + `AddPluginHostServices` |
+| 2 | 权重灰度（`Weighted` 策略 + `X-Gateway-Canary` 钉住） | ✅ **2.5.0**：精确分流 + 热更新 |
+| 3 | 灰度应用 + 自动回滚（观察窗口 + 错误率阈值） | ✅ **2.5.0**：状态机 + 归因判定 + 精确回滚 + Dashboard 面板 |
+| 4 | 指标告警阈值（5xx 率 / P99 / 熔断开闸） | ✅ **2.5.0**：三类规则 + 滑动窗口 + 持续判定 + 无数据保护 + 投递状态可见 |
+| 5 | OpenTelemetry 追踪 | ✅ **2.5.0**：分层 span + OTLP 导出 + 确定性采样 + 仅内存瀑布图 |
+| 6 | 故障注入插件 | ✅ **2.5.0**：延迟 / 错误码 / 连接中断 + 请求头门 + 一键关绑定 |
+
+---
+
+---
+
 ## [2.3.0.30] - 2026-09-20
 
 > 正式版发布：2.3.0.30-preview.1 全部特性转正（插件化架构完全落地、响应压缩插件、Redis 分布式限流、原生 YARP 配置直编、配置应用失败感知），并完成品牌与打包升级。功能变更明细见下方 [2.3.0.30-preview.1] 条目。

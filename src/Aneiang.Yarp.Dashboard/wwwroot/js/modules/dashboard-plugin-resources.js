@@ -6,12 +6,20 @@
 
     var TREND_METRICS = ['throughput', 'latency', 'errors'];
     var TREND_HISTORY_MAX = 60; // 60 × 5s = 5 minutes
+    var TREND_MIN_POINTS = 3;   // fewer than this draws a meaningless line
+    // The rolling window lives in the page, so it used to be empty on every load and
+    // the trend column stayed blank for the first ~15s (3 polls). Persisting it lets a
+    // freshly opened page draw the trend immediately.
+    var HISTORY_STORAGE_KEY = 'pr-trend-history-v2';
+    var HISTORY_RESTORE_MAX_AGE_MS = 10 * 60 * 1000; // older than this says nothing about "now"
 
     var PluginResourcesModule = {
         initialized: false,
         _autoRefreshTimer: null,
         _autoRefreshIntervalMs: 5000,
-        // Rolling trend window: pluginId → { requests[], errors[], latency[] } (cumulative counters / instant values)
+        // Rolling trend window: pluginId → { tp[], er[], lat[], req, err, resume }
+        // tp / er hold per-interval deltas (already gap-safe), lat holds instant values;
+        // req / err remember the last cumulative counters so the next delta can be computed.
         _history: {},
         _lastData: null,
         _trendMetric: 'throughput',
@@ -23,9 +31,17 @@
                 var saved = localStorage.getItem('pr-trend-metric');
                 if (TREND_METRICS.indexOf(saved) >= 0) this._trendMetric = saved;
             } catch (e) { /* ignore */ }
+            this._restoreHistory();
             this._bindTrendChips();
             this.updateTrendChips();
             this.startAutoRefresh();
+            /* Re-focus when the hash changes, so hopping between plugins'
+               "resources" links on the config page lands on the right row. */
+            var self = this;
+            window.addEventListener('hashchange', function () {
+                var container = document.getElementById('pr-content');
+                if (container && self._lastData) self.render(self._lastData, container);
+            });
         },
 
         destroy: function() {
@@ -103,18 +119,77 @@
             (items || []).forEach(function(item) {
                 var h = self._history[item.pluginId];
                 if (!h) {
-                    h = { requests: [], errors: [], latency: [] };
-                    self._history[item.pluginId] = h;
+                    h = self._history[item.pluginId] = {
+                        tp: [], er: [], lat: [], req: null, err: null, resume: true
+                    };
                 }
-                h.requests.push(item.requestCount || 0);
-                h.errors.push(item.errorCount || 0);
-                h.latency.push(item.averageLatencyMs || 0);
-                if (h.requests.length > TREND_HISTORY_MAX) {
-                    h.requests.shift();
-                    h.errors.shift();
-                    h.latency.shift();
+
+                var req = item.requestCount || 0;
+                var err = item.errorCount || 0;
+                /* A delta is only meaningful when the previous sample came from this same
+                   continuous stretch. After a restore, or when a plugin restarted and the
+                   counters went backwards, the interval is unknown - dropping it keeps one
+                   giant gap from flattening the rest of the line. */
+                var comparable = !h.resume && h.req !== null && h.err !== null &&
+                    req >= h.req && err >= h.err;
+                if (comparable) {
+                    pushSeries(h.tp, req - h.req);
+                    pushSeries(h.er, err - h.err);
                 }
+
+                h.req = req;
+                h.err = err;
+                h.resume = false;
+                pushSeries(h.lat, item.averageLatencyMs || 0);
             });
+            this._persistHistory();
+        },
+
+        _restoreHistory: function() {
+            var raw;
+            try { raw = window.localStorage.getItem(HISTORY_STORAGE_KEY); } catch (e) { return; }
+            if (!raw) return;
+
+            var saved;
+            try { saved = JSON.parse(raw); } catch (e) { return; }
+            if (!saved || typeof saved.ts !== 'number' || !saved.data) return;
+            if (Date.now() - saved.ts > HISTORY_RESTORE_MAX_AGE_MS) return;
+
+            var self = this;
+            Object.keys(saved.data).forEach(function(pluginId) {
+                var s = saved.data[pluginId];
+                if (!s) return;
+                self._history[pluginId] = {
+                    tp: tail(s.tp),
+                    er: tail(s.er),
+                    lat: tail(s.lat),
+                    req: typeof s.req === 'number' ? s.req : null,
+                    err: typeof s.err === 'number' ? s.err : null,
+                    // The first sample after a restore spans an unknown idle gap and must
+                    // not be charted as a single 5s interval.
+                    resume: true
+                };
+            });
+        },
+
+        _persistHistory: function() {
+            var data = {};
+            var self = this;
+            Object.keys(this._history).forEach(function(pluginId) {
+                var h = self._history[pluginId];
+                data[pluginId] = {
+                    tp: h.tp.slice(-TREND_HISTORY_MAX),
+                    er: h.er.slice(-TREND_HISTORY_MAX),
+                    lat: h.lat.slice(-TREND_HISTORY_MAX),
+                    req: h.req,
+                    err: h.err
+                };
+            });
+            try {
+                window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify({ ts: Date.now(), data: data }));
+            } catch (e) {
+                /* Storage full or blocked: the chart still works for the current session. */
+            }
         },
 
         render: function(data, container) {
@@ -124,11 +199,17 @@
 
             var html = '';
 
-            // --- KPI meta line: segmented pills with icons ---
+            /* "已启用" is already on the overview page; what only this page can show is
+               how many plugins are actually carrying traffic. A plugin can be enabled,
+               healthy-looking and still move zero requests - that is the state worth
+               surfacing here. */
+            var flowing = items.filter(function (i) { return (i.requestCount || 0) > 0; }).length;
+            var idle = items.filter(function (i) { return i.enabled && !(i.requestCount > 0); }).length;
+
             var kpis = [
                 { icon: 'bi-grid-fill', label: __('resources.totalPlugins'), value: totals.totalPlugins || 0 },
-                { icon: 'bi-check-circle', label: __('common.enabled'), value: totals.enabledPlugins || 0, tone: 'ok' },
-                { icon: 'bi-arrow-repeat', label: __('resources.totalRequests'), value: formatNum(totals.totalRequestCount || 0) },
+                { icon: 'bi-arrow-left-right', label: __('pr.flowing'), value: flowing, tone: flowing > 0 ? 'ok' : null },
+                { icon: 'bi-pause-circle', label: __('pr.idle'), value: idle, tone: idle > 0 ? 'warn' : null },
                 { icon: 'bi-exclamation-triangle', label: __('resources.totalErrors'), value: formatNum(totals.totalErrorCount || 0), tone: (totals.totalErrorCount || 0) > 0 ? 'danger' : null },
                 // API returns overallAverageLatencyMs (PluginResourceUsageTotals record);
                 // averageLatencyMs kept as fallback for older payloads.
@@ -162,7 +243,7 @@
                     '<th class="pr-th-num"><i class="bi bi-lightning me-1"></i>' + __('resources.avgLatency') + '</th>' +
                     '<th class="pr-th-num"><i class="bi bi-stopwatch me-1"></i>' + __('resources.uptime') + '</th>' +
                     '<th><i class="bi bi-graph-up me-1"></i>' + __('resources.trend') + '</th>' +
-                    '<th class="pr-th-num"><i class="bi bi-clock me-1"></i>' + __('resources.colUpdated') + '</th>' +
+                    '<th class="pr-th-actions"></th>' +
                     '</tr></thead><tbody>';
                 items.forEach(function(item) {
                     html += renderPluginRow(item, esc);
@@ -171,6 +252,25 @@
             }
 
             container.innerHTML = html;
+            this._focusHashRow();
+        },
+
+        /* Deep link target: /plugin-resources#rate-limit highlights that plugin once,
+           so "how much is this one costing me" works as a jump from the config page.
+           Guarded by an id (not a DOM flag) because the table is rebuilt every 5s. */
+        _focusedId: null,
+        _focusHashRow: function() {
+            var id = decodeURIComponent((window.location.hash || '').replace('#', ''));
+            if (!id || id === this._focusedId) return;
+            var row = null;
+            document.querySelectorAll('.pr-table tbody tr[data-plugin]').forEach(function (tr) {
+                if (tr.getAttribute('data-plugin') === id) row = tr;
+            });
+            if (!row) return;
+            this._focusedId = id;
+            row.classList.add('pr-row--focus');
+            if (row.scrollIntoView) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setTimeout(function () { row.classList.remove('pr-row--focus'); }, 2600);
         },
 
         updateRefreshTime: function() {
@@ -195,7 +295,9 @@
         }
         if (item.enabled && !hasTraffic) tips.push(__('resources.noTraffic'));
 
-        var html = '<tr' + (item.enabled ? '' : ' class="pr-row--off"') + (tips.length ? ' title="' + esc(tips.join(' · ')) + '"' : '') + '>';
+        var html = '<tr data-plugin="' + esc(item.pluginId) + '"' +
+            (item.enabled ? '' : ' class="pr-row--off"') +
+            (tips.length ? ' title="' + esc(tips.join(' · ')) + '"' : '') + '>';
 
         // Plugin + tags
         html += '<td><div class="pr-cell-plugin">';
@@ -210,6 +312,12 @@
         html += item.enabled
             ? '<span class="pr-tag pr-tag--on">' + __('common.enabled') + '</span>'
             : '<span class="pr-tag pr-tag--off">' + __('common.disabled') + '</span>';
+        /* Enabled yet carrying no traffic is the "why is nothing happening" case.
+           It belongs on the row, not in a hover tooltip. */
+        if (item.enabled && !hasTraffic) {
+            html += '<span class="pr-tag pr-tag--idle" title="' + esc(__('pr.idleHint')) + '">' +
+                esc(__('pr.idle')) + '</span>';
+        }
         html += '</div></td>';
 
         // Health
@@ -226,28 +334,40 @@
         // Trend sparkline
         html += '<td class="pr-td-spark">' + renderSpark(item) + '</td>';
 
-        // Last updated
-        var ago = item.lastUpdated && window.DashboardUtils && DashboardUtils.timeAgo ? DashboardUtils.timeAgo(item.lastUpdated) : '';
-        html += '<td class="pr-td-upd">' + ago + '</td>';
+        // Action: jump to this plugin's configuration tab (closes the loop -
+        // "no traffic" almost always means "not bound yet").
+        var base = (window.__dashboard && window.__dashboard.basePath) || '';
+        var cfgHref = base + '/plugin-center#' + encodeURIComponent(item.pluginId);
+        var cfgHint = __('pr.goConfigure');
+        html += '<td class="pr-td-actions">' +
+            '<a class="pr-icon-btn" href="' + esc(cfgHref) + '" title="' + esc(cfgHint) + '" aria-label="' + esc(cfgHint) + '">' +
+                '<i class="bi bi-sliders"></i>' +
+            '</a>' +
+        '</td>';
 
         html += '</tr>';
         return html;
     }
 
     // ── Trend sparkline ────────────────────────────────────────────────
-    // Renders an inline SVG polyline from the in-memory rolling window.
-    // Throughput/errors are per-interval deltas (÷5s window), latency uses the instant value.
+    // Renders an inline SVG polyline from the rolling window: throughput/errors are
+    // stored as per-interval deltas, latency as instant values.
+
+    function pushSeries(arr, value) {
+        arr.push(value);
+        if (arr.length > TREND_HISTORY_MAX) arr.shift();
+    }
+
+    function tail(arr) {
+        if (!Array.isArray(arr)) return [];
+        return arr.slice(-TREND_HISTORY_MAX).map(function(v) { return Number(v) || 0; });
+    }
 
     function getTrendSeries(h, metric) {
         if (!h) return null;
-        if (metric === 'latency') return h.latency.slice();
-        var src = (metric === 'errors') ? h.errors : h.requests;
-        var out = [];
-        for (var i = 1; i < src.length; i++) {
-            var delta = src[i] - src[i - 1];
-            out.push(delta > 0 ? delta : 0); // clamp: counters reset on plugin restart
-        }
-        return out;
+        if (metric === 'latency') return h.lat.slice();
+        if (metric === 'errors') return h.er.slice();
+        return h.tp.slice();
     }
 
     function getTrendColor(metric) {
@@ -258,10 +378,20 @@
         }
     }
 
+    /* Not enough samples yet is a normal state (first visit, or a plugin that just
+       appeared), not a rendering failure. A dashed baseline keeps the column from
+       looking broken and explains itself on hover. */
+    function renderPendingSpark() {
+        return '<svg viewBox="0 0 100 22" preserveAspectRatio="none" aria-hidden="true">' +
+            '<title>' + __('pr.trendPending') + '</title>' +
+            '<line x1="0" y1="15" x2="100" y2="15" stroke="currentColor" stroke-width="1.2" ' +
+                'stroke-dasharray="3 3" opacity="0.28"></line>' +
+            '</svg>';
+    }
+
     function renderSpark(item) {
-        var h = PluginResourcesModule._history[item.pluginId];
-        var series = getTrendSeries(h, PluginResourcesModule._trendMetric);
-        if (!series || series.length < 3) return '';
+        var series = getTrendSeries(PluginResourcesModule._history[item.pluginId], PluginResourcesModule._trendMetric);
+        if (!series || series.length < TREND_MIN_POINTS) return renderPendingSpark();
 
         var color = getTrendColor(PluginResourcesModule._trendMetric);
         var n = series.length;
@@ -278,7 +408,8 @@
         }
         area.push('100,22');
 
-        return '<svg viewBox="0 0 100 22" preserveAspectRatio="none" aria-hidden="true" title="' + __('resources.trendSpan') + '">' +
+        return '<svg viewBox="0 0 100 22" preserveAspectRatio="none" aria-hidden="true">' +
+            '<title>' + __('resources.trendSpan') + '</title>' +
             '<polygon points="' + area.join(' ') + '" fill="' + color + '"></polygon>' +
             '<polyline points="' + pts.join(' ') + '" stroke="' + color + '"></polyline>' +
             '</svg>';

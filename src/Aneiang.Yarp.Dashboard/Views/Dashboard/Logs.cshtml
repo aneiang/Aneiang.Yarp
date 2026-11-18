@@ -29,10 +29,30 @@
                         if (DashboardApp.modules.logs.init) await DashboardApp.modules.logs.init();
                         if (DashboardApp.modules.logs.loadLogs) await DashboardApp.modules.logs.loadLogs();
                     }
-                    hidePluginHint('logs-plugin-hint');
                 }
             }
         } catch(e) { console.error('Logs load error:', e); }
+
+        // 数据来源诊断条：未启用 / 未绑定 / 等待数据 / 运行中
+        if (window.DashboardDataSource) {
+            await DashboardDataSource.mount({
+                containerId: 'logs-datasource',
+                pluginId: 'proxy-log',
+                scope: 'Route',
+                hasData: function() {
+                    // 已加载的日志条数直接来自面板的计数徽标
+                    var el = document.getElementById('log-display-count');
+                    return !!el && parseInt(el.textContent, 10) > 0;
+                },
+                onRefresh: function() {
+                    if (!(window.DashboardApp && DashboardApp.modules && DashboardApp.modules.logs)) return Promise.resolve();
+                    var logs = DashboardApp.modules.logs;
+                    return Promise.resolve(logs.loadLogs ? logs.loadLogs() : null).then(function() {
+                        DashboardDataSource.refresh('proxy-log');
+                    });
+                }
+            });
+        }
 
         document.dispatchEvent(new CustomEvent('dashboard:ready'));
     })();

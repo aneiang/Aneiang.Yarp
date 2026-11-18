@@ -1,9 +1,11 @@
 using System.Text.Json;
 using Aneiang.Yarp.Models;
 using Aneiang.Yarp.Services;
+using Aneiang.Yarp.Validation;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Yarp.ReverseProxy.Configuration;
 
 namespace Aneiang.Yarp.Controllers;
 
@@ -13,14 +15,84 @@ namespace Aneiang.Yarp.Controllers;
 [Produces("application/json")]
 public class GatewayConfigController : ControllerBase
 {
-    private readonly DynamicYarpConfigService _dynamicConfig;
+    private readonly IDynamicYarpConfigService _dynamicConfig;
+    private readonly IConfigurationGuard _guard;
     private readonly ILogger<GatewayConfigController> _logger;
 
     /// <summary>Creates a new instance of the controller.</summary>
-    public GatewayConfigController(DynamicYarpConfigService dynamicConfig, ILogger<GatewayConfigController> logger)
+    public GatewayConfigController(
+        IDynamicYarpConfigService dynamicConfig,
+        IConfigurationGuard guard,
+        ILogger<GatewayConfigController> logger)
     {
         _dynamicConfig = dynamicConfig;
+        _guard = guard;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Optimistic-concurrency gate shared by every write endpoint in this controller.
+    ///
+    /// The self-registration API is the highest-risk writer in the product — it is called by
+    /// unattended services, so a bad payload reaches production configuration without anyone
+    /// looking at it. The version echo is optional (older clients simply omit it), but when a
+    /// caller does send <c>X-Config-Version</c> a stale value is refused with 409 instead of
+    /// silently overwriting a concurrent edit.
+    /// </summary>
+    private IActionResult? RejectStaleWrite()
+    {
+        var expected = ConfigConcurrency.ReadExpectedVersion(Request);
+        var current = _dynamicConfig.GetDynamicConfig()?.Version ?? 0;
+        if (!ConfigConcurrency.IsStale(expected, current))
+            return null;
+
+        return Conflict(ConfigConcurrency.BuildConflictPayload(expected!.Value, current));
+    }
+
+    /// <summary>
+    /// Projects a registration request onto the route shape YARP will actually build, so the
+    /// guard checks the same object that ends up in the configuration.
+    /// </summary>
+    private static RouteConfig ToRouteConfig(RegisterRouteRequest request) => new()
+    {
+        RouteId = request.RouteName,
+        ClusterId = request.ClusterName,
+        Match = new RouteMatch { Path = request.MatchPath },
+        Order = request.Order ?? int.MaxValue,
+        Transforms = request.Transforms?.Select(t => (IReadOnlyDictionary<string, string>)t).ToList()
+    };
+
+    private static ClusterConfig ToClusterConfig(CreateClusterRequest request) => new()
+    {
+        ClusterId = request.ClusterId,
+        Destinations = request.Destinations.ToDictionary(
+            kvp => kvp.Key,
+            kvp => new DestinationConfig { Address = kvp.Value }),
+        LoadBalancingPolicy = request.LoadBalancingPolicy
+    };
+
+    /// <summary>
+    /// Applies an update patch on top of the cluster currently in effect, so the guard sees the
+    /// post-write configuration rather than the fragment the caller sent.
+    /// </summary>
+    private ClusterConfig BuildMergedCluster(string clusterId, UpdateClusterRequest patch)
+    {
+        var existing = _dynamicConfig.GetCluster(clusterId);
+
+        var destinations = patch.Destinations is { Count: > 0 }
+            ? patch.Destinations.ToDictionary(kvp => kvp.Key, kvp => new DestinationConfig { Address = kvp.Value })
+            : existing?.Destinations;
+
+        return new ClusterConfig
+        {
+            ClusterId = clusterId,
+            Destinations = destinations,
+            LoadBalancingPolicy = patch.LoadBalancingPolicy ?? existing?.LoadBalancingPolicy,
+            HealthCheck = existing?.HealthCheck,
+            SessionAffinity = existing?.SessionAffinity,
+            HttpClient = existing?.HttpClient,
+            HttpRequest = existing?.HttpRequest
+        };
     }
 
     /// <summary>Register or update a route and its cluster.</summary>
@@ -34,6 +106,16 @@ public class GatewayConfigController : ControllerBase
             var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage);
             return BadRequest(new { code = 400, message = string.Join("; ", errors) });
         }
+
+        if (RejectStaleWrite() is { } stale)
+            return stale;
+
+        // The cluster is created alongside the route when it is missing, so an unknown
+        // ClusterName is not an error here — but everything else about the route is checked.
+        var clusterWillBeCreated = _dynamicConfig.GetCluster(request.ClusterName) == null;
+        var guard = await _guard.CheckRouteAsync(ToRouteConfig(request), clusterWillBeCreated, HttpContext.RequestAborted);
+        if (!guard.Ok)
+            return BadRequest(guard.ToErrorPayload());
 
         var result = await _dynamicConfig.TryAddRoute(request);
         return Ok(new { code = 200, message = result.Message });
@@ -93,6 +175,9 @@ public class GatewayConfigController : ControllerBase
                 return BadRequest(new { code = 400, message = "clusterId and matchPath are required" });
             }
 
+            if (RejectStaleWrite() is { } stale)
+                return stale;
+
             var request = new RegisterRouteRequest
             {
                 RouteName = routeId,
@@ -103,6 +188,12 @@ public class GatewayConfigController : ControllerBase
                     ? transformsProp.Deserialize<List<Dictionary<string, string>>>()
                     : null
             };
+
+            var clusterWillBeCreated = _dynamicConfig.GetCluster(request.ClusterName) == null;
+            var guard = await _guard.CheckRouteAsync(
+                ToRouteConfig(request), clusterWillBeCreated, HttpContext.RequestAborted);
+            if (!guard.Ok)
+                return BadRequest(guard.ToErrorPayload());
 
             var result = await _dynamicConfig.TryAddRoute(request);
             return result.Success
@@ -140,6 +231,13 @@ public class GatewayConfigController : ControllerBase
             return BadRequest(new { code = 400, message = string.Join("; ", errors) });
         }
 
+        if (RejectStaleWrite() is { } stale)
+            return stale;
+
+        var guard = await _guard.CheckClusterAsync(ToClusterConfig(request), HttpContext.RequestAborted);
+        if (!guard.Ok)
+            return BadRequest(guard.ToErrorPayload());
+
         var result = await _dynamicConfig.TryAddCluster(request);
         return result.Success
             ? Ok(new { code = 200, message = result.Message })
@@ -153,6 +251,15 @@ public class GatewayConfigController : ControllerBase
     [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> UpdateCluster(string clusterId, [FromBody] UpdateClusterRequest request)
     {
+        if (RejectStaleWrite() is { } stale)
+            return stale;
+
+        // Validate the merged result, not the patch: a partial payload is legitimate, but the
+        // configuration it produces is what has to be legal.
+        var guard = await _guard.CheckClusterAsync(BuildMergedCluster(clusterId, request), HttpContext.RequestAborted);
+        if (!guard.Ok)
+            return BadRequest(guard.ToErrorPayload());
+
         var result = await _dynamicConfig.TryUpdateCluster(clusterId, request);
         return result.Success
             ? Ok(new { code = 200, message = result.Message })
@@ -196,6 +303,9 @@ public class GatewayConfigController : ControllerBase
         if (request.Routes.Count == 0)
             return BadRequest(new { code = 400, message = "At least one route is required" });
 
+        if (RejectStaleWrite() is { } stale)
+            return stale;
+
         var results = new List<object>();
         var allSucceeded = true;
 
@@ -203,6 +313,25 @@ public class GatewayConfigController : ControllerBase
         {
             try
             {
+                // Per-item guard rather than all-or-nothing: the batch response already reports
+                // success per route, and one bad entry must not discard the other 49.
+                var clusterWillBeCreated = _dynamicConfig.GetCluster(routeReq.ClusterName) == null;
+                var guard = await _guard.CheckRouteAsync(
+                    ToRouteConfig(routeReq), clusterWillBeCreated, HttpContext.RequestAborted);
+
+                if (!guard.Ok)
+                {
+                    results.Add(new
+                    {
+                        route = routeReq.RouteName,
+                        success = false,
+                        message = $"{guard.Errors[0].Field}: {guard.Errors[0].Message}",
+                        validation = new { errors = guard.Errors, warnings = guard.Warnings }
+                    });
+                    allSucceeded = false;
+                    continue;
+                }
+
                 var result = await _dynamicConfig.TryAddRoute(routeReq, request.Source ?? "batch", request.CreatedBy);
                 results.Add(new { route = routeReq.RouteName, success = result.Success, message = result.Message });
                 if (!result.Success)

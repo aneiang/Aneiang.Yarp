@@ -2,6 +2,7 @@ using Aneiang.Yarp.Controllers;
 using Aneiang.Yarp.Models;
 using Aneiang.Yarp.Services;
 using Aneiang.Yarp.Services.ProxyConfigHealth;
+using Aneiang.Yarp.Validation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -56,6 +57,9 @@ public static class AneiangYarpServiceCollectionExtensions
 
         // Register custom load balancing policies
         services.AddSingleton<ILoadBalancingPolicy, IpBasedLoadBalancingPolicy>();
+        // Smooth weighted round-robin, the policy behind canary rollouts. Registered unconditionally:
+        // it is inert until a cluster selects it by name.
+        services.AddSingleton<ILoadBalancingPolicy, WeightedLoadBalancingPolicy>();
 
         configureReverseProxy?.Invoke(proxyBuilder);
 
@@ -73,10 +77,25 @@ public static class AneiangYarpServiceCollectionExtensions
         // Sole config provider - both static + dynamic
         services.AddSingleton<IProxyConfigProvider>(sp => sp.GetRequiredService<AneiangProxyConfigProvider>());
 
+        // Environment registry: keeps "what we serve" apart from "what we edit". Registered as the
+        // concrete type as well, because the control plane needs to expose the full list.
+        // AddOptions is idempotent, so this is safe even when AddAneiangStorage already bound it.
+        services.AddOptions<Aneiang.Yarp.Storage.StorageOptions>()
+            .BindConfiguration(Aneiang.Yarp.Storage.StorageOptions.SectionName);
+        services.AddSingleton<GatewayEnvironments.GatewayEnvironmentRegistry>();
+        services.AddSingleton<Aneiang.Yarp.Storage.IStorageEnvironmentResolver>(
+            sp => sp.GetRequiredService<GatewayEnvironments.GatewayEnvironmentRegistry>());
+
         // Dynamic config service (depends on IRouteRepository, IClusterRepository and IConfigChangeAuditLog
         // which are registered by Dashboard when AddAneiangYarpDashboard is called)
         services.AddSingleton<DynamicYarpConfigService>();
         services.AddSingleton<IDynamicYarpConfigService>(sp => sp.GetRequiredService<DynamicYarpConfigService>());
+
+        // Pre-flight guard for configuration writes. Permissive by default: a host that uses the
+        // core library alone keeps its historical "accept what you are given" behaviour. The
+        // dashboard calls Replace(...) later to plug in the real validator, which is what makes
+        // self-registration / import / rollback go through the same checks as the UI forms.
+        services.TryAddSingleton<IConfigurationGuard, PermissiveConfigurationGuard>();
         services.AddSingleton<IGatewaySnapshotCompiler, GatewaySnapshotCompiler>();
         services.AddSingleton<IGatewaySnapshotPublisher, GatewaySnapshotPublisher>();
 

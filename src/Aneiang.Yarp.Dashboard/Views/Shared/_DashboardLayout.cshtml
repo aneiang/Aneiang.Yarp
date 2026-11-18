@@ -568,6 +568,45 @@
         }
         .topbar-action i { font-size: 16px; }
 
+        /* ── Environment switcher (multi-environment deployments only) ── */
+        .env-switch {
+            display: flex; align-items: center; gap: 6px;
+            height: 32px; padding: 0 4px 0 8px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            color: #475569;
+            flex-shrink: 0;
+        }
+        .env-switch.is-editing-runtime { border-color: #cbd5e1; }
+        /* Editing a non-runtime environment is a state that must be obvious at a glance:
+           everything on the page below is now that environment's data, not what is serving. */
+        .env-switch.is-not-runtime {
+            border-color: #f59e0b; background: #fffbeb; color: #b45309;
+        }
+        .env-switch i { font-size: 14px; opacity: 0.75; }
+        .env-switch select {
+            border: none; background: transparent; outline: none;
+            font-size: 12.5px; font-weight: 600; color: inherit;
+            cursor: pointer; padding: 0 2px; max-width: 120px;
+        }
+        .env-serving {
+            font-size: 10.5px; font-weight: 600; letter-spacing: 0.3px;
+            padding: 1px 5px; border-radius: 4px;
+            background: rgba(16, 185, 129, 0.12); color: #059669;
+            white-space: nowrap;
+        }
+        .env-notice {
+            display: none;
+            align-items: center; gap: 6px;
+            font-size: 11.5px; font-weight: 500;
+            color: #b45309; background: #fffbeb;
+            border: 1px solid #fde68a; border-radius: 6px;
+            padding: 3px 8px; max-width: 340px;
+        }
+        .env-notice.show { display: inline-flex; }
+        .env-notice i { font-size: 12px; opacity: 0.9; }
+
         /* ── Topbar User Dropdown ── */
         .topbar-user {
             position: relative;
@@ -924,19 +963,83 @@
             transition: all 0.18s ease;
         }
         .empty-state-action:hover { background: var(--primary-color, #4f46e5); color: #fff; }
-        .plugin-hint-banner {
-            display: flex !important; align-items: center; gap: 8px; flex-wrap: wrap;
-            padding: 8px 14px; margin-bottom: 10px;
-            background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
-            font-size: 12.5px; color: #92400e;
+        /* 数据来源诊断条：按插件状态切五态，见 js/core/dashboard-datasource.js */
+        .ds-bar {
+            display: flex; flex-direction: column; gap: 7px;
+            padding: 12px 16px; margin-bottom: 14px;
+            border: 1px solid transparent; border-radius: 12px;
+            font-size: 12.5px; line-height: 1.5;
         }
-        .plugin-hint-banner i.bi-info-circle { color: #f59e0b; font-size: 14px; }
-        .plugin-hint-link {
-            margin-left: auto; font-weight: 600; color: #4f46e5;
-            text-decoration: none; display: inline-flex; align-items: center; gap: 2px;
-            border-bottom: 1px dashed currentColor; padding-bottom: 1px;
+        .ds-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .ds-icon { font-size: 14px; flex: none; }
+        .ds-label { font-weight: 600; }
+        .ds-chip {
+            padding: 1px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 500;
+            font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+            background: rgba(255, 255, 255, 0.72);
         }
-        .plugin-hint-link:hover { color: #4338ca; }
+        .ds-badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 2px 9px; border-radius: 11px;
+            font-size: 11.5px; font-weight: 600; white-space: nowrap;
+        }
+        .ds-dot { display: block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+        .ds-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+        .ds-btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            height: 28px; padding: 0 12px; border-radius: 8px;
+            font-size: 12px; font-weight: 600; white-space: nowrap;
+            border: 1px solid transparent; cursor: pointer;
+            transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+        }
+        .ds-btn:disabled { opacity: 0.6; cursor: default; }
+        .ds-btn--primary { background: var(--primary-color, #4f46e5); color: #fff; }
+        .ds-btn--primary:hover:not(:disabled) { background: var(--primary-dark, #4338ca); }
+        .ds-btn--ghost { background: rgba(255, 255, 255, 0.72); border-color: currentColor; color: inherit; }
+        .ds-btn--ghost:hover { background: #fff; }
+        .ds-desc { margin: 0; opacity: 0.92; }
+
+        /* 未进入运行中时的面板空状态（替代一直转圈的加载动画） */
+        .ds-empty {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 6px; padding: 56px 24px; text-align: center;
+        }
+        .ds-empty__icon {
+            display: flex; align-items: center; justify-content: center;
+            width: 56px; height: 56px; margin-bottom: 6px;
+            border-radius: 16px; background: var(--primary-bg, #eef2ff);
+            color: var(--primary-color, #4f46e5); font-size: 24px;
+        }
+        .ds-empty__title { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-primary, #0f172a); }
+        .ds-empty__desc { margin: 0; font-size: 12.5px; color: var(--text-muted, #64748b); }
+
+        /* 五态配色 */
+        .ds-bar--warn { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+        .ds-bar--warn .ds-icon { color: #d97706; }
+        .ds-bar--warn .ds-chip { border: 1px solid #fde68a; color: #b45309; }
+        .ds-bar--warn .ds-badge { background: #fef3c7; border: 1px solid #fcd34d; }
+
+        .ds-bar--info { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
+        .ds-bar--info .ds-icon { color: #1d4ed8; }
+        .ds-bar--info .ds-chip { border: 1px solid #bfdbfe; color: #1d4ed8; }
+        .ds-bar--info .ds-badge { background: #dbeafe; border: 1px solid #bfdbfe; color: #1d4ed8; }
+
+        .ds-bar--muted { background: #f8fafc; border-color: #e2e8f0; color: #475569; }
+        .ds-bar--muted .ds-icon { color: #64748b; }
+        .ds-bar--muted .ds-chip { border: 1px solid #e2e8f0; color: #475569; }
+        .ds-bar--muted .ds-badge { background: #fff; border: 1px solid #e2e8f0; }
+
+        .ds-bar--ok { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; padding: 8px 14px; }
+        .ds-bar--ok .ds-icon { color: #047857; }
+        .ds-bar--ok .ds-chip { border: 1px solid #a7f3d0; color: #047857; }
+        .ds-bar--ok .ds-badge { background: #d1fae5; border: 1px solid #a7f3d0; color: #047857; }
+        .ds-bar--ok .ds-btn--primary { background: #fff; color: #047857; border-color: #a7f3d0; }
+        .ds-bar--ok .ds-btn--primary:hover:not(:disabled) { background: #d1fae5; }
+
+        .ds-bar--danger { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+        .ds-bar--danger .ds-icon { color: #dc2626; }
+        .ds-bar--danger .ds-chip { border: 1px solid #fecaca; color: #b91c1c; }
+        .ds-bar--danger .ds-badge { background: #fee2e2; border: 1px solid #fecaca; }
         .empty-state > i { font-size:36px; margin-bottom:10px; color:#cbd5e1; display:block; }
         .empty-state > p { margin:0; font-size:14px; }
 
@@ -2939,26 +3042,6 @@
             color: var(--text-secondary, #94a3b8); font-size: 14px;
         }
 
-        /* Page Help Bar */
-        .page-help-bar {
-            display: flex; align-items: center; gap: 8px;
-            padding: 10px 16px; margin-bottom: 16px;
-            border-radius: 10px;
-            background: var(--primary-bg);
-            border: 1px solid rgba(99, 102, 241, 0.12);
-            font-size: 13px; color: var(--text-secondary);
-            line-height: 1.5;
-        }
-        .page-help-bar i.bi { color: var(--primary-light); flex-shrink: 0; font-size: 15px; }
-        .page-help-bar .help-text { flex: 1; }
-        .page-help-bar .help-close {
-            border: none; background: transparent; cursor: pointer;
-            color: var(--text-muted); padding: 2px 6px; border-radius: 6px;
-            font-size: 18px; line-height: 1; transition: all 0.15s;
-        }
-        .page-help-bar .help-close:hover { background: rgba(148,163,184,0.12); color: var(--text-primary); }
-        .page-help-bar.collapsed { display: none; }
-
         /* Detail Tabs */
         .detail-tabs { margin-top: 4px; }
         .detail-tabs .nav-tabs-sm .nav-link {
@@ -4199,6 +4282,23 @@
             color: var(--text-muted, #94a3b8);
             text-align: right;
         }
+        /* Enabled but moving no traffic: the state that looks fine and isn't. */
+        .pr-tag--idle { background: #fffbeb; color: #b45309; }
+        .pr-th-actions, .pr-td-actions { width: 44px; text-align: right; }
+        .pr-icon-btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 26px; height: 26px; border-radius: 6px;
+            border: 1px solid var(--border-color, #e2e8f0);
+            color: var(--text-secondary, #475569); text-decoration: none;
+            transition: all .15s;
+        }
+        .pr-icon-btn:hover { color: var(--primary-color, #4f46e5); border-color: #c7d2fe; background: #eef2ff; }
+        .pr-icon-btn i { font-size: 12.5px; }
+        /* Deep-linked row: /plugin-resources#<id> */
+        .pr-table tbody tr.pr-row--focus {
+            background: #eef2ff;
+            box-shadow: inset 2px 0 0 var(--primary-color, #4f46e5);
+        }
 
         /* Empty state */
         .pr-empty {
@@ -4245,6 +4345,7 @@
             display: block;
             width: 100%;
             height: 22px;
+            color: var(--text-muted, #94a3b8);
         }
         .pr-td-spark polyline {
             fill: none;
@@ -4306,6 +4407,13 @@
             font-weight: 600;
             color: #334155;
             line-height: 1.25;
+        }
+        .plg-about {
+            font-size: 11.5px;
+            color: var(--text-secondary, #475569);
+            line-height: 1.45;
+            margin-top: 2px;
+            max-width: 46ch;
         }
         .plg-plugin-id {
             font-size: 11px;
@@ -4879,6 +4987,71 @@
         }
         .config-alert-bar .config-alert-close:hover { opacity: 1; }
         .config-error-marker { color: #f59e0b; font-size: 13px; cursor: help; flex-shrink: 0; }
+
+        /* ---- Distributed tracing page ---- */
+        .trace-meta { display: flex; flex-wrap: wrap; gap: 10px 28px; }
+        .trace-meta-item { min-width: 120px; }
+        .trace-meta-value { font-size: 13px; font-weight: 600; color: #0f172a; word-break: break-all; }
+        .trace-sampling .form-range { width: 140px; }
+        .trace-snippet {
+            margin: 6px 0 0; padding: 8px 10px; background: #0f172a; color: #e2e8f0;
+            border-radius: 6px; font-size: 12px; line-height: 1.5; overflow-x: auto;
+        }
+        .trace-item { border-bottom: 1px solid #eef2f7; }
+        .trace-item:last-child { border-bottom: none; }
+        .trace-item.is-open { background: #f8fafc; }
+        .trace-row {
+            display: flex; align-items: center; gap: 8px;
+            padding: 9px 4px; cursor: pointer; font-size: 13px;
+        }
+        .trace-row:hover { background: #f1f5f9; }
+        .trace-caret { font-size: 12px; color: #94a3b8; transition: transform .15s; }
+        .trace-item.is-open > .trace-row .trace-caret { transform: rotate(90deg); }
+        .trace-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
+        .trace-code.is-ok { background: #dcfce7; color: #15803d; }
+        .trace-code.is-warn { background: #fef3c7; color: #b45309; }
+        .trace-code.is-error { background: #fee2e2; color: #b91c1c; }
+        .trace-code.is-idle { background: #e2e8f0; color: #475569; }
+        .trace-name { font-weight: 600; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
+        .trace-chip {
+            background: #eef2ff; color: #3730a3; border-radius: 4px;
+            padding: 1px 6px; font-size: 11px; white-space: nowrap;
+        }
+        .trace-chip-dest { background: #ecfdf5; color: #047857; }
+        .trace-duration { font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; }
+        .trace-time { font-variant-numeric: tabular-nums; }
+        .trace-body { padding: 8px 4px 14px 22px; }
+        .trace-detail-head { margin-bottom: 8px; }
+        .trace-id { font-size: 11px; color: #475569; }
+        .trace-waterfall { display: flex; flex-direction: column; gap: 2px; }
+        .trace-span-main {
+            display: flex; align-items: center; gap: 8px;
+            cursor: pointer; padding: 2px 0; font-size: 12px;
+        }
+        .trace-span-main:hover .trace-span-title { color: #1d4ed8; }
+        .trace-span-name { display: flex; align-items: center; gap: 5px; flex: 0 0 40%; min-width: 0; }
+        .trace-span-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .trace-span-source { color: #94a3b8; font-size: 11px; white-space: nowrap; }
+        .trace-span-caret { font-size: 10px; color: #cbd5e1; }
+        .trace-span-bar { position: relative; flex: 1 1 auto; height: 12px; background: #f1f5f9; border-radius: 3px; }
+        .trace-bar { position: absolute; top: 0; height: 12px; border-radius: 3px; min-width: 2px; }
+        .trace-bar.is-ok { background: #22c55e; }
+        .trace-bar.is-error { background: #ef4444; }
+        .trace-bar.is-warn { background: #f59e0b; }
+        .trace-bar.is-idle { background: #94a3b8; }
+        .trace-span-duration { flex: 0 0 72px; text-align: right; font-variant-numeric: tabular-nums; color: #475569; }
+        .trace-span-tags {
+            margin: 2px 0 8px 22px; padding: 6px 8px; background: #fff;
+            border: 1px solid #e2e8f0; border-radius: 6px; font-size: 11px;
+        }
+        .trace-tag { display: flex; gap: 10px; padding: 1px 0; }
+        .trace-tag-key { flex: 0 0 220px; color: #64748b; }
+        .trace-tag-val { color: #0f172a; word-break: break-all; }
+        @@media (max-width: 720px) {
+            .trace-name { max-width: 140px; }
+            .trace-span-name { flex-basis: 55%; }
+            .trace-span-bar { display: none; }
+        }
     </style>
 </head>
 <body>
@@ -4930,7 +5103,8 @@
                 ["menu.circuits"] = isEn ? "Circuit Breaker" : "熔断状态",
                 ["menu.logs"] = isEn ? "Real-time Logs" : "实时日志",
                 ["menu.traffic"] = isEn ? "Traffic Monitor" : "流量监控",
-                ["menu.clusterMetrics"] = isEn ? "Cluster Metrics" : "集群指标"
+                ["menu.clusterMetrics"] = isEn ? "Cluster Metrics" : "集群指标",
+                ["menu.tracing"] = isEn ? "Distributed Tracing" : "链路追踪"
             };
 
             // Menu helper types
@@ -4960,8 +5134,8 @@
                     "menu.group.plugins",
                     new[]
                     {
-                        ("plugins", isEn ? "Plugin Manager" : "插件管理", "menu.plugins", "bi-puzzle", $"/{prefix}/plugins", "ratio", Array.Empty<object>()),
-                        ("plugin-center", isEn ? "Plugin Center" : "插件中心", "menu.pluginCenter", "bi-grid-3x3-gap", $"/{prefix}/plugin-center", "", Array.Empty<object>()),
+                        ("plugins", isEn ? "Plugin Overview" : "插件总览", "menu.plugins", "bi-puzzle", $"/{prefix}/plugins", "ratio", Array.Empty<object>()),
+                        ("plugin-center", isEn ? "Plugin Configuration" : "插件配置", "menu.pluginCenter", "bi-sliders", $"/{prefix}/plugin-center", "", Array.Empty<object>()),
                         ("plugin-resources", isEn ? "Plugin Resources" : "插件资源", "menu.pluginResources", "bi-cpu", $"/{prefix}/plugin-resources", "", Array.Empty<object>())
                     }
                 ),
@@ -4972,6 +5146,7 @@
                     {
                         ("traffic", isEn ? "Traffic Monitor" : "流量监控", "menu.traffic", "bi-graph-up-arrow", $"/{prefix}/traffic", "", Array.Empty<object>()),
                         ("cluster-metrics", isEn ? "Cluster Metrics" : "集群指标", "menu.clusterMetrics", "bi-diagram-3-fill", $"/{prefix}/cluster-metrics", "", Array.Empty<object>()),
+                        ("tracing", isEn ? "Distributed Tracing" : "链路追踪", "menu.tracing", "bi-bezier2", $"/{prefix}/tracing", "", Array.Empty<object>()),
                         ("circuits", isEn ? "Circuit Breaker" : "熔断状态", "menu.circuits", "bi-lightning-charge", $"/{prefix}/circuits", "", Array.Empty<object>()),
                         ("logs", isEn ? "Real-time Logs" : "实时日志", "menu.logs", "bi-journal-text", $"/{prefix}/logs", "", Array.Empty<object>())
                     }
@@ -5145,8 +5320,8 @@
                 {"routes", pgIsEn ? "Routes" : "路由配置"},
                 {"circuits", pgIsEn ? "Circuit Breaker" : "熔断状态"},
                 {"settings", pgIsEn ? "Settings" : "系统设置"},
-                {"plugins", pgIsEn ? "Plugin Manager" : "插件管理"},
-                {"plugin-center", pgIsEn ? "Plugin Center" : "插件中心"},
+                {"plugins", pgIsEn ? "Plugin Overview" : "插件总览"},
+                {"plugin-center", pgIsEn ? "Plugin Configuration" : "插件配置"},
                 {"plugin-resources", pgIsEn ? "Plugin Resources" : "插件资源"},
                 {"logs", pgIsEn ? "Real-time Logs" : "实时日志"},
                 {"history", pgIsEn ? "Configuration History" : "配置历史"},
@@ -5154,6 +5329,7 @@
                 {"notifications", pgIsEn ? "Notifications" : "通知管理"},
                 {"traffic", pgIsEn ? "Traffic Monitor" : "流量监控"},
                 {"cluster-metrics", pgIsEn ? "Cluster Metrics" : "集群指标"},
+                {"tracing", pgIsEn ? "Distributed Tracing" : "链路追踪"},
                 {"compression", pgIsEn ? "Response Compression" : "响应压缩"},
                 {"proxy-log", pgIsEn ? "Log Plugin" : "日志插件"}
             };
@@ -5164,7 +5340,7 @@
                 {"routes", "bi-signpost-split"},
                 {"settings", "bi-gear"},
                 {"plugins", "bi-puzzle"},
-                {"plugin-center", "bi-grid-3x3-gap"},
+                {"plugin-center", "bi-sliders"},
                 {"plugin-resources", "bi-cpu"},
                 {"logs", "bi-journal-text"},
                 {"traffic", "bi-graph-up-arrow"},
@@ -5186,6 +5362,12 @@
                         </h1>
                     </div>
                     <div class="page-header-right">
+                        <div class="env-switch" id="env-switch" hidden>
+                            <i class="bi bi-layers"></i>
+                            <select id="env-select" aria-label="@(isEn ? "Environment being edited" : "当前编辑的环境")"></select>
+                            <i class="bi bi-exclamation-triangle" id="env-warn" hidden></i>
+                            <span class="env-serving" id="env-serving" hidden></span>
+                        </div>
                         <div class="header-search-trigger" onclick="document.dispatchEvent(new KeyboardEvent('keydown',{key:'k',ctrlKey:true}))" title="Ctrl+K">
                             <i class="bi bi-search"></i>
                             <kbd>Ctrl K</kbd>
@@ -5256,7 +5438,7 @@
         };
 
         // DashboardApp - module namespace for backward compatibility
-        window.DashboardApp = window.DashboardApp || { version: '2.3.0', modules: {} };
+        window.DashboardApp = window.DashboardApp || { version: '2.3.0.40', modules: {} };
         window.DashboardApp.registerModule = function(name, module) { this.modules[name] = module; };
         function switchLocale() {
             var next = CURRENT_LOCALE === 'en-US' ? 'zh-CN' : 'en-US';
@@ -5265,15 +5447,9 @@
             location.reload();
         }
 
-        /* Show plugin config hint banner when data is empty */
-        function showPluginHint(hintId) {
-            var el = document.getElementById(hintId);
-            if (el) el.style.display = 'flex';
-        }
-        function hidePluginHint(hintId) {
-            var el = document.getElementById(hintId);
-            if (el) el.style.display = 'none';
-        }
+        /* 旧的 showPluginHint / hidePluginHint 已由 DashboardDataSource 取代：
+           数据页统一在 partial 里放 <div class="ds-host" data-plugin="...">，
+           由 js/core/dashboard-datasource.js 按插件状态渲染五态诊断条。 */
 
         function toggleUserDropdown(e) {
             e.stopPropagation();
@@ -5498,6 +5674,7 @@
     <!-- 1. Core Infrastructure -->
     <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-utils.js?v=@v"></script>
     <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-api.js?v=@v"></script>
+    <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-datasource.js?v=@v"></script>
     <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-loading.js?v=@v"></script>
     <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-command-palette.js?v=@v"></script>
     <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-onboarding.js?v=@v"></script>
@@ -5554,6 +5731,7 @@
         }
     </script>
     <script src="/_content/Aneiang.Yarp.Dashboard/js/modules/dashboard-ai.js?v=@v"></script>
+    <script src="/_content/Aneiang.Yarp.Dashboard/js/modules/dashboard-environments.js?v=@v"></script>
     <script>
         if (window.DashboardAI && window.DashboardAI.init) {
             window.DashboardAI.init();

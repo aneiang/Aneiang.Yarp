@@ -27,6 +27,7 @@ public class DynamicYarpConfigService : IDynamicYarpConfigService, IHostedServic
     private readonly AneiangProxyConfigProvider _configProvider;
     private readonly IGatewaySnapshotCompiler _snapshotCompiler;
     private readonly IGatewaySnapshotPublisher _snapshotPublisher;
+    private readonly IStorageEnvironmentResolver _environments;
 
     public DynamicYarpConfigService(
         AneiangProxyConfigProvider configProvider,
@@ -37,12 +38,14 @@ public class DynamicYarpConfigService : IDynamicYarpConfigService, IHostedServic
         IGatewaySnapshotCompiler snapshotCompiler,
         IGatewaySnapshotPublisher snapshotPublisher,
         IConfigValidator configValidator,
-        IProxyConfigErrorStore errorStore)
+        IProxyConfigErrorStore errorStore,
+        IStorageEnvironmentResolver environments)
     {
         _auditLog = auditLog;
         _configProvider = configProvider;
         _snapshotCompiler = snapshotCompiler;
         _snapshotPublisher = snapshotPublisher;
+        _environments = environments;
         _logger = loggerFactory.CreateLogger<DynamicYarpConfigService>();
         _semaphore = new SemaphoreSlim(1, 1);
         _state = new DynamicConfigState();
@@ -55,6 +58,7 @@ public class DynamicYarpConfigService : IDynamicYarpConfigService, IHostedServic
             snapshotPublisher,
             configValidator,
             errorStore,
+            environments,
             loggerFactory.CreateLogger<DynamicConfigPublisher>());
 
         _routeManager = new RouteConfigManager(_state, _semaphore, _persister, _publisher, auditLog,
@@ -155,6 +159,71 @@ public class DynamicYarpConfigService : IDynamicYarpConfigService, IHostedServic
                 config.Routes.Count, config.Clusters.Count, string.Join(", ", _state.StaticRouteIds), string.Join(", ", _state.StaticClusterIds));
         }
         catch (Exception ex) { _logger.LogWarning(ex, "Failed to mark static config"); }
+    }
+
+    #endregion
+
+    #region Environment switching
+
+    /// <summary>
+    /// Points the control plane at another environment's store and reloads the working set from it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Switching is an <b>editing</b> action. The gateway keeps forwarding whatever it was
+    /// forwarding; <see cref="Models.EnvironmentSwitchResult.Published"/> is false unless the target
+    /// happens to be the runtime environment.
+    /// </para>
+    /// <para>
+    /// The working set has to be reloaded, not just the connection: it is the source of every
+    /// subsequent save. Left stale, the first save on the new environment would write the previous
+    /// environment's routes into it.
+    /// </para>
+    /// </remarks>
+    public async Task<EnvironmentSwitchResult> SwitchEnvironmentAsync(
+        string environment, CancellationToken cancellationToken = default)
+    {
+        await _semaphore.WaitAsync(cancellationToken);
+        var previous = _environments.CurrentEnvironment;
+        try
+        {
+            // Validates the name and throws before anything is reloaded.
+            _environments.SwitchTo(environment);
+            var current = _environments.CurrentEnvironment;
+
+            try
+            {
+                _state.Config = await _persister.LoadAsync();
+                await MarkStaticConfigAsync();
+            }
+            catch
+            {
+                // A store that cannot be read must not leave the control plane pointing at it:
+                // every later save would go to a half-open environment. Put the view back.
+                _environments.SwitchTo(previous);
+                throw;
+            }
+
+            var published = _environments.IsEditingRuntime;
+            if (published)
+            {
+                _state.IncrementVersion();
+                _publisher.Publish(_state.Config, _state.Version);
+            }
+
+            _logger.LogInformation(
+                "Environment switch {Previous} → {Current}: {Routes} routes / {Clusters} clusters loaded from that store, published={Published} (serving '{Runtime}')",
+                previous, current, _state.Config.Routes.Count, _state.Config.Clusters.Count,
+                published, _environments.RuntimeEnvironment);
+
+            return new EnvironmentSwitchResult(
+                previous, current, _environments.RuntimeEnvironment, published,
+                _state.Config.Routes.Count, _state.Config.Clusters.Count);
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     #endregion

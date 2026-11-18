@@ -50,6 +50,32 @@ public static class DashboardApplicationBuilderExtensions
         /// auth policies require authenticated users.
         /// </summary>
         public bool AutoUseAuthorization { get; set; } = true;
+
+        /// <summary>
+        /// Record per-request metrics for the Prometheus <c>/metrics</c> endpoint.
+        /// Mounted in the reverse-proxy pipeline, so it keeps counting even when no
+        /// observability plugin is bound. Disable only if you supply your own exporter.
+        /// </summary>
+        public bool UseMetricsCollection { get; set; } = true;
+
+        /// <summary>
+        /// Map the <c>/metrics</c> endpoint. Like <c>/health</c>, it is unauthenticated —
+        /// restrict access at the network layer if the gateway is internet-facing.
+        /// </summary>
+        public bool MapMetricsEndpoint { get; set; } = true;
+
+        /// <summary>
+        /// Mount <c>UseRateLimiter()</c> so route <c>RateLimiterPolicy</c> metadata is
+        /// actually enforced. Set to <c>false</c> only if you mount it yourself.
+        /// </summary>
+        public bool UseRateLimiterMiddleware { get; set; } = true;
+
+        /// <summary>
+        /// Open the <c>gateway.forward</c> span around each proxied request. The middleware
+        /// no-ops when no tracer is listening, so leaving it on costs one boolean check;
+        /// turn it off only if you instrument the pipeline yourself.
+        /// </summary>
+        public bool UseTracingMiddleware { get; set; } = true;
     }
 
     /// <summary>
@@ -118,6 +144,14 @@ public static class DashboardApplicationBuilderExtensions
             app.UseAuthorization();
         }
 
+        // Route RateLimiterPolicy metadata is only honoured when the rate limiter
+        // middleware is in the pipeline. Without this the built-in gw-rl-* policies would
+        // be registered but never enforced — the exact silent no-op we are removing.
+        if (useOptions.UseRateLimiterMiddleware)
+        {
+            app.UseRateLimiter();
+        }
+
         if (autoUseMiddleware && useOptions.UseDeploymentMiddleware)
         {
             UseDeploymentMiddlewareIfAvailable(app);
@@ -146,6 +180,21 @@ public static class DashboardApplicationBuilderExtensions
 
         if (app is IEndpointRouteBuilder endpoints)
         {
+            // Prometheus scrape endpoint. Mapped outside MVC on purpose: the dashboard
+            // auth conventions must not apply, same as /health and /ready.
+            if (useOptions.MapMetricsEndpoint)
+            {
+                endpoints.MapGet("/metrics", async context =>
+                {
+                    var renderer = context.RequestServices
+                        .GetRequiredService<Infrastructure.Observability.GatewayMetricsRenderer>();
+
+                    context.Response.ContentType = "text/plain; version=0.0.4; charset=utf-8";
+                    context.Response.Headers.CacheControl = "no-store";
+                    await context.Response.WriteAsync(renderer.Render(), context.RequestAborted);
+                });
+            }
+
             if (dashboardActive)
             {
                 endpoints.Map("/_content/Aneiang.Yarp.Dashboard/{**path}", async context =>
@@ -177,6 +226,20 @@ public static class DashboardApplicationBuilderExtensions
             {
                 endpoints.MapReverseProxy(proxyPipeline =>
                 {
+                    // Tracing sits outside metrics so its span covers the whole request, including
+                    // a plugin that short-circuits before the collector ever sees a response.
+                    if (useOptions.UseTracingMiddleware)
+                    {
+                        proxyPipeline.UseMiddleware<Aneiang.Yarp.Infrastructure.Observability.GatewayTracingMiddleware>();
+                    }
+
+                    // Metrics sit first in the proxy branch so they measure the whole
+                    // request, including any plugin that later short-circuits it.
+                    if (useOptions.UseMetricsCollection)
+                    {
+                        proxyPipeline.UseMiddleware<Infrastructure.Observability.GatewayMetricsMiddleware>();
+                    }
+
                     if (autoUseMiddleware && useOptions.UseBuiltInProxyPipeline)
                     {
                         proxyPipeline.UseMiddleware<BuiltinTransformMiddleware>();

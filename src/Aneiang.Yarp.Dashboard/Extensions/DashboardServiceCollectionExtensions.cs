@@ -8,6 +8,7 @@ using Aneiang.Yarp.Infrastructure.Performance;
 using Aneiang.Yarp.Plugins.CircuitBreaker.Services;
 using Aneiang.Yarp.Dashboard.Infrastructure.Deployment;
 using Aneiang.Yarp.Dashboard.Infrastructure.Plugin;
+using Aneiang.Yarp.Dashboard.Infrastructure.Policies;
 using Aneiang.Yarp.Dashboard.Infrastructure.Realtime;
 using Aneiang.Yarp.Dashboard.Modules.Dashboard.Controllers;
 using Aneiang.Yarp.Dashboard.Modules.Dashboard.Services;
@@ -15,16 +16,17 @@ using Aneiang.Yarp.Dashboard.Modules.GatewayConfig.Services;
 using Aneiang.Yarp.Plugin.Cache;
 using Aneiang.Yarp.Plugin.CircuitBreaker;
 using Aneiang.Yarp.Plugin.Compression;
+using Aneiang.Yarp.Plugin.FaultInjection;
 using Aneiang.Yarp.Plugin.Metrics;
 using Aneiang.Yarp.Plugin.ProxyLog;
 using Aneiang.Yarp.Plugin.ProxyLog.Services;
 using Aneiang.Yarp.Plugin.RateLimit;
-using Aneiang.Yarp.Plugin.RateLimit.Redis;
 using Aneiang.Yarp.Plugin.Retry;
 using Aneiang.Yarp.Plugin.ServiceDiscovery;
 using Aneiang.Yarp.Plugin.Waf;
 using Aneiang.Yarp.Models;
 using Aneiang.Yarp.Services;
+using Aneiang.Yarp.Validation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Razor;
@@ -65,6 +67,17 @@ public static class DashboardServiceCollectionExtensions
         services.AddDashboardConfigPersistence();
         services.AddDashboardAI();
         services.AddDashboardWarmupServices();
+        services.AddDashboardTracing();
+
+        // Named policies referenced by route AuthorizationPolicy / CorsPolicy /
+        // RateLimiterPolicy / OutputCachePolicy. Without these the route form asked for a
+        // policy name that could never resolve, and the failure surfaced at request time.
+        services.AddGatewayPolicies();
+
+        // Plugins that contribute host-scoped YARP extension points (LB policies, transforms).
+        // Runs last so every built-in plugin is already registered and can be inspected.
+        services.AddPluginHostServiceContributions();
+
         return services;
     }
 
@@ -127,6 +140,45 @@ public static class DashboardServiceCollectionExtensions
         services.AddOptions<AIOptions>()
             .BindConfiguration(AIOptions.SectionName);
 
+        // Canary rollout defaults. Binds the documented section, then clamps so a typo in appsettings
+        // cannot produce a rollout that never evaluates (window 0) or never trips (threshold 0).
+        services.AddOptions<Modules.Canary.Models.CanaryOptions>()
+            .BindConfiguration(Modules.Canary.Models.CanaryOptions.SectionName)
+            .PostConfigure(options =>
+            {
+                options.ObservationWindowSeconds = Math.Clamp(options.ObservationWindowSeconds, 10, 7200);
+                options.TickSeconds = Math.Clamp(options.TickSeconds, 1, 60);
+                options.MaxWindowExtensions = Math.Clamp(options.MaxWindowExtensions, 0, 20);
+                options.MinSamples = Math.Clamp(options.MinSamples, 1, 1_000_000);
+                options.MaxRetainedRollouts = Math.Clamp(options.MaxRetainedRollouts, 1, 500);
+                if (options.ErrorRateThreshold is <= 0 or > 1)
+                    options.ErrorRateThreshold = 0.2;
+                if (options.DefaultSteps is not { Length: > 0 })
+                    options.DefaultSteps = new[] { 10, 30, 50, 100 };
+            });
+
+        // Metric alert thresholds. Clamped for the same reason as the canary options: a window of 0
+        // or a threshold of 0 produces a rule that either never evaluates or fires on everything.
+        services.AddOptions<Modules.Alerting.Models.MetricAlertOptions>()
+            .BindConfiguration(Modules.Alerting.Models.MetricAlertOptions.SectionName)
+            .PostConfigure(options =>
+            {
+                options.TickSeconds = Math.Clamp(options.TickSeconds, 5, 300);
+                options.MaxIncidents = Math.Clamp(options.MaxIncidents, 10, 5000);
+                options.DefaultWindowSeconds = Math.Clamp(options.DefaultWindowSeconds, 10, 3600);
+                options.DefaultForSeconds = Math.Clamp(options.DefaultForSeconds, 0, 3600);
+                options.DefaultMinSamples = Math.Clamp(options.DefaultMinSamples, 1, 1_000_000);
+                if (options.DefaultErrorRateThreshold is <= 0 or > 1)
+                    options.DefaultErrorRateThreshold = 0.05;
+                if (options.DefaultLatencyP99Seconds is <= 0 or > 3600)
+                    options.DefaultLatencyP99Seconds = 1.0;
+            });
+
+        services.AddSingleton<Modules.Alerting.Services.MetricAlertStore>();
+        services.AddSingleton<Modules.Alerting.Services.IMetricAlertService,
+            Modules.Alerting.Services.MetricAlertService>();
+        services.AddHostedService<Modules.Alerting.Services.MetricAlertSupervisor>();
+
         // Alert pipeline: gateway alerts flow into the notification dispatcher,
         // which fans out to subscribed webhook platforms with cooldown + retry.
         services.AddSingleton<Infrastructure.Notifications.NotificationDispatcher>();
@@ -137,6 +189,57 @@ public static class DashboardServiceCollectionExtensions
 
         if (configureOptions != null)
             services.Configure(configureOptions);
+
+        return services;
+    }
+
+    #endregion
+
+    #region Distributed tracing
+
+    private static IServiceCollection AddDashboardTracing(this IServiceCollection services)
+    {
+        // Off by default: when disabled no tracer provider and no exporter are created at all, so
+        // there is nothing trying to reach a collector nobody configured.
+        services.AddOptions<Modules.Tracing.Models.GatewayTracingOptions>()
+            .BindConfiguration(Modules.Tracing.Models.GatewayTracingOptions.SectionName)
+            .PostConfigure(options =>
+            {
+                options.RecentTraceCapacity = Math.Clamp(options.RecentTraceCapacity, 1, 1000);
+                options.MaxSpansPerTrace = Math.Clamp(options.MaxSpansPerTrace, 4, 500);
+
+                // A ratio outside 0..1 means "sample nothing" or "sample everything" depending on
+                // which side the comparison falls; NaN means neither. All three are typos.
+                if (double.IsNaN(options.SamplingRatio) || options.SamplingRatio is < 0 or > 1)
+                    options.SamplingRatio = 0.1;
+
+                if (string.IsNullOrWhiteSpace(options.ServiceName))
+                    options.ServiceName = "aneiang-gateway";
+                if (string.IsNullOrWhiteSpace(options.Protocol))
+                    options.Protocol = "grpc";
+            });
+
+        services.AddSingleton(sp => sp.GetRequiredService<IOptions<Modules.Tracing.Models.GatewayTracingOptions>>().Value);
+
+        // The buffer size comes from options, so it cannot be a plain AddSingleton<T>().
+        services.AddSingleton(sp =>
+        {
+            var tracing = sp.GetRequiredService<IOptions<Modules.Tracing.Models.GatewayTracingOptions>>().Value;
+            return new Modules.Tracing.Services.TraceRingBuffer(
+                Modules.Tracing.Services.GatewayTracingHost.BufferSources,
+                tracing.RecentTraceCapacity,
+                tracing.MaxSpansPerTrace);
+        });
+
+        services.AddSingleton(sp => new Modules.Tracing.Services.RuntimeRatioSampler(
+            sp.GetRequiredService<IOptions<Modules.Tracing.Models.GatewayTracingOptions>>().Value.SamplingRatio));
+
+        // Registered twice on purpose: the hosted service starts the provider, and the tracing API
+        // reads IsRunning / StartError off the same instance.
+        services.AddSingleton<Modules.Tracing.Services.GatewayTracingHost>();
+        services.AddHostedService(sp => sp.GetRequiredService<Modules.Tracing.Services.GatewayTracingHost>());
+        services.AddSingleton<Modules.Tracing.Services.IGatewayTracingService,
+            Modules.Tracing.Services.GatewayTracingService>();
 
         return services;
     }
@@ -316,6 +419,33 @@ public static class DashboardServiceCollectionExtensions
 
     #endregion
 
+    #region Plugin host services
+
+    /// <summary>
+    /// Invites plugins to contribute services to the <em>host</em> container.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="IGatewayPlugin.ConfigureServices"/> runs against the per-plugin runtime domain,
+    /// which is built when the plugin is enabled — after the host container is frozen. Anything YARP
+    /// resolves by enumeration while starting up (<c>ILoadBalancingPolicy</c>,
+    /// <c>ITransformProvider</c>) therefore has to be registered here, or it is silently ignored.
+    /// </remarks>
+    private static IServiceCollection AddPluginHostServiceContributions(this IServiceCollection services)
+    {
+        var pluginTypes = services
+            .Where(d => d.ServiceType == typeof(IGatewayPlugin) && d.ImplementationType is not null)
+            .Select(d => d.ImplementationType!)
+            .ToArray();
+
+        // The scan itself lives in the abstractions package so a host that composes plugins without
+        // the dashboard gets the same behaviour instead of a JSON-only plugin model.
+        services.AddPluginHostServices(pluginTypes);
+
+        return services;
+    }
+
+    #endregion
+
     #region Notification + plugin system
 
     private static IServiceCollection AddDashboardNotificationAndPlugins(this IServiceCollection services)
@@ -325,10 +455,6 @@ public static class DashboardServiceCollectionExtensions
         services.AddSingleton<IGatewayPlugin, CircuitBreakerPlugin>();
         services.AddSingleton<IGatewayPlugin, RequestRetryPlugin>();
         services.AddSingleton<IGatewayPlugin, RateLimitPlugin>();
-        // Optional Redis-backed distributed rate limiting: active only when a route binding
-        // supplies a redisConnectionString (StackExchange.Redis is loaded via reflection when present).
-        services.AddSingleton<IGatewayPlugin, RedisRateLimitPlugin>();
-        services.AddSingleton<IDistributedRateLimitStore, RedisLuaRateLimitStore>();
         services.AddSingleton<IGatewayPlugin, WafPlugin>();
         services.AddSingleton<IGatewayPlugin, ProxyLogPlugin>();
         services.AddSingleton<IGatewayPlugin, ResponseCachePlugin>();
@@ -336,6 +462,7 @@ public static class DashboardServiceCollectionExtensions
         services.AddSingleton<IGatewayPlugin, ClusterMetricsPlugin>();
         services.AddSingleton<IGatewayPlugin, HttpServiceDiscoveryPlugin>();
         services.AddSingleton<IGatewayPlugin, CompressionPlugin>();
+        services.AddSingleton<IGatewayPlugin, FaultInjectionPlugin>();
         services.AddSingleton<PluginMetricStore>();
         services.AddSingleton<ExternalGatewayPluginHost>();
         services.AddSingleton<GatewayPluginManager>();
@@ -390,6 +517,19 @@ public static class DashboardServiceCollectionExtensions
         services.AddSingleton<LockFreeStatistics>();
         services.AddSingleton<ITransformProvider, DownstreamCaptureTransformProvider>();
 
+        // Prometheus exposition: recorded in the proxy pipeline, rendered on demand.
+        services.AddSingleton<Infrastructure.Observability.GatewayMetricsCollector>();
+        services.AddSingleton<Infrastructure.Observability.UpstreamConnectionMonitor>();
+        services.AddHostedService(sp => sp.GetRequiredService<Infrastructure.Observability.UpstreamConnectionMonitor>());
+        services.AddSingleton<Infrastructure.Observability.GatewayMetricsRenderer>();
+
+        // Staged rollouts. The supervisor is the only thing that closes an observation window, and
+        // it runs in-process because the metric counters it reads are per-instance — a rollout on
+        // three gateway nodes is three rollouts, which is why the docs say so out loud.
+        services.AddSingleton<Modules.Canary.Services.CanaryLedgerStore>();
+        services.AddSingleton<Modules.Canary.Services.ICanaryRolloutService, Modules.Canary.Services.CanaryRolloutService>();
+        services.AddHostedService<Modules.Canary.Services.CanaryRolloutSupervisor>();
+
         return services;
     }
 
@@ -406,6 +546,14 @@ public static class DashboardServiceCollectionExtensions
         services.AddSingleton<IConfigSnapshotScheduler>(sp => sp.GetRequiredService<ConfigSnapshotScheduler>());
         services.AddHostedService(sp => sp.GetRequiredService<ConfigSnapshotScheduler>());
         services.AddSingleton<IGatewayIdentityService, GatewayIdentityService>();
+
+        // Pre-flight checks: validate-before-save + whole-config integrity.
+        services.AddSingleton<IConfigurationValidator, ConfigurationValidator>();
+
+        // Swap the core library's permissive guard for the real validator, so every write path
+        // — dashboard forms, client self-registration, batch import, history rollback, AI tools —
+        // goes through the same checks. Replace (not Add) because the core registered a default.
+        services.Replace(ServiceDescriptor.Singleton<IConfigurationGuard, ConfigurationValidatorGuard>());
 
         return services;
     }

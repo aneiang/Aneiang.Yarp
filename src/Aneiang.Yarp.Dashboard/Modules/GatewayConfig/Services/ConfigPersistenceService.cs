@@ -24,6 +24,7 @@ public class ConfigPersistenceService : IConfigPersistenceService
     };
 
     private readonly DynamicYarpConfigService? _dynamicConfig;
+    private readonly IConfigurationValidator? _validator;
     private readonly IConfigHistoryRepository _historyRepo;
     private readonly IRouteRepository _routeRepo;
     private readonly IClusterRepository _clusterRepo;
@@ -37,7 +38,8 @@ public class ConfigPersistenceService : IConfigPersistenceService
         IRouteRepository routeRepo,
         IClusterRepository clusterRepo,
         IOptionsMonitor<ConfigHistoryOptions> options,
-        DynamicYarpConfigService? dynamicConfig = null)
+        DynamicYarpConfigService? dynamicConfig = null,
+        IConfigurationValidator? validator = null)
     {
         _historyRepo = historyRepo;
         _routeRepo = routeRepo;
@@ -45,6 +47,7 @@ public class ConfigPersistenceService : IConfigPersistenceService
         _options = options;
         _logger = logger;
         _dynamicConfig = dynamicConfig;
+        _validator = validator;
         _snapshotManager = new ConfigSnapshotManager(
             historyRepo, options, logger, () => ExportFullConfigAsync());
     }
@@ -185,8 +188,28 @@ public class ConfigPersistenceService : IConfigPersistenceService
                 }
             }
 
-            var batchResult = await _dynamicConfig.ImportBatchAsync(clustersToImport, routesToImport, "import", "dashboard-user");
-            if (!batchResult.Success)
+            // Pre-flight the whole batch before touching the live configuration. Import is a
+            // machine-shaped write (an exported snapshot, a generator, a script), so a bad entry
+            // would otherwise be applied with nobody reading the response.
+            if (_validator is not null)
+            {
+                var report = await _validator.ValidateBatchAsync(routesToImport, clustersToImport);
+                if (!report.Ok)
+                {
+                    result.Message = "Import rejected by validation: " + report.Errors[0].Message;
+                    result.Errors.AddRange(report.Errors.Select(e => new ImportItemError
+                    {
+                        Type = e.Field.StartsWith("Routes.", StringComparison.Ordinal) ? "Route" : "Cluster",
+                        Name = e.Field,
+                        Error = e.Message
+                    }));
+                    _logger.LogWarning(
+                        "Configuration import rejected: {ErrorCount} validation errors", report.Errors.Count);
+                    return result;
+                }
+            }
+
+            var batchResult = await _dynamicConfig.ImportBatchAsync(clustersToImport, routesToImport, "import", "dashboard-user");            if (!batchResult.Success)
             {
                 result.Message = batchResult.Message;
                 return result;
@@ -286,9 +309,23 @@ public class ConfigPersistenceService : IConfigPersistenceService
                 return false;
             }
 
+            // A snapshot can be months old and predate a rename or a policy removal. Validating
+            // it before ReplaceAllConfig is what stops a rollback from resurrecting a config that
+            // 503s on every request — the "restore" making an outage worse is the worst case here.
+            if (_validator is not null)
+            {
+                var report = await _validator.ValidateBatchAsync(yarpRoutes, yarpClusters);
+                if (!report.Ok)
+                {
+                    _logger.LogWarning(
+                        "Rollback to {VersionId} rejected: {ErrorCount} validation errors, first: {First}",
+                        versionId, report.Errors.Count, report.Errors[0].Message);
+                    return false;
+                }
+            }
+
             if (_dynamicConfig != null)
                 await _dynamicConfig.ReplaceAllConfig(yarpRoutes, yarpClusters, "rollback", "dashboard-user");
-
             _logger.LogInformation("Rolled back to version: {VersionId}", versionId);
             return true;
         }

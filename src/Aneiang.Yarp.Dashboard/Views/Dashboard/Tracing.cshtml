@@ -1,0 +1,68 @@
+@{
+    var isEn = (ViewBag.Locale as string) == "en-US";
+    ViewData["Title"] = isEn ? "Distributed Tracing" : "链路追踪";
+    Layout = "~/Views/Shared/_DashboardLayout.cshtml";
+}
+
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+        <h4 class="mb-1" data-i18n="trace.title">链路追踪</h4>
+        <p class="text-muted mb-0 small" data-i18n="trace.subtitle">
+            一次请求经过网关各跳的耗时分解。数据来自 OpenTelemetry，可同时导出到 Jaeger / Tempo。
+        </p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="trace-auto" checked>
+            <label class="form-check-label small" for="trace-auto" data-i18n="trace.autoRefresh">自动刷新</label>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary" id="trace-refresh">
+            <i class="bi bi-arrow-clockwise"></i> <span data-i18n="trace.refresh">刷新</span>
+        </button>
+        <button class="btn btn-sm btn-outline-danger" id="trace-clear">
+            <i class="bi bi-trash3"></i> <span data-i18n="trace.clear">清空</span>
+        </button>
+    </div>
+</div>
+
+@* Rendered by dashboard-tracing.js: disabled / start-failure / in-memory-only notices. *@
+<div id="trace-notice"></div>
+
+<div class="card-panel mb-4" id="trace-status">
+    <div class="text-muted small"><i class="bi bi-hourglass-split"></i> <span data-i18n="trace.loading">加载中...</span></div>
+</div>
+
+<div class="card-panel mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h6 class="mb-0" data-i18n="trace.list.title">最近链路</h6>
+            <div class="text-muted small" data-i18n="trace.list.hint">只包含被采样的请求。点一行展开瀑布图。</div>
+        </div>
+        <span class="text-muted small" id="trace-count"></span>
+    </div>
+    <div id="trace-list">
+        <div class="text-muted small"><i class="bi bi-hourglass-split"></i> <span data-i18n="trace.loading">加载中...</span></div>
+    </div>
+</div>
+
+@section Scripts {
+<script src="/_content/Aneiang.Yarp.Dashboard/js/modules/dashboard-tracing.js"></script>
+
+@await Html.PartialAsync("_DashboardPageInit")
+
+<script>
+    (async function () {
+        if (window.DashboardUtils) DashboardUtils.init();
+        if (window.DashboardApi) DashboardApi.init();
+        if (window.DashboardState) DashboardState.init();
+        if (window.DashboardI18n) DashboardI18n.init();
+        if (window.DashboardStorage) DashboardStorage.init();
+        if (window.DashboardModals) DashboardModals.init();
+        if (window.DashboardEvents) DashboardEvents.setup();
+
+        if (window.TracingModule) await TracingModule.init();
+
+        document.dispatchEvent(new CustomEvent('dashboard:ready'));
+    })();
+</script>
+}

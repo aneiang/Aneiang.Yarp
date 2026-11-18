@@ -5,8 +5,10 @@ using Aneiang.Yarp.Dashboard.Infrastructure;
 using Aneiang.Yarp.Dashboard.Modules.GatewayConfig.Services;
 using Aneiang.Yarp.Models;
 using Aneiang.Yarp.Services;
+using Aneiang.Yarp.Validation;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Yarp.ReverseProxy.Configuration;
 
 namespace Aneiang.Yarp.Dashboard.Modules.Dashboard.Services;
 
@@ -128,10 +130,11 @@ public class AIFunctionService
         try
         {
             var dynamicConfig = _services.GetRequiredService<IDynamicYarpConfigService>();
+            var guard = _services.GetService<IConfigurationGuard>() ?? new PermissiveConfigurationGuard();
             return toolName switch
             {
                 "toggle_route" => await ToggleRouteAsync(dynamicConfig, arguments),
-                "create_route" => await CreateRouteAsync(dynamicConfig, arguments),
+                "create_route" => await CreateRouteAsync(dynamicConfig, guard, arguments),
                 "delete_route" => await DeleteRouteAsync(dynamicConfig, arguments),
                 "delete_cluster" => await DeleteClusterAsync(dynamicConfig, arguments),
                 _ => "{\"error\":\"Unknown write tool: " + toolName + "\"}"
@@ -153,7 +156,8 @@ public class AIFunctionService
         return JsonSerializer.Serialize(new { routeId, enabled, success = result.Success, message = result.Message });
     }
 
-    private static async Task<string> CreateRouteAsync(IDynamicYarpConfigService cfg, JsonElement? args)
+    private static async Task<string> CreateRouteAsync(
+        IDynamicYarpConfigService cfg, IConfigurationGuard guard, JsonElement? args)
     {
         var routeId = GetArg(args, "routeId");
         var path = GetArg(args, "path");
@@ -188,6 +192,30 @@ public class AIFunctionService
             MatchPath = path,
             DestinationAddress = destination ?? ""
         };
+
+        // The assistant writes through the same gate as the forms. Model output is untrusted
+        // input — a hallucinated path or policy name must be refused here, not discovered by
+        // a 500 in production.
+        var routeGuard = await guard.CheckRouteAsync(
+            new RouteConfig
+            {
+                RouteId = request.RouteName,
+                ClusterId = request.ClusterName,
+                Match = new RouteMatch { Path = request.MatchPath },
+                Order = int.MaxValue
+            },
+            clusterWillBeCreated: cfg.GetCluster(request.ClusterName) == null);
+        if (!routeGuard.Ok)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                routeId,
+                success = false,
+                message = $"{routeGuard.Errors[0].Field}: {routeGuard.Errors[0].Message}",
+                errors = routeGuard.Errors
+            });
+        }
+
         var result = await cfg.TryAddRoute(request, "ai-assistant", "ai-assistant");
         return JsonSerializer.Serialize(new { routeId, path, clusterId, success = result.Success, message = result.Message });
     }

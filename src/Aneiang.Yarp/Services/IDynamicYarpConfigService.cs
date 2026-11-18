@@ -107,4 +107,13 @@ public interface IDynamicYarpConfigService
     /// </summary>
     Task<BatchOperationResult> BatchSetRoutesEnabledAsync(
         IReadOnlyList<string> routeIds, bool enabled, string? createdBy = "dashboard-user");
+
+    /// <summary>
+    /// Switch the control plane's editing view to another environment and reload the working set
+    /// from that environment's store. Does <b>not</b> change what the gateway forwards: a snapshot
+    /// is only published when the target is the runtime environment.
+    /// </summary>
+    /// <exception cref="ArgumentException">Unknown environment name.</exception>
+    Task<EnvironmentSwitchResult> SwitchEnvironmentAsync(
+        string environment, CancellationToken cancellationToken = default);
 }

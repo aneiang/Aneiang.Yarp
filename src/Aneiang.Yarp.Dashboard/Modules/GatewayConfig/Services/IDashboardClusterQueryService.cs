@@ -12,4 +12,10 @@ public interface IDashboardClusterQueryService
     /// </summary>
     /// <returns>List of cluster responses.</returns>
     IReadOnlyList<DashboardClusterResponse> GetClusters();
+
+    /// <summary>
+    /// Drops the cached result for the environment currently being edited.
+    /// Call after any configuration mutation so the next read reflects it.
+    /// </summary>
+    void Invalidate();
 }

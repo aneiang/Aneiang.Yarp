@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Aneiang.Yarp.Infrastructure.Observability;
 using Aneiang.Yarp.Services;
 using Aneiang.Yarp.Storage;
 using Yarp.ReverseProxy.Model;
@@ -210,8 +211,16 @@ public sealed class PluginRuntimeDomainInitializer(
 public sealed class PluginRuntimeDomainManager : IPluginRuntimeDomainManager, IAsyncDisposable
 {
     private static readonly object PipelineContinuationKey = new();
+
+    // Pipeline order, outermost first. Fault injection is last on purpose: it has to sit next to
+    // the forwarder so an injected failure looks like an upstream failure to everything outside it
+    // — retries retry it, the circuit breaker counts it, metrics and alerts see a 5xx. Put it at
+    // the edge instead and the components a drill is meant to exercise would never observe it.
     private static readonly string[] ProxyPluginOrder =
-        ["rate-limit", "circuit-breaker", "request-retry", "response-cache", "proxy-log", "traffic-metrics", "cluster-metrics"];
+    [
+        "rate-limit", "circuit-breaker", "request-retry", "response-cache", "proxy-log",
+        "traffic-metrics", "cluster-metrics", "fault-injection"
+    ];
 
     private readonly IServiceProvider _rootServices;
     private readonly IReadOnlyDictionary<string, IGatewayPlugin> _firstPartyPlugins;
@@ -286,8 +295,8 @@ public sealed class PluginRuntimeDomainManager : IPluginRuntimeDomainManager, IA
             services.AddSingleton(_rootServices.GetRequiredService<IConfiguration>());
             services.AddSingleton(_rootServices.GetRequiredService<IHostEnvironment>());
             // Forward the root logging factory so plugins can inject ILogger<T> and their log
-            // entries flow through the host's Serilog pipeline. ValidateOnBuild below fails
-            // otherwise, since plugins like RedisLuaRateLimitStore take ILogger<T> in their ctor.
+            // entries flow through the host's Serilog pipeline. ValidateOnBuild below would
+            // otherwise fail for any plugin that takes ILogger<T> in its constructor.
             services.AddSingleton(_rootServices.GetRequiredService<ILoggerFactory>());
             services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
             foreach (var plugin in plugins.Values)
@@ -538,9 +547,11 @@ public sealed class PluginRuntimeDomainManager : IPluginRuntimeDomainManager, IA
             }
         });
 
+        // Each plugin's middleware is wrapped so it gets a span named after the plugin. Doing it
+        // here rather than inside the plugins means third-party plugins are traced for free.
         foreach (var pluginId in ProxyPluginOrder)
             if (plugins.TryGetValue(pluginId, out var plugin))
-                plugin.ConfigureProxyPipeline(builder);
+                plugin.ConfigureProxyPipeline(new TracedProxyPipelineBuilder(builder, pluginId));
         builder.Run(ContinueHostPipelineAsync);
         return builder.Build();
     }

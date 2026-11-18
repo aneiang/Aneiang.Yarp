@@ -20,6 +20,9 @@ public sealed class ServiceDiscoveryRefreshService : IPluginRuntimeResource
     private readonly ILogger<ServiceDiscoveryRefreshService> _logger;
     private readonly SemaphoreSlim _publishLock = new(1, 1);
     private readonly Dictionary<string, DateTimeOffset> _nextRefresh = new(StringComparer.OrdinalIgnoreCase);
+    // Warning de-duplication: a misconfigured binding is retried every refresh cycle, so log
+    // once per cluster/reason instead of flooding the log with the same line every 30 seconds.
+    private readonly HashSet<string> _warned = new(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? _runCancellation;
     private Task? _runTask;
     private DateTimeOffset? _startedAt;
@@ -73,6 +76,7 @@ public sealed class ServiceDiscoveryRefreshService : IPluginRuntimeResource
         }
         cancellation.Dispose();
         _nextRefresh.Clear();
+        _warned.Clear();
         _stoppedAt = DateTimeOffset.UtcNow;
     }
 
@@ -123,17 +127,43 @@ public sealed class ServiceDiscoveryRefreshService : IPluginRuntimeResource
             .ToArray();
         var activeClusters = bindings.Select(pair => pair.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var stale in _nextRefresh.Keys.Where(clusterId => !activeClusters.Contains(clusterId)).ToArray())
+        {
             _nextRefresh.Remove(stale);
+            // Forget the warning too, so unbinding and rebinding a broken config warns again.
+            _warned.RemoveWhere(key => key.StartsWith(stale + "|", StringComparison.OrdinalIgnoreCase));
+        }
 
         foreach (var (clusterId, config) in bindings)
         {
             if (_nextRefresh.TryGetValue(clusterId, out var dueAt) && dueAt > now) continue;
             _nextRefresh[clusterId] = now.AddSeconds(Math.Clamp(config.RefreshSeconds, 5, 3600));
 
+            // A binding created from the dashboard starts out as "{}" (or with mode=Static and no
+            // endpoints). Running it would resolve zero endpoints and wipe the cluster's real
+            // destinations, so an unconfigured binding is inert instead.
+            if (!TryDescribeMissingConfiguration(config, out var missing))
+            {
+                WarnClusterOnce(clusterId, "configuration",
+                    "Service discovery binding for cluster {ClusterId} is enabled but not configured ({Missing}); the cluster's destinations are left untouched.",
+                    clusterId, missing);
+                continue;
+            }
+
             try
             {
                 var endpoints = await ResolveEndpointsAsync(config, cancellationToken).ConfigureAwait(false);
+                if (endpoints.Count == 0)
+                {
+                    // Never let an empty provider response erase a working destination set:
+                    // a transient registry blip must not turn the cluster into a hard 503.
+                    WarnClusterOnce(clusterId, "empty",
+                        "Service discovery for cluster {ClusterId} resolved no endpoints; keeping the {Count} existing destination(s).",
+                        clusterId, CountDestinations(clusterId));
+                    continue;
+                }
+
                 await PublishDestinationsAsync(clusterId, endpoints, cancellationToken).ConfigureAwait(false);
+                ClearWarnings(clusterId);
                 Interlocked.Increment(ref _refreshes);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -146,6 +176,54 @@ public sealed class ServiceDiscoveryRefreshService : IPluginRuntimeResource
                 _logger.LogWarning(exception, "Failed to refresh service discovery binding for cluster {ClusterId}", clusterId);
             }
         }
+    }
+
+    /// <summary>
+    /// Returns false and a human-readable reason when the binding carries no usable discovery
+    /// settings, meaning the refresh loop must not run at all.
+    /// </summary>
+    private static bool TryDescribeMissingConfiguration(ServiceDiscoveryExecutionConfig config, out string reason)
+    {
+        if (string.Equals(config.Mode, "Static", StringComparison.OrdinalIgnoreCase))
+        {
+            // staticEndpoints may be explicitly null in a hand-written binding, which would
+            // otherwise throw inside NormalizeEndpoints.
+            var hasEndpoint = config.StaticEndpoints is { Length: > 0 } staticEndpoints &&
+                              NormalizeEndpoints(staticEndpoints).Count > 0;
+            reason = hasEndpoint ? "" : "mode is Static but staticEndpoints is empty or contains no absolute http(s) URL";
+            return hasEndpoint;
+        }
+
+        if (!string.Equals(config.Mode, "HttpJson", StringComparison.OrdinalIgnoreCase) &&
+            string.IsNullOrWhiteSpace(config.ServiceName))
+        {
+            reason = $"{config.Mode} mode requires serviceName";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(config.Endpoint))
+        {
+            reason = $"{config.Mode} mode requires endpoint";
+            return false;
+        }
+
+        reason = "";
+        return true;
+    }
+
+    private int CountDestinations(string clusterId)
+        => _configProvider.GetCluster(clusterId)?.Destinations?.Count ?? 0;
+
+    private void WarnClusterOnce(string clusterId, string reason, string message, params object?[] args)
+    {
+        if (!_warned.Add($"{clusterId}|{reason}")) return;
+        _logger.LogWarning(message, args);
+    }
+
+    private void ClearWarnings(string clusterId)
+    {
+        if (_warned.Count == 0) return;
+        _warned.RemoveWhere(key => key.StartsWith(clusterId + "|", StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task<IReadOnlyList<string>> ResolveEndpointsAsync(ServiceDiscoveryExecutionConfig config, CancellationToken cancellationToken)
@@ -247,6 +325,10 @@ public sealed class ServiceDiscoveryRefreshService : IPluginRuntimeResource
 
     private async Task PublishDestinationsAsync(string clusterId, IReadOnlyList<string> endpoints, CancellationToken cancellationToken)
     {
+        // Guard: publishing an empty set would erase a working cluster and make every request
+        // fail with "No healthy destination". Callers must opt out of discovery instead.
+        if (endpoints.Count == 0) return;
+
         await _publishLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -256,10 +338,12 @@ public sealed class ServiceDiscoveryRefreshService : IPluginRuntimeResource
                 .FirstOrDefault(item => string.Equals(item.cluster.ClusterId, clusterId, StringComparison.OrdinalIgnoreCase));
             if (index.cluster == null) return;
 
-            var destinations = endpoints.Select((address, position) => new KeyValuePair<string, DestinationConfig>(
-                    $"discovery-{position:D4}", new DestinationConfig { Address = address }))
+            var existing = index.cluster.Destinations;
+            var destinations = endpoints
+                .Select((address, position) => new KeyValuePair<string, DestinationConfig>(
+                    DiscoveredDestinationKey(existing, address, position), new DestinationConfig { Address = address }))
                 .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
-            if (DestinationsEqual(index.cluster.Destinations, destinations)) return;
+            if (DestinationsEqual(existing, destinations)) return;
 
             var updatedClusters = clusters.ToArray();
             updatedClusters[index.position] = index.cluster with { Destinations = destinations };
@@ -273,6 +357,32 @@ public sealed class ServiceDiscoveryRefreshService : IPluginRuntimeResource
         {
             _publishLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Keeps an existing destination key whose address matches, so a refresh that returns the
+    /// same addresses does not renumber every key (which YARP would treat as a full swap).
+    /// </summary>
+    private static string DiscoveredDestinationKey(
+        IReadOnlyDictionary<string, DestinationConfig>? existing,
+        string address,
+        int position)
+    {
+        if (existing != null)
+        {
+            foreach (var pair in existing)
+            {
+                if (string.Equals(pair.Value?.Address, address, StringComparison.OrdinalIgnoreCase))
+                    return pair.Key;
+            }
+        }
+
+        var key = $"discovery-{position:D4}";
+        if (existing == null || !existing.ContainsKey(key)) return key;
+        // Avoid clobbering a hand-written destination that happens to use the generated key.
+        var suffix = 1;
+        while (existing.ContainsKey($"{key}-{suffix}")) suffix++;
+        return $"{key}-{suffix}";
     }
 
     private static IEnumerable<string> ReadEndpointValues(JsonElement root)

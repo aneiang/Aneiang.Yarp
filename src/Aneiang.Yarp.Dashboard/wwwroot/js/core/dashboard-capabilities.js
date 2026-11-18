@@ -239,7 +239,6 @@
     // Plugin metadata: icon, accent color and common (frequently used) fields for form grouping.
     var PLUGIN_META = {
         'rate-limit': { icon: 'bi-speedometer2', color: '#0dcaf0', common: ['algorithm', 'permitLimit', 'window'] },
-        'rate-limit-redis': { icon: 'bi-hdd-network', color: '#f4501e', common: ['redisConnectionString', 'algorithm', 'limit', 'windowSeconds'] },
         'waf': { icon: 'bi-shield-lock', color: '#dc3545', common: ['enableSqlInjectionDetection', 'enableXssDetection', 'enablePathTraversalDetection', 'enableRequestSizeValidation', 'maxRequestBodySize'] },
         'circuit-breaker': { icon: 'bi-electrical-socket', color: '#fd7e14', common: ['failureThreshold', 'recoveryTimeoutSeconds'] },
         'request-retry': { icon: 'bi-arrow-repeat', color: '#20c997', common: ['maxRetries', 'backoffBaseMs'] },

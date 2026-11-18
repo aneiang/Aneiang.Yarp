@@ -1,16 +1,24 @@
 /**
- * Plugin Center - Aggregated plugin management page.
- * Consolidates 11 individual plugin pages into one tabbed interface.
+ * Plugin Center - unified plugin configuration workspace.
  *
- * Two types of tabs:
- *  - configType: pure PluginBindingManager CRUD (7 plugins)
- *  - featureType: independent monitoring UI + lazy-loaded JS (4 plugins)
+ * All 11 built-in plugins live here, grouped by what they do rather than by how
+ * they are bound, so the first thing a user reads is "this plugin is for ___":
+ *
+ *   traffic   流量控制  rate-limit / request-retry / compression
+ *   security  安全防护  waf / response-cache
+ *   stability 稳定性    circuit-breaker / service-discovery
+ *   observe   可观测    proxy-log / traffic-metrics / cluster-metrics
+ *
+ * Every panel opens with the same header block, which answers the four questions
+ * a user actually has before touching the binding table:
+ *
+ *   1. 作用域   - scope badge, always visible (route or cluster)
+ *   2. 一句话作用 - what changes once it runs, not a restatement of its name
+ *   3. 生效条件 + 当前绑定数 - why "enabled" alone does nothing
+ *   4. 配置 / 监控双入口 - where to configure it, where to see its output
  */
 (function() {
     'use strict';
-
-    var MODULE_BASE = '/_content/Aneiang.Yarp.Dashboard/js/modules/';
-    var VENDOR_BASE = '/_content/Aneiang.Yarp.Dashboard/js/vendor/';
 
     function t(key, fallback) {
         if (typeof window.__ === 'function') {
@@ -21,43 +29,82 @@
     }
 
     function esc(s) {
-        if (typeof window.DashboardUtils !== 'undefined' && DashboardUtils.esc) return DashboardUtils.esc(s);
+        if (window.DashboardUtils && typeof window.DashboardUtils.esc === 'function') {
+            return window.DashboardUtils.esc(s);
+        }
         var d = document.createElement('div');
         d.textContent = s || '';
         return d.innerHTML;
     }
 
-    /* ── Plugin registry ──
-       Each entry: {
-         id, label, labelKey, icon, color, order, type ('config'|'feature'),
-         group ('strategy'|'monitor'),
-         config (PluginBindingManager.create params, for config type),
-         script (JS file to lazy-load, for feature type),
-         deps (dependency JS files to load first),
-         init (function called after scripts loaded)
-       } */
-    var REGISTRY = [
-        /* ── Strategy / Config plugins ── */
-        { id: 'rate-limit', labelKey: 'menu.rateLimit', label: '限流策略', icon: 'bi-speedometer2', color: 'text-warning', order: 200, type: 'config', group: 'strategy',
-          config: { pluginId: 'rate-limit', scope: 'Route', containerId: 'pc-rate-limit-content', refreshTimeId: 'pc-rate-limit-refresh-time', moduleName: 'RateLimitModule', icon: 'bi-speedometer2', color: 'text-warning', titleKey: 'plugin.name.rate-limit', descKey: 'pluginPage.desc.rate-limit', helpKey: 'pluginPage.help.rate-limit' } },
-        { id: 'rate-limit-redis', labelKey: 'menu.rateLimitRedis', label: '分布式限流', icon: 'bi-hdd-rack', color: 'text-warning', order: 210, type: 'config', group: 'strategy',
-          config: { pluginId: 'rate-limit-redis', scope: 'Route', containerId: 'pc-rate-limit-redis-content', refreshTimeId: 'pc-rate-limit-redis-refresh-time', moduleName: 'RateLimitRedisModule', icon: 'bi-hdd-rack', color: 'text-warning' } },
-        { id: 'waf', labelKey: 'menu.waf', label: 'WAF 防火墙', icon: 'bi-shield-lock', color: 'text-danger', order: 220, type: 'config', group: 'strategy',
-          config: { pluginId: 'waf', scope: 'Route', containerId: 'pc-waf-content', refreshTimeId: 'pc-waf-refresh-time', moduleName: 'WafModule', icon: 'bi-shield-lock', color: 'text-danger', titleKey: 'plugin.name.waf', descKey: 'pluginPage.desc.waf', helpKey: 'pluginPage.help.waf' } },
-        { id: 'retry', labelKey: 'menu.retry', label: '请求重试', icon: 'bi-arrow-repeat', color: 'text-primary', order: 230, type: 'config', group: 'strategy',
-          config: { pluginId: 'request-retry', scope: 'Route', containerId: 'pc-retry-content', refreshTimeId: 'pc-retry-refresh-time', moduleName: 'RetryModule', icon: 'bi-arrow-repeat', color: 'text-primary', titleKey: 'plugin.name.request-retry', descKey: 'pluginPage.desc.request-retry', helpKey: 'pluginPage.help.request-retry' } },
-        { id: 'response-cache', labelKey: 'menu.responseCache', label: '响应缓存', icon: 'bi-hdd-network', color: 'text-success', order: 240, type: 'config', group: 'strategy',
-          config: { pluginId: 'response-cache', scope: 'Route', containerId: 'pc-cache-content', refreshTimeId: 'pc-cache-refresh-time', moduleName: 'ResponseCacheModule', icon: 'bi-hdd-network', color: 'text-success', titleKey: 'plugin.name.response-cache', descKey: 'pluginPage.desc.response-cache', helpKey: 'pluginPage.help.response-cache' } },
-        { id: 'service-discovery', labelKey: 'menu.serviceDiscovery', label: '服务发现', icon: 'bi-binoculars', color: 'text-primary', order: 250, type: 'config', group: 'strategy',
-          config: { pluginId: 'service-discovery', scope: 'Cluster', scopeLabel: t('pluginPage.cluster', 'Cluster'), containerId: 'pc-sd-content', refreshTimeId: 'pc-sd-refresh-time', moduleName: 'ServiceDiscoveryModule', icon: 'bi-binoculars', color: 'text-primary', titleKey: 'plugin.name.service-discovery', descKey: 'pluginPage.desc.service-discovery', helpKey: 'pluginPage.help.service-discovery' } },
-        { id: 'compression', labelKey: 'menu.compression', label: '响应压缩', icon: 'bi-file-zip', color: 'text-success', order: 260, type: 'config', group: 'strategy',
-          config: { pluginId: 'compression', scope: 'Route', containerId: 'pc-compression-content', refreshTimeId: 'pc-compression-refresh-time', moduleName: 'CompressionModule', icon: 'bi-file-zip', color: 'text-success' } },
-        { id: 'proxy-log', labelKey: 'menu.logs', label: '日志插件', icon: 'bi-journal-text', color: 'text-info', order: 270, type: 'config', group: 'strategy',
-          config: { pluginId: 'proxy-log', scope: 'Route', containerId: 'pc-proxy-log-content', refreshTimeId: 'pc-proxy-log-refresh-time', moduleName: 'ProxyLogConfigModule', icon: 'bi-journal-text', color: 'text-info', titleKey: 'plugin.name.proxy-log', descKey: 'pluginPage.desc.proxy-log', helpKey: 'pluginPage.help.proxy-log' } }
+    function basePath() {
+        var cfg = window.__dashboard || {};
+        return cfg.basePath || '';
+    }
+
+    /* ── Tab groups ──
+       Ordered from "changes request behaviour" to "observes it". */
+    var GROUPS = [
+        { id: 'traffic', labelKey: 'pc.group.traffic', label: '流量控制' },
+        { id: 'security', labelKey: 'pc.group.security', label: '安全防护' },
+        { id: 'stability', labelKey: 'pc.group.stability', label: '稳定性' },
+        { id: 'observe', labelKey: 'pc.group.observe', label: '可观测' }
     ];
 
-    var loaded = {};      /* track which feature tabs have been initialized */
-    var configModules = {}; /* track which config modules have been created */
+    /* ── Plugin registry ──
+       id        = manifest plugin id, also the URL hash (data-source bars deep-link here)
+       scope     = 'Route' | 'Cluster', mirrors PluginManifest.Scopes
+       group     = tab group id
+       about     = one sentence: what changes once this plugin runs
+       monitor   = dashboard page that visualises this plugin's output (optional)
+       config    = PluginBindingManager.create() arguments */
+    var REGISTRY = [
+        { id: 'rate-limit', group: 'traffic', scope: 'Route', icon: 'bi-speedometer2', color: 'text-warning',
+          about: '限制每条路由的请求速率，超出配额的请求直接返回 429。',
+          config: { pluginId: 'rate-limit', scope: 'Route', containerId: 'pc-rate-limit-content', refreshTimeId: 'pc-rate-limit-refresh-time', moduleName: 'RateLimitModule', icon: 'bi-speedometer2', color: 'text-warning' } },
+
+        { id: 'request-retry', group: 'traffic', scope: 'Route', icon: 'bi-arrow-repeat', color: 'text-primary',
+          about: '后端偶发失败时自动重发，把瞬时抖动挡在调用方之外。',
+          config: { pluginId: 'request-retry', scope: 'Route', containerId: 'pc-request-retry-content', refreshTimeId: 'pc-request-retry-refresh-time', moduleName: 'RetryModule', icon: 'bi-arrow-repeat', color: 'text-primary' } },
+
+        { id: 'compression', group: 'traffic', scope: 'Route', icon: 'bi-file-zip', color: 'text-success',
+          about: '按 MIME 类型压缩响应体，减少传输字节。',
+          config: { pluginId: 'compression', scope: 'Route', containerId: 'pc-compression-content', refreshTimeId: 'pc-compression-refresh-time', moduleName: 'CompressionModule', icon: 'bi-file-zip', color: 'text-success' } },
+
+        { id: 'waf', group: 'security', scope: 'Route', icon: 'bi-shield-lock', color: 'text-danger',
+          about: '在请求到达后端之前按规则拦截恶意流量，命中即拒绝。',
+          config: { pluginId: 'waf', scope: 'Route', containerId: 'pc-waf-content', refreshTimeId: 'pc-waf-refresh-time', moduleName: 'WafModule', icon: 'bi-shield-lock', color: 'text-danger' } },
+
+        { id: 'response-cache', group: 'security', scope: 'Route', icon: 'bi-hdd-network', color: 'text-success',
+          about: '缓存后端响应，重复请求直接命中缓存，减轻后端压力。',
+          config: { pluginId: 'response-cache', scope: 'Route', containerId: 'pc-cache-content', refreshTimeId: 'pc-cache-refresh-time', moduleName: 'ResponseCacheModule', icon: 'bi-hdd-network', color: 'text-success' } },
+
+        { id: 'circuit-breaker', group: 'stability', scope: 'Cluster', icon: 'bi-lightning-charge', color: 'text-danger', monitor: 'circuits',
+          about: '后端连续失败时快速切断该目标，避免故障扩散到整条链路。',
+          config: { pluginId: 'circuit-breaker', scope: 'Cluster', containerId: 'pc-circuit-breaker-content', refreshTimeId: 'pc-circuit-breaker-refresh-time', moduleName: 'CircuitBreakerConfigModule', icon: 'bi-lightning-charge', color: 'text-danger' } },
+
+        { id: 'service-discovery', group: 'stability', scope: 'Cluster', icon: 'bi-binoculars', color: 'text-primary',
+          about: '让集群的后端地址从注册中心自动同步，实例上下线无需改配置。',
+          config: { pluginId: 'service-discovery', scope: 'Cluster', containerId: 'pc-service-discovery-content', refreshTimeId: 'pc-service-discovery-refresh-time', moduleName: 'ServiceDiscoveryModule', icon: 'bi-binoculars', color: 'text-primary' } },
+
+        { id: 'fault-injection', group: 'stability', scope: 'Route', icon: 'bi-bug', color: 'text-danger',
+          about: '故意让某条路由变慢或失败，用来验证重试、熔断、告警与灰度回滚是不是真的会生效。',
+          config: { pluginId: 'fault-injection', scope: 'Route', containerId: 'pc-fault-injection-content', refreshTimeId: 'pc-fault-injection-refresh-time', moduleName: 'FaultInjectionModule', icon: 'bi-bug', color: 'text-danger' } },
+
+        { id: 'proxy-log', group: 'observe', scope: 'Route', icon: 'bi-journal-text', color: 'text-info', monitor: 'logs',
+          about: '记录每条请求与响应的细节，用于排障和审计。',
+          config: { pluginId: 'proxy-log', scope: 'Route', containerId: 'pc-proxy-log-content', refreshTimeId: 'pc-proxy-log-refresh-time', moduleName: 'ProxyLogConfigModule', icon: 'bi-journal-text', color: 'text-info' } },
+
+        { id: 'traffic-metrics', group: 'observe', scope: 'Route', icon: 'bi-graph-up-arrow', color: 'text-info', monitor: 'traffic',
+          about: '按路由统计请求数、错误率、延迟与字节，供流量监控页展示。',
+          config: { pluginId: 'traffic-metrics', scope: 'Route', containerId: 'pc-traffic-metrics-content', refreshTimeId: 'pc-traffic-metrics-refresh-time', moduleName: 'TrafficMetricsConfigModule', icon: 'bi-graph-up-arrow', color: 'text-info' } },
+
+        { id: 'cluster-metrics', group: 'observe', scope: 'Cluster', icon: 'bi-diagram-3-fill', color: 'text-info', monitor: 'cluster-metrics',
+          about: '采集各集群的节点、延迟与负载分布，供集群指标页展示。',
+          config: { pluginId: 'cluster-metrics', scope: 'Cluster', containerId: 'pc-cluster-metrics-content', refreshTimeId: 'pc-cluster-metrics-refresh-time', moduleName: 'ClusterMetricsConfigModule', icon: 'bi-diagram-3-fill', color: 'text-info' } }
+    ];
+
+    var configModules = {};  /* plugin id -> PluginBindingManager instance */
     var activeTab = null;
 
     function findEntry(id) {
@@ -65,52 +112,199 @@
         return null;
     }
 
-    /* Dynamically load a JS file, returns a Promise */
-    function loadScript(src) {
-        return new Promise(function(resolve, reject) {
-            var existing = document.querySelector('script[src="' + src + '"]');
-            if (existing) { resolve(); return; }
-            var s = document.createElement('script');
-            s.src = src;
-            s.onload = resolve;
-            s.onerror = function() { reject(new Error('Failed to load ' + src)); };
-            document.head.appendChild(s);
-        });
+    function scopeShort(scope) {
+        return scope === 'Cluster' ? t('pc.scope.cluster', '集群') : t('pc.scope.route', '路由');
     }
 
-    function loadScriptsSequentially(scripts) {
-        return scripts.reduce(function(p, src) {
-            return p.then(function() { return loadScript(src); });
-        }, Promise.resolve());
+    function aboutOf(entry) {
+        return t('pc.about.' + entry.id, entry.about);
     }
 
-    /* ── Render the tab bar ── */
+    /* ── Tab bar ── */
+    function tabButton(entry) {
+        var html = '<button type="button" class="pc-tab-btn' + (activeTab === entry.id ? ' active' : '') + '"';
+        html += ' data-plugin="' + entry.id + '" title="' + esc(scopeShort(entry.scope)) + ' · ' + esc(aboutOf(entry)) + '"';
+        html += ' onclick="PluginCenter.activate(\'' + entry.id + '\')">';
+        html += '<i class="bi ' + entry.icon + ' ' + entry.color + '"></i>';
+        html += '<span>' + esc(t('plugin.name.' + entry.id, entry.id)) + '</span>';
+        html += '<span class="pc-scope pc-scope--' + entry.scope.toLowerCase() + '">' + esc(scopeShort(entry.scope)) + '</span>';
+        html += '</button>';
+        return html;
+    }
+
     function renderTabBar(container) {
-        var html = '';
-        html += '<div class="pc-tabs-bar">';
-
-        /* Strategy group */
-        html += '<span class="pc-tab-group-label">' + t('pc.strategy', '策略配置') + '</span>';
-        REGISTRY.filter(function(e) { return e.group === 'strategy'; }).forEach(function(e) {
-            html += '<button class="pc-tab-btn' + (activeTab === e.id ? ' active' : '') + '" data-plugin="' + e.id + '" onclick="PluginCenter.activate(\'' + e.id + '\')">';
-            html += '<i class="bi ' + e.icon + ' ' + e.color + ' me-1"></i><span>' + t(e.labelKey, e.label) + '</span>';
-            html += '</button>';
+        var html = '<div class="pc-tabs-bar">';
+        GROUPS.forEach(function (group) {
+            var items = REGISTRY.filter(function (e) { return e.group === group.id; });
+            if (!items.length) return;
+            html += '<div class="pc-tab-group">';
+            html += '<span class="pc-tab-group-label">' + esc(t(group.labelKey, group.label)) + '</span>';
+            html += '<div class="pc-tab-group-items">';
+            items.forEach(function (e) { html += tabButton(e); });
+            html += '</div>';
+            html += '</div>';
         });
-
         html += '</div>';
         container.innerHTML = html;
     }
 
-    /* ── Render the content for a config-type tab ── */
+    /* ── Panel header ──
+       Scope badge, one-line purpose, activation condition + live binding count,
+       and the two entry points. Rendered twice: skeleton on first paint, real
+       values once plugin + bindings arrive. */
+    function headerShell(entry) {
+        return '<section class="pc-head" id="pc-head-' + entry.id + '">' +
+            '<span class="pc-head__icon ' + entry.color + '"><i class="bi ' + entry.icon + '"></i></span>' +
+            '<div class="pc-head__body">' +
+                '<div class="pc-head__title">' +
+                    '<span class="pc-head__name">' + esc(t('plugin.name.' + entry.id, entry.id)) + '</span>' +
+                    '<span class="pc-scope pc-scope--' + entry.scope.toLowerCase() + '">● ' + esc(scopeShort(entry.scope)) + '</span>' +
+                    '<code class="pc-head__id">' + esc(entry.id) + '</code>' +
+                '</div>' +
+                '<p class="pc-head__about">' + esc(aboutOf(entry)) + '</p>' +
+                '<div class="pc-head__meta">' +
+                    '<span class="pc-head__cond"><i class="bi bi-funnel"></i>' +
+                        esc(t('pc.cond.label', '生效条件')) + '：' +
+                        esc(entry.scope === 'Cluster' ? t('pc.cond.cluster', '需启用 + 绑定到至少 1 个集群')
+                                                      : t('pc.cond.route', '需启用 + 绑定到至少 1 个路由')) +
+                    '</span>' +
+                    '<span class="pc-head__state is-wait">' +
+                        '<span class="loading-spinner"></span>' + esc(t('common.loading', '加载中...')) +
+                    '</span>' +
+                '</div>' +
+            '</div>' +
+            '<div class="pc-head__act"></div>' +
+        '</section>';
+    }
+
+    function renderHeader(entry, state) {
+        var host = document.getElementById('pc-head-' + entry.id);
+        if (!host) return;
+
+        var plugin = (state && state.plugin) || {};
+        var bindings = (state && state.bindings) || [];
+        var enabled = !!plugin.enabled;
+        var total = bindings.length;
+        var live = bindings.filter(function (b) { return b.enabled; }).length;
+
+        /* ③ activation state - the line that makes "enabled but unbound" obvious */
+        var stateEl = host.querySelector('.pc-head__state');
+        var stateText, stateClass;
+        if (!enabled) {
+            stateText = t('pc.state.off', '当前：未启用');
+            stateClass = 'is-off';
+        } else if (total === 0) {
+            stateText = t('pc.state.unbound', '当前：未绑定任何目标');
+            stateClass = 'is-warn';
+        } else {
+            stateText = t('pc.state.bound', '当前：已绑定') + ' ' + total + ' ' + t('pc.state.unit', '个').trim();
+            stateText = stateText.replace(/\s+/g, ' ').trim();
+            if (live === 0) {
+                stateText += ' · ' + t('pc.state.allOff', '全部已停用');
+                stateClass = 'is-warn';
+            } else {
+                if (live < total) {
+                    stateText += ' · ' + live + ' ' + t('pc.state.liveUnit', '个生效中');
+                }
+                stateClass = 'is-live';
+            }
+        }
+        if (stateEl) {
+            stateEl.className = 'pc-head__state ' + stateClass;
+            stateEl.innerHTML = '<i class="bi ' + (stateClass === 'is-live' ? 'bi-check-circle-fill' : 'bi-exclamation-circle-fill') + '"></i>' + esc(stateText);
+        }
+
+        /* ④ dual entry points: configure here, observe there */
+        var act = host.querySelector('.pc-head__act');
+        if (!act) return;
+        var html = '';
+        if (!enabled) {
+            html += '<button type="button" class="btn btn-sm btn-primary" data-act="enable">' +
+                '<i class="bi bi-power me-1"></i>' + esc(t('pc.act.enable', '启用插件')) + '</button>';
+        } else if (total === 0) {
+            html += '<button type="button" class="btn btn-sm btn-primary" data-act="bind">' +
+                '<i class="bi bi-plus-lg me-1"></i>' + esc(t('pc.act.bind', '添加绑定')) + '</button>';
+        } else if (live === 0) {
+            html += '<button type="button" class="btn btn-sm btn-outline-warning" data-act="focus">' +
+                '<i class="bi bi-toggle-off me-1"></i>' + esc(t('pc.act.focus', '检查绑定状态')) + '</button>';
+        }
+        if (entry.monitor) {
+            var monHref = basePath() + '/' + entry.monitor;
+            if (live > 0) {
+                html += '<a class="btn btn-sm btn-outline-primary" href="' + esc(monHref) + '">' +
+                    '<i class="bi bi-graph-up-arrow me-1"></i>' + esc(t('pc.act.monitor', '查看监控')) + '</a>';
+            } else {
+                /* Nothing is collecting yet, so the page would be empty - say why
+                   instead of letting the user land on a blank chart. */
+                html += '<span class="pc-head__locked" title="' + esc(t('pc.monitor.locked', '插件生效后才会有数据')) + '">' +
+                    '<i class="bi bi-graph-up-arrow"></i>' + esc(t('pc.act.monitor', '查看监控')) + '</span>';
+            }
+        }
+        /* Every plugin has a runtime cost row on the resources page, so this hop is
+           always available - unlike the monitor link, which only exists for the
+           plugins whose output is actually rendered somewhere. */
+        html += '<a class="pc-head__aux" href="' + esc(basePath() + '/plugin-resources#' + entry.id) + '" ' +
+            'title="' + esc(t('pc.act.resources', '查看该插件的运行开销')) + '" ' +
+            'aria-label="' + esc(t('pc.act.resources', '查看该插件的运行开销')) + '">' +
+            '<i class="bi bi-cpu"></i></a>';
+
+        act.innerHTML = html;
+
+        if (!act.__bound) {
+            act.__bound = true;
+            act.addEventListener('click', function (event) {
+                var trigger = event.target && event.target.closest ? event.target.closest('[data-act]') : null;
+                if (!trigger || !act.contains(trigger)) return;
+                var action = trigger.getAttribute('data-act');
+                if (action === 'enable') enablePlugin(entry, trigger);
+                else if (action === 'bind') openAddModal(entry);
+                else if (action === 'focus') focusBindings(entry);
+            });
+        }
+    }
+
+    /* Scroll to the bindings table so the user can switch one back on. */
+    function focusBindings(entry) {
+        var box = document.getElementById(entry.config.containerId);
+        if (box && box.scrollIntoView) {
+            box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+
+    async function enablePlugin(entry, button) {
+        if (!window.DashboardApi || !window.DashboardApi.togglePlugin) return;
+        var original = button.innerHTML;
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + esc(t('common.loading', '加载中...'));
+        try {
+            await window.DashboardApi.togglePlugin(entry.id, true);
+            if (window.DashboardModals) {
+                window.DashboardModals.showSuccess(t('pc.enabledToast', '插件已启用，接下来请绑定目标'));
+            }
+            await reload(entry.id);
+        } catch (error) {
+            button.disabled = false;
+            button.innerHTML = original;
+            if (window.DashboardModals) {
+                window.DashboardModals.showError(t('common.operationFailed', '操作失败') + ': ' + (error.message || error));
+            }
+        }
+    }
+
+    function openAddModal(entry) {
+        var module = configModules[entry.id];
+        if (module && module.openAddModal) module.openAddModal();
+    }
+
+    /* ── Panel scaffolding ── */
     function renderConfigPanel(entry) {
-        var c = entry.config;
         var panel = document.querySelector('.pc-tab-panel[data-plugin="' + entry.id + '"]');
         if (!panel) return;
-        /* No in-panel title or standalone action row: the tab identifies the plugin,
-           and refresh actions live at the right end of the meta line (rendered by
-           PluginBindingManager). */
-        var html = '<div id="' + c.containerId + '"><div class="loading-state"><div class="loading-spinner"></div><div class="loading-text">' + t('common.loading', '加载中...') + '</div></div></div>';
-        panel.innerHTML = html;
+        panel.innerHTML = headerShell(entry) +
+            '<div id="' + entry.config.containerId + '">' +
+                '<div class="loading-state"><div class="loading-spinner"></div>' +
+                '<div class="loading-text">' + esc(t('common.loading', '加载中...')) + '</div></div>' +
+            '</div>';
     }
 
     /* ── Activate a tab ── */
@@ -118,34 +312,30 @@
         var entry = findEntry(id);
         if (!entry) return;
 
-        /* Update tab bar active state */
-        document.querySelectorAll('.pc-tab-btn').forEach(function(btn) {
+        document.querySelectorAll('.pc-tab-btn').forEach(function (btn) {
             btn.classList.toggle('active', btn.getAttribute('data-plugin') === id);
         });
-
-        /* Show/hide panels */
-        document.querySelectorAll('.pc-tab-panel').forEach(function(p) {
+        document.querySelectorAll('.pc-tab-panel').forEach(function (p) {
             p.style.display = p.getAttribute('data-plugin') === id ? '' : 'none';
         });
 
         activeTab = id;
-
-        /* Update URL hash without scrolling */
         if (window.location.hash !== '#' + id) {
             history.replaceState(null, '', '#' + id);
         }
 
-        if (entry.type === 'config') {
-            await initConfigTab(entry);
-        }
+        await initConfigTab(entry);
     }
 
-    /* ── Initialize a config-type tab (lazy create + load) ── */
+    /* ── Initialize (lazy create + load) ── */
     async function initConfigTab(entry) {
         if (!configModules[entry.id]) {
             renderConfigPanel(entry);
             if (window.PluginBindingManager) {
                 var cfg = Object.assign({}, entry.config);
+                /* The header already states the purpose and the activation rule;
+                   the table below only needs the data and its own actions. */
+                cfg.onLoaded = function (state) { renderHeader(entry, state); };
                 configModules[entry.id] = window.PluginBindingManager.create(cfg);
             }
         }
@@ -154,33 +344,37 @@
         }
     }
 
-    /* ── Reload a config tab ── */
     async function reload(id) {
         var entry = findEntry(id);
         if (!entry) return;
-        if (entry.type === 'config' && configModules[id]) {
+        if (configModules[id]) {
             await configModules[id].load();
+        } else {
+            await initConfigTab(entry);
         }
     }
 
-    /* ── Init: read hash, build tabs, activate default ── */
     async function init() {
         var tabBarContainer = document.getElementById('pc-tab-bar');
         if (!tabBarContainer) return;
 
         renderTabBar(tabBarContainer);
 
-        /* Determine initial tab from hash or default to first */
-        var hash = window.location.hash.replace('#', '');
+        var hash = decodeURIComponent(window.location.hash.replace('#', ''));
         var initial = findEntry(hash) ? hash : REGISTRY[0].id;
-
         await activate(initial);
+
+        window.addEventListener('hashchange', function () {
+            var next = decodeURIComponent(window.location.hash.replace('#', ''));
+            if (findEntry(next) && next !== activeTab) activate(next);
+        });
     }
 
     window.PluginCenter = {
         init: init,
         activate: activate,
         reload: reload,
-        REGISTRY: REGISTRY
+        REGISTRY: REGISTRY,
+        GROUPS: GROUPS
     };
 })();

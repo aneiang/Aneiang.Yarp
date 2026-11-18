@@ -11,6 +11,12 @@ public class StorageOptions
 
     /// <summary>SQLite storage options.</summary>
     public SqliteStorageOptions Sqlite { get; set; } = new();
+
+    /// <summary>
+    /// Environment isolation. Defaults to a single environment named <c>prod</c>, which means
+    /// <c>Gateway:Storage:Sqlite:ConnectionString</c> is used as-is and nothing about the deployment changes.
+    /// </summary>
+    public StorageEnvironmentOptions Environments { get; set; } = new();
 }
 
 /// <summary>SQLite storage options.</summary>

@@ -45,7 +45,9 @@
             "FirstAlphabetical",
             "Random",
             "RoundRobin",
-            "LeastRequests"
+            "LeastRequests",
+            "Weighted",
+            "IpBased"
           ]
         },
         {

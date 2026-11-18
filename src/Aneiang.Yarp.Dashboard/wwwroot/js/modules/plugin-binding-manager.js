@@ -79,6 +79,11 @@
 
                     this.render(container);
                     this.updateRefreshTime();
+                    /* Host pages (e.g. Plugin Center) reuse this payload to render
+                       their own status chrome instead of refetching the same data. */
+                    if (typeof config.onLoaded === 'function') {
+                        config.onLoaded(state);
+                    }
                 } catch (error) {
                     container.innerHTML = '<div class="alert alert-danger">' + t('common.loadFailed', 'Load failed') + ': ' + esc(error.message || error) + '</div>';
                 }
@@ -87,24 +92,28 @@
             render: function(container) {
                 var plugin = state.plugin;
                 var bindings = state.bindings;
-                var enabled = plugin && plugin.enabled;
                 var bindingCount = bindings.length;
                 var icon = config.icon || 'bi-puzzle';
                 var color = config.color || 'text-primary';
 
                 var html = '';
 
-                // Compact meta line: status · version · bindings · type, refresh actions at right end
+                // Slim meta line: enable-state and binding count are already shown by the
+                // host's effect chain, repeating them here just adds noise. Keep provenance
+                // (version / built-in) plus the actions at the right end.
                 html += '<div class="pc-meta-line">';
-                html += '<span class="pc-meta-item' + (enabled ? ' pc-meta-item--ok' : '') + '"><i class="bi bi-' + (enabled ? 'check-circle' : 'x-circle') + '"></i><span class="pc-meta-num">' + (enabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled')) + '</span></span>';
                 html += '<span class="pc-meta-item"><i class="bi bi-tag"></i><span class="pc-meta-num">v' + esc(plugin ? (plugin.version || '1.0') : '-') + '</span></span>';
-                html += '<span class="pc-meta-item"><i class="bi bi-link-45deg"></i><span class="pc-meta-num">' + bindingCount + '</span><span class="pc-meta-label">' + t('pluginPage.bindingCount', 'Bindings') + '</span></span>';
                 html += '<span class="pc-meta-item"><i class="bi bi-box"></i><span class="pc-meta-label">' + (plugin && plugin.isBuiltIn ? t('common.builtIn', 'Built-in') : t('common.external', 'External')) + '</span></span>';
                 html += '<div class="pc-meta-actions">';
                 html += '<span class="plg-plugin-id" style="font-size:11.5px;">' + scopeLabel + '</span>';
                 html += '<span id="' + refreshTimeId + '" class="refresh-badge"></span>';
                 html += '<button class="pr-refresh-btn" data-action="refresh" title="' + t('index.btn.refresh', '刷新') + '"><i class="bi bi-arrow-clockwise"></i></button>';
-                html += '<button class="btn btn-sm btn-success" data-action="add"><i class="bi bi-plus-lg me-1"></i>' + t('pluginPage.addBinding', 'Add Binding') + '</button>';
+                /* With zero bindings the host's effect chain already offers the primary
+                   "add" action and the empty state repeats it - a third button here
+                   would just sit next to them doing the same thing. */
+                if (bindingCount > 0) {
+                    html += '<button class="btn btn-sm btn-success" data-action="add"><i class="bi bi-plus-lg me-1"></i>' + t('pluginPage.addBinding', 'Add Binding') + '</button>';
+                }
                 html += '</div>';
                 html += '</div>';
 
@@ -145,7 +154,7 @@
                     html += '<div class="pr-empty">';
                     html += '<i class="bi bi-inbox"></i>';
                     html += '<p class="mb-1">' + t('pluginPage.noBindings', 'No bindings yet') + '</p>';
-                    html += '<p class="small mb-2">' + t('pluginPage.noBindingsHint', 'Click "Add Binding" above to bind this plugin to') + ' ' + scopeLabel + '</p>';
+                    html += '<p class="small mb-2">' + t('pluginPage.noBindingsHint', 'This plugin stays inactive, and collects no data, until a target is bound.') + '</p>';
                     html += '<button class="btn btn-outline-primary btn-sm" data-action="add"><i class="bi bi-plus-lg me-1"></i>' + t('pluginPage.addBinding', 'Add Binding') + '</button>';
                     html += '</div>';
                     html += '</td></tr>';
@@ -265,13 +274,19 @@
             modal.id = modalId;
             modal.tabIndex = -1;
             modal.dataset.bsBackdrop = 'static';
+            // New bindings support multi-select: pick several routes/clusters in one atomic batch.
             modal.innerHTML = '<div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content">' +
                 '<div class="modal-header"><h5 class="modal-title"><i class="bi ' + (isEdit ? 'bi-pencil-square' : 'bi-plus-square') + ' me-2"></i>' + (isEdit ? t('pluginPage.editBinding', 'Edit Binding') : t('pluginPage.addBinding', 'Add Binding')) + '</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>' +
                 '<div class="modal-body">' +
-                (isEdit ? '' : '<div class="mb-3"><label class="form-label fw-semibold">' + scopeLabel + '</label><select class="form-select" data-role="scope-select"><option value="">' + t('pluginPage.selectScope', 'Select ') + scopeLabel + '</option></select><div class="form-text">' + t('pluginPage.selectScopeHint', 'Select a ') + ' ' + scopeLabel + '</div></div>') +
+                (isEdit ? '' : '<div class="mb-3"><label class="form-label fw-semibold">' + scopeLabel + ' <span class="text-muted fw-normal small" data-role="scope-selected-count"></span></label>' +
+                    '<select class="form-select" data-role="scope-select" multiple size="8" style="min-height:160px;"></select>' +
+                    '<div class="form-text">' + esc(t('pluginPage.selectScopeHint', 'Multi-select: hold Ctrl/Shift')) + '</div>' +
+                    '<div class="form-check form-switch mt-2"><input class="form-check-input" type="checkbox" data-role="overwrite" id="' + modalId + '-overwrite"><label class="form-check-label small" for="' + modalId + '-overwrite">' + esc(t('pluginPage.overwriteExisting', 'Overwrite existing bindings')) + '</label></div>' +
+                    '</div>') +
                 '<div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" data-role="enabled" id="' + modalId + '-enabled"' + (isEdit ? (binding.enabled ? ' checked' : '') : ' checked') + '><label class="form-check-label" for="' + modalId + '-enabled">' + t('pluginPage.enableBinding', 'Enable this binding') + '</label></div>' +
                 '<div data-role="schema-form"></div>' +
                 '<div class="d-none" data-role="json-panel"><label class="form-label fw-semibold">' + t('pluginPage.jsonConfig', 'Advanced JSON Config') + '</label><textarea class="form-control font-monospace" rows="14" data-role="json"></textarea><div class="form-text">' + t('pluginPage.jsonHint', 'Edit JSON directly. Ensure valid format before switching back to form mode.') + '</div></div>' +
+                '<div data-role="batch-result" class="mt-2"></div>' +
                 '</div>' +
                 '<div class="modal-footer justify-content-between">' +
                 '<button type="button" class="btn btn-outline-secondary btn-sm" data-role="mode"><i class="bi bi-braces me-1"></i>JSON</button>' +
@@ -280,6 +295,9 @@
             document.body.appendChild(modal);
 
             var scopeSelect = modal.querySelector('[data-role="scope-select"]');
+            var overwriteInput = modal.querySelector('[data-role="overwrite"]');
+            var scopeCountEl = modal.querySelector('[data-role="scope-selected-count"]');
+            var batchResult = modal.querySelector('[data-role="batch-result"]');
             var enabledInput = modal.querySelector('[data-role="enabled"]');
             var schemaForm = modal.querySelector('[data-role="schema-form"]');
             var jsonPanel = modal.querySelector('[data-role="json-panel"]');
@@ -288,6 +306,12 @@
             var saveButton = modal.querySelector('[data-role="save"]');
             var advanced = false;
 
+            function updateScopeCount() {
+                if (!scopeCountEl || !scopeSelect) return;
+                var selected = Array.from(scopeSelect.selectedOptions).filter(function(o) { return !o.disabled; }).length;
+                scopeCountEl.textContent = selected > 0 ? t('pluginPage.selectedCount', 'Selected') + ': ' + selected : '';
+            }
+
             if (!isEdit && scopeSelect) {
                 var boundScopeIds = state.bindings.map(function(b) { return b.scopeId; });
                 state.scopes.forEach(function(item) {
@@ -295,16 +319,31 @@
                     if (!itemId) return;
                     var isBound = boundScopeIds.indexOf(itemId) >= 0;
                     var opt = new Option(itemId + (isBound ? ' (' + t('pluginPage.alreadyBound', 'Bound') + ')' : ''), itemId, false, false);
-                    if (isBound) opt.disabled = true;
+                    opt.dataset.bound = isBound ? '1' : '0';
+                    opt.disabled = isBound;
                     scopeSelect.appendChild(opt);
                 });
-                if (scopeSelect.children.length <= 1) {
-                    var notice = modal.querySelector('.modal-body');
+                if (scopeSelect.options.length === 0) {
                     var alertDiv = document.createElement('div');
                     alertDiv.className = 'alert alert-warning';
                     alertDiv.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>' + t('pluginPage.noScopes', 'No available') + ' ' + scopeLabel + '. ' + t('pluginPage.createScopeFirst', 'Please create a') + ' ' + scopeLabel + ' first.';
                     scopeSelect.parentElement.insertBefore(alertDiv, scopeSelect);
                 }
+
+                // Already-bound targets stay disabled unless the user opts into overwriting them.
+                function syncScopeOptions() {
+                    var allowBound = !!(overwriteInput && overwriteInput.checked);
+                    Array.prototype.forEach.call(scopeSelect.options, function(opt) {
+                        var isBound = opt.dataset.bound === '1';
+                        opt.disabled = isBound && !allowBound;
+                        if (opt.disabled) opt.selected = false;
+                    });
+                    updateScopeCount();
+                }
+
+                if (overwriteInput) overwriteInput.addEventListener('change', syncScopeOptions);
+                scopeSelect.addEventListener('change', updateScopeCount);
+                updateScopeCount();
             }
 
             function renderForm() {
@@ -354,11 +393,17 @@
             });
 
             saveButton.addEventListener('click', async function() {
-                var scopeId = isEdit ? binding.scopeId : (scopeSelect ? scopeSelect.value : '');
-                if (!isEdit && !scopeId) {
-                    window.DashboardModals.showWarning(t('pluginPage.scopeRequired', 'Please select') + ' ' + scopeLabel);
+                // Edit always targets one binding; new bindings may target several in one atomic batch.
+                var scopeIds = isEdit
+                    ? [binding.scopeId]
+                    : (scopeSelect ? Array.from(scopeSelect.selectedOptions)
+                        .filter(function(o) { return o.value && !o.disabled; })
+                        .map(function(o) { return o.value; }) : []);
+                if (!isEdit && scopeIds.length === 0) {
+                    window.DashboardModals.showWarning(t('pluginPage.scopeRequiredMulti', 'Please select at least one target'));
                     return;
                 }
+                if (batchResult) batchResult.innerHTML = '';
 
                 if (advanced) {
                     try {
@@ -376,34 +421,65 @@
                     bindingConfig = formConfig;
                 }
 
+                // Shared payload; single-create and batch-create add their own target fields.
                 var payload = {
                     pluginId: pluginId,
                     scope: scope,
-                    scopeId: scopeId,
                     enabled: enabledInput.checked,
                     configJson: JSON.stringify(bindingConfig),
                     schemaVersion: (Cap && Cap.getPluginSchemaVersion)
                         ? Cap.getPluginSchemaVersion(state.plugin)
                         : 1,
-                    order: Number((state.plugin && state.plugin.order) || 0),
-                    configVersion: isEdit ? (binding.configVersion || 0) + 1 : 1
+                    order: Number((state.plugin && state.plugin.order) || 0)
                 };
+
+                function resetSaveButton() {
+                    saveButton.disabled = false;
+                    saveButton.innerHTML = '<i class="bi bi-check-lg me-1"></i>' + t('common.save', 'Save');
+                }
 
                 try {
                     saveButton.disabled = true;
                     saveButton.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + t('common.saving', 'Saving...');
                     if (isEdit) {
-                        await window.DashboardApi.updateBinding(binding.id, payload);
+                        await window.DashboardApi.updateBinding(binding.id, Object.assign({}, payload, {
+                            scopeId: binding.scopeId,
+                            configVersion: (binding.configVersion || 0) + 1
+                        }));
+                        window.DashboardModals.showSuccess(t('pluginPage.saveSuccess', 'Saved'));
+                    } else if (scopeIds.length > 1) {
+                        var resp = await window.DashboardApi.endpoints.batchCreateBindings(Object.assign({}, payload, {
+                            scopeIds: scopeIds,
+                            overwriteExisting: !!(overwriteInput && overwriteInput.checked)
+                        }));
+                        var result = (resp && resp.data) || resp || {};
+                        var succeeded = result.succeeded != null ? result.succeeded : 0;
+                        var failed = result.failed != null ? result.failed : 0;
+                        if (failed > 0) {
+                            var failedList = (result.items || []).filter(function(it) { return !it.success; })
+                                .map(function(it) { return '<li>' + esc(it.id) + ' — ' + esc(it.message) + '</li>'; }).join('');
+                            if (batchResult) {
+                                batchResult.innerHTML = '<div class="alert alert-warning py-2 mb-0"><i class="bi bi-exclamation-triangle"></i> '
+                                    + esc(t('pluginPage.batchBindPartial', 'Some bindings failed') + ' (' + succeeded + '/' + (result.total || scopeIds.length) + ')')
+                                    + (failedList ? '<ul class="mb-0 mt-1 small">' + failedList + '</ul>' : '') + '</div>';
+                            }
+                            await module.load();
+                            resetSaveButton();
+                            return; // keep the dialog open so per-target errors stay visible
+                        }
+                        window.DashboardModals.showSuccess(t('pluginPage.batchBindSuccess', 'Batch binding succeeded') + ' (' + succeeded + ')');
                     } else {
-                        await window.DashboardApi.createBinding(payload);
+                        await window.DashboardApi.createBinding(Object.assign({}, payload, {
+                            scopeId: scopeIds[0],
+                            configVersion: 1
+                        }));
+                        window.DashboardModals.showSuccess(t('pluginPage.addSuccess', 'Added'));
                     }
-                    window.DashboardModals.showSuccess(isEdit ? t('pluginPage.saveSuccess', 'Saved') : t('pluginPage.addSuccess', 'Added'));
                     bootstrap.Modal.getInstance(modal).hide();
                     await module.load();
                 } catch (error) {
                     window.DashboardModals.showError(t('common.saveFailed', 'Save failed') + ': ' + (error.message || error));
-                    saveButton.disabled = false;
-                    saveButton.innerHTML = '<i class="bi bi-check-lg me-1"></i>' + t('common.save', 'Save');
+                    resetSaveButton();
                 }
             });
 

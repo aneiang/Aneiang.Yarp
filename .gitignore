@@ -368,3 +368,14 @@ website/
 
 # VS Code C# Dev Tools - Auto-generated runners
 .vscodecsdt/Runners/
+
+# 运行时生成的本地库文件（多环境隔离会派生 *.dev.db / *.staging.db）
+*.db
+*.db-wal
+*.db-shm
+
+# WorkBuddy 本地会话与记忆目录
+.workbuddy/
+
+# AI 助手的本地配置（含 API Key，运行时生成，绝不入库）
+ai-config.json

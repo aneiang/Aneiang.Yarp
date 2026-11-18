@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build-and-test:
+    name: build + test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # One SDK, not a matrix: the libraries multi-target net8.0;net9.0 and the .NET 9 SDK
+      # compiles both, so `dotnet build` already proves both target frameworks. A matrix of
+      # 8.0.x SDKs would fail outright — an SDK cannot build a framework newer than itself.
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore
+        run: dotnet restore Aneiang.Yarp.sln
+
+      - name: Build (all target frameworks)
+        run: dotnet build Aneiang.Yarp.sln --no-restore -c Release
+
+      - name: Test
+        run: >
+          dotnet test tests/Aneiang.Yarp.UnitTests/Aneiang.Yarp.UnitTests.csproj
+          --no-build -c Release
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory TestResults
+
+      # Keeps the "quietly runs nothing" failure mode honest: a filter typo would otherwise
+      # turn the suite green while it validates exactly zero behaviour.
+      - name: Verify tests actually ran
+        run: |
+          total=$(grep -o 'total="[0-9]*"' TestResults/test-results.trx | head -1 | tr -dc '0-9')
+          echo "Executed test cases: ${total:-0}"
+          if [ -z "$total" ] || [ "$total" -lt 100 ]; then
+            echo "::error::Expected at least 100 test cases, got '${total:-0}'."
+            exit 1
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/
+          retention-days: 7
+
+  pack:
+    name: pack (dry run)
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      # Packing on every push catches the "works in the repo, ships without a file" class of
+      # bug. The Grafana board is packaged from docs/, so a wrong <None Include> path is
+      # invisible until someone installs the package.
+      - name: Pack
+        run: |
+          dotnet pack src/Aneiang.Yarp/Aneiang.Yarp.csproj -c Release -o out
+          dotnet pack src/Aneiang.Yarp.Dashboard/Aneiang.Yarp.Dashboard.csproj -c Release -o out
+
+      - name: Verify the Grafana template is inside the package
+        run: |
+          pkg=$(ls out/Aneiang.Yarp.Dashboard.*.nupkg | head -1)
+          echo "Inspecting $pkg"
+          unzip -l "$pkg" | grep -q 'observability/grafana-dashboard.json' || {
+            echo "::error::Grafana dashboard template is missing from $pkg"
+            exit 1
+          }
+          unzip -l "$pkg" | sed -n '1,20p'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nupkg
+          path: out/*.nupkg
+          retention-days: 7

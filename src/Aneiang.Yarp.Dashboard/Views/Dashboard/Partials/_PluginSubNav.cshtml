@@ -1,0 +1,105 @@
+@*
+    Shared header for the three plugin pages.
+
+    The three pages are one workflow, not three isolated screens:
+        1 总览   what the plugin does, whether it is on, whether it is healthy
+        2 配置   the activation rule and the targets it is bound to
+        3 资源   whether it actually runs, and what it costs
+
+    So this bar carries a step number (where am I in the flow) and a live
+    "what is left to do" summary on the right. The summary is computed from the
+    plugin list, which all three pages already load, so it costs no extra request.
+*@
+@{
+    var navPrefix = ViewBag.DashboardRoutePrefix as string ?? "apigateway";
+    var navPage = ViewBag.CurrentPage as string ?? string.Empty;
+    var navEn = (ViewBag.Locale as string) == "en-US";
+    var navItems = new[]
+    {
+        ("plugins", "menu.plugins", navEn ? "Overview" : "总览", "bi-puzzle"),
+        ("plugin-center", "menu.pluginCenter", navEn ? "Configure" : "配置", "bi-sliders"),
+        ("plugin-resources", "menu.pluginResources", navEn ? "Resources" : "资源", "bi-cpu")
+    };
+}
+
+<style>
+    .plugin-subnav {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 12px; flex-wrap: wrap;
+        padding: 0 0 12px; margin-bottom: 14px;
+        border-bottom: 1px solid var(--border-color, #e2e8f0);
+    }
+    .plugin-subnav__steps { display: inline-flex; align-items: center; gap: 2px; }
+    .plugin-subnav__item {
+        display: inline-flex; align-items: center; gap: 7px;
+        padding: 5px 10px 5px 6px; border-radius: 7px;
+        font-size: 12.5px; font-weight: 500; line-height: 1.2;
+        color: var(--text-secondary, #475569); text-decoration: none;
+        transition: color .15s, background .15s;
+        white-space: nowrap;
+    }
+    .plugin-subnav__step {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 18px; height: 18px; border-radius: 50%;
+        font-size: 10.5px; font-weight: 700;
+        background: var(--border-light, #eef2f6); color: var(--text-muted, #94a3b8);
+        flex: 0 0 auto;
+    }
+    .plugin-subnav__item i { font-size: 13px; }
+    .plugin-subnav__item:hover { color: var(--text-primary, #0f172a); background: var(--border-light, #f1f5f9); }
+    .plugin-subnav__item.is-active { color: var(--primary-color, #4f46e5); background: var(--primary-bg, #eef2ff); }
+    .plugin-subnav__item.is-active .plugin-subnav__step { background: var(--primary-color, #4f46e5); color: #fff; }
+    .plugin-subnav__sep {
+        width: 14px; height: 1px; flex: 0 0 auto;
+        background: var(--border-color, #e2e8f0);
+    }
+
+    /* Right-hand status summary: the next thing worth doing, not another count. */
+    .plugin-subnav__todo {
+        display: inline-flex; align-items: center; gap: 10px;
+        font-size: 12px; color: var(--text-muted, #94a3b8);
+        min-height: 22px;
+    }
+    .plugin-subnav__todo .pst {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 3px 8px; border-radius: 999px;
+        font-variant-numeric: tabular-nums; font-weight: 500;
+    }
+    .plugin-subnav__todo .pst--live { background: #f0fdf4; color: #15803d; }
+    .plugin-subnav__todo .pst--todo { background: #fffbeb; color: #b45309; }
+    .plugin-subnav__todo .pst--off  { background: var(--border-light, #f1f5f9); color: var(--text-muted, #94a3b8); }
+    a.pst--todo { text-decoration: none; cursor: pointer; }
+    a.pst--todo:hover { background: #fef3c7; }
+
+    @@media (max-width: 640px) {
+        .plugin-subnav { flex-direction: column; align-items: stretch; }
+        .plugin-subnav__steps { justify-content: space-between; }
+        .plugin-subnav__item { padding: 5px 6px; }
+        .plugin-subnav__todo { justify-content: flex-start; }
+    }
+</style>
+
+<div class="plugin-subnav">
+    <nav class="plugin-subnav__steps" aria-label="Plugin workspace">
+        @for (var i = 0; i < navItems.Length; i++)
+        {
+            var item = navItems[i];
+            var isActive = navPage == item.Item1;
+            if (i > 0)
+            {
+                <span class="plugin-subnav__sep" aria-hidden="true"></span>
+            }
+            <a class="plugin-subnav__item@(isActive ? " is-active" : "")"
+               href="/@navPrefix/@item.Item1"
+               aria-current="@(isActive ? "step" : null)">
+                <span class="plugin-subnav__step">@(i + 1)</span>
+                <i class="bi @item.Item4"></i><span data-i18n="@item.Item2">@item.Item3</span>
+            </a>
+        }
+    </nav>
+    <div class="plugin-subnav__todo" id="plugin-todo" data-prefix="/@navPrefix">
+        <span class="loading-spinner" style="width:11px;height:11px;border-width:1.5px;"></span>
+    </div>
+</div>
+
+<script src="/_content/Aneiang.Yarp.Dashboard/js/modules/plugin-workspace.js"></script>

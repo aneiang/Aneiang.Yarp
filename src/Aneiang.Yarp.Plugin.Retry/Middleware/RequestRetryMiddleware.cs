@@ -210,6 +210,16 @@ public sealed class RequestRetryMiddleware : GatewayMiddlewareBase
                 }
 
                 responseStream.Seek(0, SeekOrigin.Begin);
+
+                // The retry count has to be written before the buffered response is copied out: the
+                // copy starts the response, and setting a header afterwards throws "Headers are
+                // read-only, response has already started". That made every exhausted-retry request
+                // end in a 500 instead of the 5xx it had actually received.
+                if (attempt > 0)
+                {
+                    context.Response.Headers["X-Retry-Count"] = attempt.ToString();
+                }
+
                 await responseStream.CopyToAsync(originalResponseBody, context.RequestAborted);
                 context.Response.Body = originalResponseBody;
                 activeOriginalResponseBody = null;
@@ -232,11 +242,6 @@ public sealed class RequestRetryMiddleware : GatewayMiddlewareBase
             // Return the ArrayPool buffer to the pool (BUG-3 fix)
             if (requestBodyBuffer != null)
                 ArrayPool<byte>.Shared.Return(requestBodyBuffer);
-        }
-
-        if (attempt > 0)
-        {
-            context.Response.Headers["X-Retry-Count"] = attempt.ToString();
         }
     }
 

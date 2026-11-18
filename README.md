@@ -22,7 +22,7 @@ Plugin Architecture · Dashboard · Dynamic Routing · WAF · Service Discovery 
 
 ---
 
-**Aneiang.Yarp** is a production-ready API gateway built on [Microsoft YARP](https://microsoft.github.io/reverse-proxy/) 2.3.0. It ships with everything you'd otherwise build yourself: a **plugin architecture** (11 built-in plugins), a visual **management dashboard**, WAF, AI assistant, multi-provider **service discovery**, notifications, health & circuit-breaker monitoring, and **one-line client auto-registration**.
+**Aneiang.Yarp** is a production-ready API gateway built on [Microsoft YARP](https://microsoft.github.io/reverse-proxy/) 2.3.0. It ships with everything you'd otherwise build yourself: a **plugin architecture** (10 built-in plugins), a visual **management dashboard**, WAF, AI assistant, multi-provider **service discovery**, notifications, health & circuit-breaker monitoring, and **one-line client auto-registration**.
 
 [📖 Documentation](https://yarp.aneiang.com/docs/index.html#overview) · [🚀 Live Demo](https://yarp-test.aneiang.com/aneiang) `admin` / `demo123` 
 
@@ -56,7 +56,7 @@ Plugin Architecture · Dashboard · Dynamic Routing · WAF · Service Discovery 
                    |            +------------------------------------------------+ |
                    |            |                                                  |
                    |   +--------v---------+                                    | |
-                   |   |  Plugin Pipeline（11 built-in plugins）                     | |
+                   |   |  Plugin Pipeline（10 built-in plugins）                     | |
                    |   |  WAF → RateLimit → Retry → CircuitBreaker →            | |
                    |   |  Compression → Cache → Metrics → ProxyLog              | |
                    |   +--------+---------+                                    | |
@@ -76,7 +76,7 @@ Plugin Architecture · Dashboard · Dynamic Routing · WAF · Service Discovery 
 
 ## Highlights
 
-- **Plugin architecture** — everything is a plugin; 11 first-party plugins provide WAF, rate limiting, retry, circuit breaking, compression, caching, metrics and more. Bring your own `IGatewayPlugin` in minutes.
+- **Plugin architecture** — everything is a plugin; 10 first-party plugins provide WAF, rate limiting, retry, circuit breaking, compression, caching, metrics and more. Bring your own `IGatewayPlugin` in minutes.
 - **Visual dashboard** — clusters, routes, plugins, WAF, health, circuit breakers, logs, notifications, audit trail and config history in one place.
 - **Runtime dynamic routing** — create / edit clusters & routes without restarting; auto-persists and auto-recovers on restart.
 - **Native YARP config editing** — dual-mode **form + JSON** editor that works directly on the standard YARP schema.
@@ -155,7 +155,7 @@ app.Run();
 | **Aneiang.Yarp.Storage.Abstractions** | Storage interfaces & entities | ❌ |
 | **Aneiang.Yarp.Grpc** | gRPC registration protocol | ❌ |
 | **Aneiang.Yarp.Plugin.Abstractions** | Plugin contract (`IGatewayPlugin`) | ❌ |
-| **Aneiang.Yarp.Plugin.\*** | 11 first-party plugins, pulled in individually | via core |
+| **Aneiang.Yarp.Plugin.\*** | 10 first-party plugins, pulled in individually | via core |
 
 **.NET 8.0 / 9.0**.
 
@@ -168,13 +168,15 @@ app.Run();
 | **Routing** | Dynamic clusters & routes, drag-sort priority, dual form/JSON editor, import/export, snapshot & rollback, audit log | [:link:](https://yarp.aneiang.com/docs/index.html#dynamic-routing) |
 | **Authentication** | `None` / `DefaultJwt` / `CustomJwt` / `ApiKey` / custom delegate; TOTP **2FA** | [:link:](https://yarp.aneiang.com/docs/index.html#authentication) |
 | **Security** | WAF: IP allow/deny, SQLi / XSS / path-traversal detection, request limits, security headers | [:link:](https://yarp.aneiang.com/docs/index.html#waf-firewall) |
-| **Observability** | Request logs (TraceID pairing, sanitization, sampling), real-time WebSocket stream | [:link:](https://yarp.aneiang.com/docs/index.html#request-logs) |
+| **Observability** | Request logs (TraceID pairing, sanitization, sampling), real-time WebSocket stream, OpenTelemetry tracing (waterfall + export to Jaeger/Tempo) | [:link:](https://yarp.aneiang.com/docs/index.html#request-logs) |
 | **Monitoring** | Request / latency / status metrics (P50/P90/P99), health checks, circuit-breaker panel | [:link:](https://yarp.aneiang.com/docs/index.html#health-check) |
 | **Notification** | Webhook channels (DingTalk / HTTP), event rules with cooldown, delivery history | [:link:](https://yarp.aneiang.com/docs/index.html#notifications) |
 | **AI Assistant** | Chat-based management, 40 tools, read/write permission split, streaming, multi-provider | [:link:](https://yarp.aneiang.com/docs/index.html#ai-assistant) |
 | **IP Isolation** | Route requests to a specific developer's instance by client IP for collaborative debugging | [:link:](https://yarp.aneiang.com/docs/index.html#ip-isolation) |
 | **Client SDK** | Auto-register / unregister, heartbeat recovery, `GetServicesAsync` / `UpdateDestinationsAsync` | [:link:](https://yarp.aneiang.com/docs/index.html#client-registration) |
 | **Extensibility** | `IGatewayPlugin` contract, plugin-center management, hot-reconfigured bindings | [:link:](https://yarp.aneiang.com/docs/index.html#plugin-system) |
+| **Chaos drills** | Per-route delay / error / connection-abort injection, header gate + ratio, off by toggling a binding | [:link:](https://yarp.aneiang.com/docs/index.html#plugin-system) |
+| **Multi-environment** | dev / staging / prod isolation, one store file each; switching only moves the editing view, never forwarding | [:link:](https://yarp.aneiang.com/docs/index.html#plugin-system) |
 | **Config safety** | Auto-snapshot, rollback, `GET /api/config/apply-errors`, SQLCipher-encrypted store | [:link:](https://yarp.aneiang.com/docs/index.html#config-history) |
 
 ---
@@ -196,13 +198,324 @@ Config: `Mode` (default `Static`), `Endpoint`, `ServiceName`, `Namespace` (`defa
 
 ---
 
+## Observability & Production Readiness (2.3.0.40)
+
+- **Prometheus metrics** — `GET /metrics` exposes the standard text format: `gateway_requests_total`, `gateway_request_duration_seconds` (histogram), `gateway_responses_total{class}`, `gateway_inflight_requests`, `gateway_circuits{state}`, `gateway_config_version`. Collection happens inside the proxy pipeline, so it works whether or not any plugin is bound. Series count is capped at 300; anything beyond collapses into `route="other"` to keep cardinality bounded.
+- **Config pre-flight** — `POST /api/config/validate` returns field-addressed errors and warnings before a save; `GET /api/config/integrity` audits the whole configuration (routes pointing at missing clusters, clusters with no destinations, duplicate match paths). **Self-registration, batch import, rollback and the AI assistant all go through the same gate.**
+- **Upstream connection pool** — `gateway_upstream_connections{host,state}` reads the built-in `System.Net.Http` meter through a `MeterListener` and separates active from idle. "The pool is saturated" and "the upstream is slow" look identical from the request side; these two lines tell them apart.
+- **TTFR** — `gateway_serving` (0/1) and `gateway_first_success_seconds`: from process start to the first successful proxied request. "Up but not routing" is a failure mode every other panel hides.
+- **Policy names are no longer free text** — the authorization / CORS / rate limiter / output cache fields are dropdowns backed by nine built-in `gw-*` policies. A name that was never registered is now rejected at save time instead of throwing when YARP builds the endpoint.
+- **Optimistic concurrency** — writes carry `X-Config-Version`; a stale version returns `409`, so two open tabs cannot silently overwrite each other.
+- **Test baseline** — `tests/Aneiang.Yarp.UnitTests`, 158 xUnit cases covering JSON tolerance, pre-flight validation, the concurrency contract, metrics rendering, the policy catalog and connection-pool collection. `.github/workflows/ci.yml` builds, tests and packs on every push.
+
+```bash
+dotnet test tests/Aneiang.Yarp.UnitTests
+curl -s http://localhost:5000/metrics | head
+```
+
+The Grafana dashboard template ships inside the package at `content/observability/grafana-dashboard.json` (source path: `docs/observability/grafana-dashboard.json`).
+
+---
+
+## Canary Releases (2.3.0.40)
+
+The built-in `Weighted` load balancing policy splits traffic **exactly** by destination weight, not "roughly by weight".
+
+**Enabling it** — set the cluster's `LoadBalancingPolicy` to `Weighted` and put `Weight` in each destination's `Metadata`:
+
+```json
+{
+  "ClusterId": "checkout",
+  "LoadBalancingPolicy": "Weighted",
+  "Destinations": {
+    "v1": { "Address": "http://10.0.0.11:8080", "Metadata": { "Weight": "90" } },
+    "v2": { "Address": "http://10.0.0.12:8080", "Metadata": { "Weight": "10", "Tag": "v2" } }
+  }
+}
+```
+
+- **The ratio holds.** It is smooth weighted round-robin: 90/10 means exactly 90 and 10 out of every 100 requests, interleaved rather than 90 in a row. YARP's `PowerOfTwoChoices` also reads `Weight`, but only as a tie-break between two randomly sampled destinations, so the split drifts — no basis for a release decision.
+- **Weight 0 parks a node.** It stays configured and reachable by pin, but receives no traffic. Deploy first, shift traffic later.
+- **Pin a caller** with `X-Gateway-Canary: v2` (a `Tag`) or `X-Gateway-Canary: d2` (a destination id). The usual order is "pin myself, verify, then move the weights off zero".
+- **Per-destination metrics** — `gateway_destination_requests_total{cluster,destination}` and `gateway_destination_failures_total{cluster,destination}`; the Grafana template gains "Canary split by destination" and "Canary error rate by destination".
+- **Checked before save** — a non-integer weight, every weight set to 0, or a `Tag` on a cluster not using `Weighted` all produce a field-addressed warning.
+
+Cluster metadata overrides: `Weighted.WeightKey`, `Weighted.DefaultWeight`, `Weighted.TagKey`, `Weighted.HeaderName`.
+
+### Automatic ramp and rollback
+
+Weights decide the split; something still has to watch the result. That is the rollout state machine — reachable from the canary button on each row of the Dashboard's Clusters page, or directly via `POST /api/canary/rollouts`:
+
+```json
+{
+  "clusterId": "checkout",
+  "canaryDestinations": ["v2"],
+  "steps": [10, 30, 50, 100],
+  "observationWindowSeconds": 120,
+  "errorRateThreshold": 0.2,
+  "minSamples": 50
+}
+```
+
+It moves the weights, opens an observation window, decides when the window closes, then advances or backs out. A rollout only ever ends in `Completed`, `RolledBack`, `Paused` (a human should look) or `Aborted`.
+
+The parts that are deliberate:
+
+- **Verdict order is samples → absolute threshold → attribution.** Too few samples means `Hold` plus a window extension (up to 3), never a rollback on 3 requests out of 3 — an automatic rollback that fires like that is just flapping. Once the threshold is crossed, attribution decides the outcome: canary over threshold *and* baseline over threshold gives `Pause` (`baselineDegraded`), not a rollback. Rolling back fixes nothing there and destroys the evidence. Only "baseline healthy, canary failing" is `RolledBack` (`canaryDegraded`).
+- **Rollback restores exactly.** `BaselineExplicitWeights` records which destinations had a `Weight` key at all; a destination that never had one gets the key **removed** on rollback instead of being pinned to `1`. The cluster's `LoadBalancingPolicy` is restored too.
+- **Silent no-ops are diagnosed.** A canary that receives zero requests yields `NoCanaryTraffic`, naming `Weighted`, instead of reporting healthy and ramping to 100%.
+- **In-process semantics.** Metrics are per-process, so "one cluster behind three gateways" is three independent rollouts. Multi-instance coordination belongs to the single-control-plane design in ADR-1.
+- State is persisted to `canary-rollouts.json` next to the SQLite file. A rollout left in `Observing` across a restart becomes `Paused`, because its window baseline is gone and half a window is not a measurement.
+
+Defaults can be overridden in `appsettings.json`:
+
+```json
+{
+  "Aneiang": {
+    "Yarp": {
+      "Dashboard": {
+        "Canary": {
+          "ObservationWindowSeconds": 120,
+          "ErrorRateThreshold": 0.2,
+          "MinSamples": 50,
+          "DefaultSteps": [10, 30, 50, 100],
+          "MaxWindowExtensions": 3
+        }
+      }
+    }
+  }
+}
+```
+
+**Plugin extension point** — `PluginCapability` gains `LoadBalancingPolicy` and `Transform`. A third-party plugin implements `IGatewayPluginHostServices.ConfigureHostServices(IServiceCollection)` to register its own policy. Note this receives the *host* container; policies registered from the plugin's runtime container are invisible to YARP.
+
+### Metric Alerts (2.3.0.40)
+
+A canary rolls itself back, but only while someone is watching. For the hours nobody is watching, thresholds on 5xx rate, p99 latency and open circuit breakers do the shouting. Configure it under **Notifications → Metric Alerts**, or call `POST /api/alerts/rules`:
+
+```json
+{
+  "name": "checkout 5xx",
+  "kind": "ErrorRate",
+  "scopeKind": "Cluster",
+  "scope": "checkout",
+  "threshold": 0.05,
+  "windowSeconds": 60,
+  "forSeconds": 120,
+  "minSamples": 50,
+  "severity": "Critical",
+  "renotifyMinutes": 30,
+  "notifyOnResolve": true
+}
+```
+
+Three metrics: `ErrorRate` (share of 5xx in the window, `0.05` = 5%), `LatencyP99` (p99 proxy latency in seconds) and `CircuitOpen` (number of open breakers in scope). Scopes are `Global`, `Cluster` or `Route` — circuit rules are cluster-only, because breakers are tracked per cluster.
+
+Deliberate choices:
+
+- **The decision order is window → samples → threshold → duration.** Skip a step and the feature becomes a noise generator. One failed request is a 100% error rate, so below `minSamples` nothing is judged at all; an unfilled window never dresses 15 seconds of traffic up as a 60-second rate; a breach that has not lasted `forSeconds` stays `Pending` and notifies nobody.
+- **No data is not recovery.** With no traffic in the window the signal is `InsufficientData`, and a firing incident holds in place. Otherwise "upstream died, so the error counter stopped too" reads as 0% errors — the exact moment a false all-clear is worst.
+- **Windows slide.** Each tick keeps a counter snapshot and differences against the newest one at least a window old, so every tick can decide instead of a tumbling window averaging a burst across a boundary. `ObservedSeconds` reports the real coverage: 74s is labelled 74s, not rounded down to the configured 60.
+- **`Critical` is delivered as `Error`.** The channels recognise `Error` and `Warning`; anything else falls through to the green checkmark.
+- **Delivery state is on screen.** When no platform subscribes to the `MetricAlert` event the panel says so up front, because a rule that evaluates correctly and reaches nobody is this feature's most likely way to die quietly.
+- **Recovery is a notification too**, with duration and peak — but only for incidents that actually fired. A breach that recovered while still `Pending` is closed silently: nobody was told it started, so nobody should be told it ended.
+- Rules and history persist to `metric-alerts.json` beside the SQLite database. Incidents still open after a restart are closed and marked `gatewayRestarted`: their counter baseline is gone, so they cannot be continued honestly.
+
+Endpoints: `GET /api/alerts`, `POST /api/alerts/rules`, `DELETE /api/alerts/rules/{id}`, `POST /api/alerts/rules/{id}/test` (prove the channel actually delivers) and `POST /api/alerts/incidents/{id}/mute` (silences notifications, not measurement). Every number an alert quotes is visible in `/metrics`: `gateway_route_failures_total{route,cluster}`, `gateway_request_duration_seconds`, `gateway_circuits{state}`.
+
+Defaults are overridable under `Aneiang:Yarp:Dashboard:Alerting` (`TickSeconds`, `MaxIncidents`, `DefaultWindowSeconds`, `DefaultForSeconds`, `DefaultMinSamples`, `DefaultErrorRateThreshold`, `DefaultLatencyP99Seconds`).
+
+---
+
+## Distributed Tracing (2.3.0.40)
+
+Metrics tell you how much is failing. They cannot tell you which hop failed. With tracing on, every stage of a request through the gateway gets its own span — see them on the dashboard's **Tracing** page (or `GET /api/tracing`):
+
+```
+GET /api/baidu/{**catchAll}          0.0ms  ───────────────────────────────  26.1ms   Microsoft.AspNetCore
+  proxy.forwarder                    0.3ms  ──────────────────────────────   25.8ms   Yarp.ReverseProxy
+    gateway.forward                  0.3ms  ─────────────────────────────   25.7ms   route=baidu_api_route
+      gateway.plugin rate-limit      0.3ms  ──────────────────────────────  25.4ms
+        gateway.plugin circuit-breaker / request-retry / response-cache / proxy-log / traffic-metrics
+          GET (System.Net.Http)      0.8ms  ────────────────────────────    24.2ms
+```
+
+`gateway.forward` carries `gateway.route.id`, `gateway.cluster.id`, `gateway.destination.id`, `http.response.status_code` and `gateway.short_circuited`, so "which destination is slow" and "did a plugin short-circuit this" are answers you read rather than reconstruct from logs.
+
+Design decisions worth spelling out:
+
+- **Instrumentation lives in the core library, export lives in the dashboard.** `Aneiang.Yarp` only does `new ActivitySource("Aneiang.Yarp")` using the framework's own `System.Diagnostics.DiagnosticSource` — **no new dependency**. The OTel SDK, instrumentation and OTLP exporter all sit in `Aneiang.Yarp.Dashboard`. A gateway that never enables tracing should not carry an exporter in its dependency graph, and definitely should not spend the night logging "cannot reach collector".
+- **Third-party plugins are traced without touching them.** The host wraps `IReverseProxyApplicationBuilder` in `TracedProxyPipelineBuilder`, so the `Use()` a plugin receives silently gains a span named after the plugin id. `ConfigureProxyPipeline` keeps its signature.
+- **Only 5xx and forwarder errors are marked `Error`.** A 4xx is not marked: a client error is not a gateway failure, and that is the OTel convention. `gateway.short_circuited=true` means a plugin ended the request — no destination chosen, no forwarder error — which keeps "blocked by a plugin" distinct from "upstream is down".
+- **Sampling is deterministic**: the verdict is derived from the trace id, so one trace never gets recorded on the parent and dropped on the child. **An inbound `traceparent` sampled flag wins over the local ratio** — overriding it would splice the trace in half exactly at the gateway. The ratio is adjustable from the panel and applies to the next request.
+- **Control-plane requests are not traced.** `/{RoutePrefix}`, `/_content`, `/metrics`, `/health|/ready|/live` and `/favicon.ico` are excluded — otherwise the tracing page's five-second poll fills the buffer with the act of looking at it and pushes real traffic out.
+- **It works without a collector.** With `ExportEnabled: false` spans go only to the in-memory buffer and the waterfall still renders. The buffer is bounded on every axis (trace count, spans per trace, tag count and tag length) and **never retains an `Activity`** — that would pin the `HttpContext` and the request body. Spans are flattened to strings the moment they end.
+- **A failed start does not block the process.** A malformed endpoint or unreachable collector is recorded and shown on the tracing page while the gateway keeps forwarding — the gateway should not refuse to boot because observability is unavailable.
+- **The numbers say what they are.** "Sampling decisions / dropped" counts **decisions**, including control-plane requests that get filtered out right after sampling, so it will exceed the number of traces actually captured. "Buffer" is the answer to "how many traces do I have".
+
+Point `Endpoint` at `4317` (gRPC) or `4318` (http/protobuf); one line of Jaeger to look at them:
+
+```bash
+docker run -d --name jaeger -p 16686:16686 -p 4317:4317 jaegertracing/all-in-one:latest
+```
+
+```json
+{
+  "Gateway": {
+    "Dashboard": {
+      "Tracing": {
+        "Enabled": true,
+        "ExportEnabled": true,
+        "Endpoint": "http://localhost:4317",
+        "Protocol": "grpc",
+        "ServiceName": "aneiang-gateway",
+        "Environment": "production",
+        "SamplingRatio": 0.1,
+        "RecordPluginSpans": true,
+        "RecentTraceCapacity": 100,
+        "MaxSpansPerTrace": 64
+      }
+    }
+  }
+}
+```
+
+> Tracing sits under `Gateway:Dashboard`, next to `RoutePrefix` and `Auth`. It is off by default: no spans are produced and no exporter is registered. Changing `Enabled` needs a restart (the provider is built once at startup); changing the sampling ratio does not.
+
+Endpoints: `GET /api/tracing` (status + most recent traces), `GET /api/tracing/traces/{traceId}` (full span list), `POST /api/tracing/sampling` (`{"ratio":0.1}`), `POST /api/tracing/clear`.
+
+---
+
+## Fault Injection (2.3.0.40)
+
+Everything above — retries, circuit breaking, metrics, alerts, automatic rollback — is only verified when a real failure happens. Failures happen at the worst possible time, and almost always when nobody is watching the dashboard. Fault injection flips it around: **manufacture the failure on purpose, then check whether those components do what you said they would.**
+
+Configure it under Plugin Center → Stability → Fault Injection, bound to a route, validated against a JSON Schema:
+
+```json
+{
+  "enabled": true,
+  "probability": 1.0,
+  "delayMinMs": 400,
+  "delayMaxMs": 800,
+  "errorStatusCode": 503,
+  "errorBody": "{\"error\":\"upstream_unavailable\"}",
+  "abortConnection": false,
+  "requiredHeader": "X-Chaos",
+  "requiredHeaderValue": "on",
+  "announce": true
+}
+```
+
+Three kinds of fault, usable alone or stacked: **delay** (random between `delayMinMs` and `delayMaxMs`), **error status code** (400–599 plus a custom body), and **connection abort** (a transport-level failure rather than an upstream 5xx — retries and the circuit breaker treat those two differently, so both are worth drilling).
+
+A few decisions that make this safe enough for a real environment:
+
+- **The pipeline position is deliberate: it sits at the innermost position, right next to the forwarder.** Only there is an injected 5xx **indistinguishable from a genuinely broken upstream** for retries, the circuit breaker, metrics, alerts and canary rollback — retries retry it, the breaker counts it, `gateway_route_failures_total` increments, alerts fire, a canary rolls back because of it. Move it to the outer edge and none of those components ever see the fault: the drill "passes", and **a false sense of confidence is worse than no drill at all**.
+- **By default it does nothing.** Every field except `enabled` is off; a binding where you only ticked "enabled" does not change a single request. A drill has to describe what it is injecting — otherwise "I ran it and nothing broke" gets mistaken for "the system is stable".
+- **`requiredHeader` is the precondition for drilling in production.** Set it and only requests carrying that header are injected; real users are untouched and you can re-run the same check with one `curl`.
+- **`probability` gives you "10% of requests fail".** Proving that an alert fires should not require killing the whole route.
+- **`abortConnection` wins over `errorStatusCode`** when both are set — a self-contradictory config does not get guessed at.
+- **`announce` (on by default) adds `X-Fault-Injected: 503` to the response.** The worst part of a drill is not being able to tell afterwards whether this outage was injected or real; this header is the dividing line. Turn it off when you need a genuinely bare 5xx, e.g. to check client behaviour.
+- **Delays honour `RequestAborted`** — the client gives up, the timer stops, otherwise long delays pile up tasks that can only time out. Capped at two minutes so a slip of the finger cannot hang a route.
+- **Logging is a `Warning` on the first injection per route, then `Debug`** — a 100% drill should not drown itself in its own explanations.
+
+**"One-click off" means turning off the binding, not the plugin.** Plugin Center refuses to disable a plugin that still has bindings (`409 Remove plugin bindings first: route:xxx`); that guard exists so a misclick does not throw away the whole drill config. When the drill is over, turn the binding's `enabled` off: the next request stops being injected, the config stays, and you can re-open the same drill whenever you like.
+
+```bash
+# Stop injecting immediately (config is kept); the prefix defaults to apigateway
+curl -X POST http://localhost:5000/apigateway/api/plugin-bindings/batch-enabled \
+  -H "Content-Type: application/json" \
+  -d '{"bindingIds":["<binding-id>"],"enabled":false}'
+```
+
+The panel's toggle does the same thing.
+
+> One easy trip-up: **injection happens inside the retry layer**, so injecting a 503 into a route with retries configured will actually hit the upstream several times and log several injections. That is correct — retry is supposed to see it. When drilling "can retries recover this?", that is the phenomenon you want; when drilling "will the alert fire?", remember to account for the extra duration.
+
+---
+
+## Multi-Environment (2.3.0.40)
+
+One configuration, one environment. Splitting dev / staging / prod needs **two separate answers to two separate questions**: which environment's configuration the gateway is **serving**, and which one you are **editing**. Most tools collapse those into one switch, and then "let me take a look at staging" quietly moves production traffic.
+
+Here they are kept apart on purpose:
+
+| | What it is | Can it change? |
+|:--|:--|:--|
+| **Runtime environment** | The configuration actually being forwarded | ❌ Fixed at process start |
+| **Editing view** | The configuration every dashboard page reads and writes | ✅ Switchable at any time, affects nothing else |
+
+At startup they are the same. After a switch, every route, cluster and plugin binding on screen belongs to the other environment while **forwarding is untouched**; saving anything writes to that environment's store and the snapshot publish is refused.
+
+```json
+{
+  "Gateway": {
+    "Storage": {
+      "Sqlite": { "ConnectionString": "Data Source=gateway-store.db" },
+      "Environments": {
+        "Runtime": "prod",
+        "Names": [ "prod", "staging", "dev" ]
+      }
+    }
+  }
+}
+```
+
+**The implementation is one database file per environment, not one extra column per table.** Isolation is at the filesystem level — a broken dev store cannot reach production:
+
+| Environment | Store file |
+|:--|:--|
+| `prod` (runtime) | `gateway-store.db` — **exactly** what is configured |
+| `staging` | `gateway-store.staging.db` |
+| `dev` | `gateway-store.dev.db` |
+
+Two consequences worth spelling out:
+
+- **The runtime environment reuses the configured connection string verbatim**, so an existing deployment upgrades in place with its config, history and audit log still where they were — **no migration**. Suffixing every environment name blindly would have made an upgrade look like "all my config is gone".
+- **No table, no SQL and no repository was changed.** That is also why this feature did not require touching the 358 existing tests.
+
+The switcher lives in the dashboard header: grey with a green `LIVE` badge while editing the runtime environment, amber (and saying which environment is still serving) while editing any other. It is not rendered at all for single-environment deployments, so nothing changes for them.
+
+```bash
+# Read: runtime environment, current editing view, available list
+curl http://localhost:5000/apigateway/api/environments
+
+# Write: switch the editing view (forwarding is unaffected)
+curl -X POST http://localhost:5000/apigateway/api/environments/switch \
+  -H "Content-Type: application/json" -d '{"environment":"dev"}'
+```
+
+A few facts worth knowing before using it:
+
+- **Switching reloads the working set and refreshes the page**, so unsaved form content is lost — the confirmation dialog says so.
+- **Logs, metrics and traces are runtime data.** After switching to an environment that never handled traffic, those pages are empty. That is not a bug: there is no traffic there.
+- **Environment names are limited to letters, digits, `_` and `-`**, because the name becomes part of a file name. `../prod` fails at configuration time rather than at the moment the store is opened.
+- **Promotion (pushing dev's config to prod) is not built yet**; it belongs to a later batch (environment diff → one-click promotion → approval).
+
+---
+
+## What We Deliberately Do Not Build
+
+Stating the boundaries up front prevents the wrong tool being picked for the job. None of these are "not done yet" — they are **intentional non-goals**:
+
+| Non-goal | Why | Use instead |
+|:--|:--|:--|
+| **API portal / developer self-service console** | It turns this into a second Kong Dev Portal, while the gateway's value is data-plane stability, not doc hosting | A dedicated portal, or a static site generated from OpenAPI |
+| **Built-in IdP / user directory** | Identity is a specialist domain; a home-grown account system only weakens the security boundary | Keycloak, Auth0, Azure AD — the gateway validates and forwards tokens |
+| **Log storage and search** | The gateway collects and forwards; storing and querying is Elasticsearch / Loki's job | `proxy-log` plugin output plus an external log platform |
+| **Service mesh control plane** | Sidecar and ingress-gateway are different architectures; combining them adds both complexities | Istio / Linkerd |
+| **Kubernetes Ingress Controller** | Needs CRDs, a reconcile loop and K8s lifecycle semantics — a product, not a feature | ingress-nginx, Traefik, the official YARP ingress path |
+| **Distributed rate limiting (cross-instance counters)** | An external counter (Redis) is a new failure domain; per-instance limiting covers most ingress cases | A Redis limiter ahead of `rate-limit`, or divide the quota by instance count |
+
+---
+
 ## Built-in Plugins
 
 | ID | Scope | What it does |
 |:---|:------|:-------------|
 | `waf` | Route | IP allow/deny, SQLi / XSS / path-traversal detection, request limits, security headers |
 | `rate-limit` | Route | FixedWindow / SlidingWindow / TokenBucket / Concurrency |
-| `rate-limit-redis` | Route | Distributed limiting via Redis Lua; 429 with `Retry-After` / `X-RateLimit-*` |
 | `request-retry` | Route | Retry with exponential backoff + jitter, status/exception policy |
 | `circuit-breaker` | Cluster | Failure threshold, recovery timeout, half-open probing |
 | `compression` | Route | Gzip / Brotli by MIME allowlist + min size |
@@ -211,6 +524,7 @@ Config: `Mode` (default `Static`), `Endpoint`, `ServiceName`, `Namespace` (`defa
 | `cluster-metrics` | Cluster | Per-cluster requests / errors / latency / destinations |
 | `proxy-log` | Route | Full proxy capture (headers / optional body), sampling |
 | `service-discovery` | Cluster | Periodic registry-backed endpoint refresh |
+| `fault-injection` | Route | Delay / error-code / connection-abort injection for drilling retries, breakers, alerts and rollback |
 
 ---
 

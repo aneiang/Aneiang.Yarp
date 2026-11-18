@@ -1,5 +1,7 @@
 using Aneiang.Yarp.Storage;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Aneiang.Yarp.Storage.Sqlite;
 
@@ -16,8 +18,17 @@ public static class StorageServiceCollectionExtensions
         services.AddOptions<StorageOptions>()
             .BindConfiguration(StorageOptions.SectionName);
 
-        // Shared connection factory. Schema migration is triggered lazily on first
-        // connection use (via Lazy<Task> in SqliteConnectionFactory), eliminating the
+        // Fallback environment resolver so storage works on its own (tests, tools, hosts that only
+        // pull in the storage package). The gateway core registers the real one, which additionally
+        // lets the dashboard switch the editing view at runtime.
+        services.TryAddSingleton<IStorageEnvironmentResolver>(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<StorageOptions>>().Value;
+            return new SingleEnvironmentResolver(options.Environments.Runtime);
+        });
+
+        // Shared connection factory. Schema migration is triggered lazily per environment
+        // on first connection use (via Lazy<Task> in SqliteConnectionFactory), eliminating the
         // startup race condition that existed when migrator was a parallel IHostedService.
         services.AddSingleton<SqliteConnectionFactory>();
         services.AddSingleton<IDbConnectionFactory>(sp => sp.GetRequiredService<SqliteConnectionFactory>());

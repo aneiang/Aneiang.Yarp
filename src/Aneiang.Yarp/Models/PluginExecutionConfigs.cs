@@ -53,18 +53,6 @@ public sealed record RateLimitExecutionConfig
     public string RouteUid { get; init; } = string.Empty;
 }
 
-/// <summary>Compiled route-scoped configuration for the Redis distributed rate-limit plugin.</summary>
-public sealed record RedisRateLimitExecutionConfig
-{
-    public bool Enabled { get; init; } = true;
-    public string? RedisConnectionString { get; init; }
-    public string Algorithm { get; init; } = "FixedWindow";
-    public int Limit { get; init; } = 100;
-    public int WindowSeconds { get; init; } = 60;
-    public string KeyPrefix { get; init; } = "aneiang:rl";
-    public int BurstBalance { get; init; }
-}
-
 public sealed record ProxyLogBindingExecutionConfig
 {
     public bool? CaptureRequestHeaders { get; init; }
@@ -136,4 +124,45 @@ public sealed record ServiceDiscoveryExecutionConfig
     public string Scheme { get; init; } = "http";
     public int RefreshSeconds { get; init; } = 30;
     public int RequestTimeoutSeconds { get; init; } = 5;
+}
+
+/// <summary>
+/// Route-scoped fault injection configuration compiled from a plugin binding.
+/// </summary>
+/// <remarks>
+/// Everything here is a description of a <em>deliberate</em> failure, so the defaults are the
+/// harmless ones: no delay, no status code, nothing to abort. A binding that only sets
+/// <see cref="Enabled"/> therefore injects nothing at all, which is the right outcome for a
+/// half-finished drill configuration.
+/// </remarks>
+public sealed record FaultInjectionExecutionConfig
+{
+    public bool Enabled { get; init; }
+
+    /// <summary>Fraction of matching requests that are affected, 0 to 1.</summary>
+    public double Probability { get; init; } = 1.0;
+
+    /// <summary>Lower bound of the injected delay in milliseconds. <c>0</c> means no delay.</summary>
+    public int DelayMinMs { get; init; }
+
+    /// <summary>Upper bound of the injected delay. Below <see cref="DelayMinMs"/> means a fixed delay.</summary>
+    public int DelayMaxMs { get; init; }
+
+    /// <summary>Status code to return instead of forwarding. <c>0</c> means no error injection.</summary>
+    public int ErrorStatusCode { get; init; }
+
+    /// <summary>Response body for <see cref="ErrorStatusCode"/>. <c>null</c> writes a generic JSON body.</summary>
+    public string? ErrorBody { get; init; }
+
+    /// <summary>Abort the connection instead of answering. Simulates a transport failure, not an upstream 5xx.</summary>
+    public bool AbortConnection { get; init; }
+
+    /// <summary>Only inject when this request header is present. Empty means every request matches.</summary>
+    public string? RequiredHeader { get; init; }
+
+    /// <summary>Required value for <see cref="RequiredHeader"/>. Empty means "any value".</summary>
+    public string? RequiredHeaderValue { get; init; }
+
+    /// <summary>Add <c>X-Fault-Injected</c> to the response so a drill cannot be mistaken for an outage.</summary>
+    public bool Announce { get; init; } = true;
 }

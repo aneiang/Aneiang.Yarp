@@ -16,6 +16,14 @@
         initialized: false,
         autoRefreshInterval: null,
 
+        /* plugin id -> dashboard page that visualises its output */
+        MONITOR_PAGES: {
+            'circuit-breaker': 'circuits',
+            'proxy-log': 'logs',
+            'traffic-metrics': 'traffic',
+            'cluster-metrics': 'cluster-metrics'
+        },
+
         init: function() {
             if (this.initialized) return;
             this.setupEvents();
@@ -65,6 +73,7 @@
             if (pluginId && pluginId.toLowerCase().includes('retry')) return 'bi-arrow-repeat';
             if (pluginId && pluginId.toLowerCase().includes('waf')) return 'bi-shield-lock';
             if (pluginId && pluginId.toLowerCase().includes('rate')) return 'bi-speedometer2';
+            if (pluginId && pluginId.toLowerCase().includes('fault')) return 'bi-bug';
             return 'bi-puzzle';
         },
 
@@ -73,7 +82,30 @@
             if (pluginId && pluginId.toLowerCase().includes('retry')) return '#0ea5e9';
             if (pluginId && pluginId.toLowerCase().includes('waf')) return '#f59e0b';
             if (pluginId && pluginId.toLowerCase().includes('rate')) return '#0ea5e9';
+            if (pluginId && pluginId.toLowerCase().includes('fault')) return '#dc2626';
             return '#64748b';
+        },
+
+        /** Binding scope chips: a plugin can only be bound to the target types it declares. */
+        getScopeHtml: function(scopes) {
+            var list = Array.isArray(scopes) ? scopes : [];
+            if (!list.length) return '<span class="text-muted">-</span>';
+            return list.map(function(scope) {
+                var isCluster = String(scope).toLowerCase().indexOf('cluster') >= 0;
+                return '<span class="plg-scope plg-scope--' + (isCluster ? 'cluster' : 'route') + '">' +
+                    (isCluster ? __('pluginPage.cluster') : __('pluginPage.route')) + '</span>';
+            }).join('');
+        },
+
+        /** Deep link into Plugin Center, which owns this plugin's configuration tab. */
+        getConfigHref: function(pluginId) {
+            var base = (window.__dashboard && window.__dashboard.basePath) || '';
+            return base + '/plugin-center#' + encodeURIComponent(pluginId);
+        },
+
+        getPageHref: function(page) {
+            var base = (window.__dashboard && window.__dashboard.basePath) || '';
+            return base + '/' + page;
         },
 
         render: function(data, container) {
@@ -129,11 +161,36 @@
                 }
                 var rowTitle = window.DashboardUtils.escapeHtml(tips.join(' · '));
 
-                // Action buttons: toggle + external lifecycle (upgrade/uninstall)
+                // Action buttons: configure (Plugin Center) + observe (monitor page) + toggle + external lifecycle
+                // "Enabled but bound to nothing" is the one state where the next step is
+                // unambiguous, so it gets a labelled primary button instead of an icon.
+                var needsBinding = plugin.enabled && !(plugin.bindingCount > 0);
+                var actions = '';
+                if (needsBinding) {
+                    actions += '<a class="btn btn-sm btn-primary plg-bind-cta" href="' + self.getConfigHref(plugin.pluginId) + '" ' +
+                        'title="' + self._t('pw.pendingHint', '已启用但未绑定，插件不会生效') + '">' +
+                        '<i class="bi bi-plus-circle me-1"></i>' + self._t('pw.act.bind', '去绑定') + '</a>';
+                } else {
+                    actions += '<a class="btn btn-sm btn-outline-primary" href="' + self.getConfigHref(plugin.pluginId) + '" ' +
+                        'title="' + self._t('plugin.configure', '配置绑定') + '">' +
+                        '<i class="bi bi-sliders"></i></a>';
+                }
+                /* Plugins that render output somewhere get a second entry point, so
+                   "where do I configure it" and "where do I watch it" never collide. */
+                var monitorPage = self.MONITOR_PAGES[plugin.pluginId];
+                if (monitorPage) {
+                    var monitorHint = self._t('pc.act.monitor', '查看监控');
+                    if (!plugin.enabled || !(plugin.bindingCount > 0)) {
+                        monitorHint += ' · ' + self._t('pc.monitor.locked', '插件生效后才会有数据');
+                    }
+                    actions += '<a class="btn btn-sm btn-outline-secondary" href="' + self.getPageHref(monitorPage) + '" ' +
+                        'title="' + window.DashboardUtils.escapeHtml(monitorHint) + '">' +
+                        '<i class="bi bi-graph-up-arrow"></i></a>';
+                }
                 var toggleClass = plugin.enabled ? 'btn-outline-danger' : 'btn-outline-success';
                 var toggleIcon = plugin.enabled ? 'bi-toggle-on' : 'bi-toggle-off';
                 var toggleLabel = plugin.enabled ? __('plugin.toggleOff') : __('plugin.toggleOn');
-                var actions = '<button class="btn btn-sm ' + toggleClass + '" ' +
+                actions += '<button class="btn btn-sm ' + toggleClass + '" ' +
                     'onclick="PluginModule.togglePlugin(\'' + window.DashboardUtils.escapeHtml(plugin.pluginId) + '\', ' + !plugin.enabled + ')" title="' + toggleLabel + '">' +
                     '<i class="bi ' + toggleIcon + '"></i></button>';
                 if (plugin.registrationStatus) {
@@ -162,20 +219,28 @@
                     : health === 'Degraded' || health === 'Starting' || health === 'Stopping' ? '#f59e0b'
                     : health === 'Faulted' ? '#ef4444' : '#94a3b8';
 
+                // Enabled but bound to nothing: the plugin is on yet does nothing.
+                // Calling that out inline is the whole point of this column.
+                var bindHint = plugin.bindingCount > 0
+                    ? ' · <i class="bi bi-link"></i> ' + plugin.bindingCount
+                    : (plugin.enabled ? ' · <span class="plg-unbound">' + self._t('plugin.unbound', '未绑定') + '</span>' : '');
+
                 return '<tr' + (plugin.enabled ? '' : ' class="plg-row--off"') + ' title="' + rowTitle + '">' +
                     '<td><div class="plg-cell-plugin">' +
                         '<span class="plg-icon" style="background:' + color + '15;color:' + color + ';"><i class="bi ' + icon + '"></i></span>' +
                         '<div>' +
                             '<div class="plg-name">' + window.DashboardUtils.escapeHtml(localizedName) + ' ' + regBadge + '</div>' +
+                            '<div class="plg-about">' + window.DashboardUtils.escapeHtml(self._t('pc.about.' + plugin.pluginId, '')) + '</div>' +
                             '<div class="plg-plugin-id">' + window.DashboardUtils.escapeHtml(plugin.pluginId) +
                                 ' · v' + window.DashboardUtils.escapeHtml(plugin.version || '1.0') +
-                                (plugin.bindingCount > 0 ? ' · <i class="bi bi-link"></i> ' + plugin.bindingCount : '') +
+                                bindHint +
                             '</div>' +
                         '</div>' +
                     '</div></td>' +
                     '<td><span class="plg-health" style="color:' + healthColor + ';">' +
                         '<span class="plg-dot" style="background:' + healthColor + ';"></span>' +
                         window.DashboardUtils.escapeHtml(health || '-') + '</span></td>' +
+                    '<td>' + self.getScopeHtml(plugin.scopes) + '</td>' +
                     '<td class="plg-actions">' + actions + '</td>' +
                 '</tr>';
             }).join('');
@@ -184,6 +249,7 @@
                 '<div class="plg-table-wrap"><table class="plg-table"><thead><tr>' +
                     '<th><i class="bi bi-puzzle me-1"></i>' + __('plugin.title') + '</th>' +
                     '<th><i class="bi bi-activity me-1"></i>' + __('plugin.colHealth', '健康状态') + '</th>' +
+                    '<th style="width:96px;"><i class="bi bi-signpost me-1"></i>' + __('plugin.colScope', '作用于') + '</th>' +
                     '<th class="plg-th-actions"></th>' +
                 '</tr></thead><tbody>' + rows + '</tbody></table></div>';
         },
@@ -199,6 +265,8 @@
                     await window.DashboardApi.togglePlugin(pluginId, enable);
                     window.DashboardModals.showSuccess(enable ? __('plugin.enableSuccess') : __('plugin.disableSuccess'));
                     await self.load();
+                    // keep the shared workspace status line in sync after any toggle
+                    if (window.PluginWorkspace) window.PluginWorkspace.refresh();
                 } catch (error) {
                     console.error('[Plugin] Toggle failed:', error);
                     window.DashboardModals.showError(__('plugin.toggleFailed'));
@@ -213,6 +281,8 @@
                     await window.DashboardApi.resetPlugins();
                     window.DashboardModals.showSuccess(__('plugin.resetSuccess'));
                     await self.load();
+                    // keep the shared workspace status line in sync after any toggle
+                    if (window.PluginWorkspace) window.PluginWorkspace.refresh();
                 } catch (error) {
                     console.error('[Plugin] Reset failed:', error);
                     window.DashboardModals.showError(__('plugin.resetFailed'));
@@ -246,6 +316,8 @@
                         await window.DashboardApi.upgradePlugin(pluginId, sourceDir);
                         window.DashboardModals.showSuccess(self._t('plugin.upgradeSuccess', 'Plugin upgraded successfully'));
                         await self.load();
+                    // keep the shared workspace status line in sync after any toggle
+                    if (window.PluginWorkspace) window.PluginWorkspace.refresh();
                         return true;
                     } catch (error) {
                         console.error('[Plugin] Upgrade failed:', error);
@@ -268,6 +340,8 @@
                     await window.DashboardApi.uninstallPlugin(pluginId);
                     window.DashboardModals.showSuccess(self._t('plugin.uninstallSuccess', 'Plugin uninstalled successfully'));
                     await self.load();
+                    // keep the shared workspace status line in sync after any toggle
+                    if (window.PluginWorkspace) window.PluginWorkspace.refresh();
                 } catch (error) {
                     console.error('[Plugin] Uninstall failed:', error);
                     var errMsg = (error && error.message) || self._t('plugin.uninstallFailed', 'Uninstall failed');

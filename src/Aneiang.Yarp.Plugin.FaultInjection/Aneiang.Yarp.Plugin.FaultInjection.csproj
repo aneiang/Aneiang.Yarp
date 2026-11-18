@@ -1,10 +1,10 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Description>Redis-backed distributed rate limiting plugin for Aneiang.Yarp gateway.</Description>
+    <Description>Fault injection plugin for Aneiang.Yarp gateway: adds latency or failures to a route on purpose so retries, circuit breakers and alerts can be drilled.</Description>
   </PropertyGroup>
 
   <ItemGroup>

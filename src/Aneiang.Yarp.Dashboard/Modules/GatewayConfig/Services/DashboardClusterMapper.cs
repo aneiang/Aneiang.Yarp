@@ -82,7 +82,10 @@ internal static class DashboardClusterMapper
             ClusterUid = dynamicCluster?.ClusterUid,
             ClusterKey = cluster.ClusterId ?? string.Empty,
             DisplayName = dynamicCluster?.DisplayName ?? cluster.ClusterId ?? string.Empty,
-            LoadBalancingPolicy = cluster.LoadBalancingPolicy ?? "Default",
+            // Never invent a policy name here. The previous "Default" placeholder was written back
+            // into the JSON editor on save, and YARP has no policy by that name — so editing any
+            // unrelated field of a cluster without an explicit policy broke the cluster.
+            LoadBalancingPolicy = cluster.LoadBalancingPolicy ?? string.Empty,
             SessionAffinity = MapSessionAffinity(cluster.SessionAffinity),
             HealthCheck = MapHealthCheck(cluster.HealthCheck),
             HttpClient = MapHttpClient(cluster.HttpClient),

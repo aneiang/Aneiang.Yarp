@@ -21,6 +21,17 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.4" />
+
+    <!--
+      Tracing lives in the management plane, not in Aneiang.Yarp itself: the core library only
+      creates ActivitySource spans, which costs nothing and adds no dependency. Everything that
+      actually exports them (and the OTLP stack behind it) is opt-in here, and stays dormant
+      unless Gateway:Dashboard:Tracing:Enabled is true.
+    -->
+    <PackageReference Include="OpenTelemetry" Version="1.15.3" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -31,13 +42,12 @@
     <ProjectReference Include="..\Aneiang.Yarp.Plugin.Retry\Aneiang.Yarp.Plugin.Retry.csproj" />
     <ProjectReference Include="..\Aneiang.Yarp.Plugin.CircuitBreaker\Aneiang.Yarp.Plugin.CircuitBreaker.csproj" />
     <ProjectReference Include="..\Aneiang.Yarp.Plugin.RateLimit\Aneiang.Yarp.Plugin.RateLimit.csproj" />
-    <ProjectReference Include="..\Aneiang.Yarp.Plugin.RateLimit.Redis\Aneiang.Yarp.Plugin.RateLimit.Redis.csproj" />
     <ProjectReference Include="..\Aneiang.Yarp.Plugin.ProxyLog\Aneiang.Yarp.Plugin.ProxyLog.csproj" />
     <ProjectReference Include="..\Aneiang.Yarp.Plugin.Cache\Aneiang.Yarp.Plugin.Cache.csproj" />
     <ProjectReference Include="..\Aneiang.Yarp.Plugin.Compression\Aneiang.Yarp.Plugin.Compression.csproj" />
     <ProjectReference Include="..\Aneiang.Yarp.Plugin.ServiceDiscovery\Aneiang.Yarp.Plugin.ServiceDiscovery.csproj" />
-
     <ProjectReference Include="..\Aneiang.Yarp.Plugin.Metrics\Aneiang.Yarp.Plugin.Metrics.csproj" />
+    <ProjectReference Include="..\Aneiang.Yarp.Plugin.FaultInjection\Aneiang.Yarp.Plugin.FaultInjection.csproj" />
   </ItemGroup>
 
   <!-- Plugin module files have been migrated to plugin projects and deleted from Dashboard. -->
@@ -45,6 +55,22 @@
   <ItemGroup>
     <EmbeddedResource Include="Infrastructure\I18n\zh-CN\*.json" />
     <EmbeddedResource Include="Infrastructure\I18n\en-US\*.json" />
+  </ItemGroup>
+
+  <!--
+    The Grafana board ships inside the package, not only in the repo: "the template is
+    somewhere on GitHub" is not instructions an operator can follow during an incident.
+    Landed in both content/ (copied to the consumer's output) and contentFiles/ (the
+    modern package layout) so it is discoverable whether the project uses
+    PackageReference assets or packages.config.
+  -->
+  <ItemGroup>
+    <None Include="..\..\docs\observability\grafana-dashboard.json" Link="observability\grafana-dashboard.json">
+      <Pack>true</Pack>
+      <PackagePath>content\observability\;contentFiles\any\any\observability\</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <PackageCopyToOutput>true</PackageCopyToOutput>
+    </None>
   </ItemGroup>
 
 </Project>

@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Yarp.ReverseProxy.Configuration;
 
 namespace Aneiang.Yarp.Serialization;
@@ -40,7 +42,8 @@ public static class YarpJsonConfig
         };
         options.Converters.Add(new JsonStringEnumConverter());
         options.Converters.Add(new VersionConverter());
-        options.Converters.Add(new LenientBooleanConverter());
+        options.Converters.Add(new LenientBooleanConverterFactory());
+        options.Converters.Add(new LenientTimeSpanConverterFactory());
         options.Converters.Add(new LenientStringConverter());
         return options;
     }
@@ -104,19 +107,35 @@ public static class YarpJsonConfig
     /// Accepts booleans written either as native JSON booleans or as relaxed strings
     /// (e.g. "true"/"false"/"True"/"False"), matching the canonical YARP appsettings style.
     /// Also tolerates 0/1 numeric forms. Writes back as native JSON booleans.
-    /// This converter is also used for <see cref="Nullable{Boolean}"/> via the framework's
-    /// nullable converter, which delegates element reads to this instance.
+    /// <para>
+    /// Nullable targets additionally accept an empty string as "not specified", which is
+    /// what a dashboard form leaves behind when the user never touched the field. Without
+    /// this the whole request failed with "Cannot convert string '' to boolean".
+    /// </para>
     /// </summary>
-    private sealed class LenientBooleanConverter : JsonConverter<bool>
+    private sealed class LenientBooleanConverterFactory : JsonConverterFactory
     {
+        /// <summary>Handles <see cref="bool"/> and <see cref="Nullable{Boolean}"/>.</summary>
+        /// <param name="typeToConvert">Target type.</param>
+        /// <returns>True when the type is supported.</returns>
+        public override bool CanConvert(Type typeToConvert)
+            => typeToConvert == typeof(bool) || typeToConvert == typeof(bool?);
+
+        /// <summary>Creates the matching converter.</summary>
+        /// <param name="typeToConvert">Target type.</param>
+        /// <param name="options">Serializer options.</param>
+        /// <returns>A converter instance.</returns>
+        public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options)
+            => typeToConvert == typeof(bool?)
+                ? new NullableLenientBooleanConverter()
+                : new LenientBooleanConverter();
+
         /// <summary>
-        /// Reads the.
+        /// Shared parsing for both converter variants.
         /// </summary>
-        /// <param name="reader">The reader.</param>
-        /// <param name="typeToConvert">The type to convert.</param>
-        /// <param name="options">The options.</param>
-        /// <returns>A bool.</returns>
-        public override bool Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        /// <param name="reader">Reader positioned on the value.</param>
+        /// <returns>The parsed boolean.</returns>
+        internal static bool Parse(ref Utf8JsonReader reader)
         {
             switch (reader.TokenType)
             {
@@ -129,7 +148,8 @@ public static class YarpJsonConfig
                     if (bool.TryParse(raw, out var parsed)) return parsed;
                     if (string.Equals(raw, "1", StringComparison.Ordinal)) return true;
                     if (string.Equals(raw, "0", StringComparison.Ordinal)) return false;
-                    throw new JsonException($"Cannot convert string '{raw}' to boolean.");
+                    throw new JsonException(
+                        $"Cannot convert string '{raw}' to boolean. Use true/false, or omit the property to keep the default.");
                 case JsonTokenType.Number:
                     return reader.GetInt32() != 0;
                 default:
@@ -137,14 +157,173 @@ public static class YarpJsonConfig
             }
         }
 
+        /// <summary>Non-nullable boolean converter.</summary>
+        private sealed class LenientBooleanConverter : JsonConverter<bool>
+        {
+            /// <summary>Reads a boolean.</summary>
+            /// <param name="reader">Reader.</param>
+            /// <param name="typeToConvert">Target type.</param>
+            /// <param name="options">Options.</param>
+            /// <returns>The boolean.</returns>
+            public override bool Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+                => Parse(ref reader);
+
+            /// <summary>Writes a boolean.</summary>
+            /// <param name="writer">Writer.</param>
+            /// <param name="value">Value.</param>
+            /// <param name="options">Options.</param>
+            public override void Write(Utf8JsonWriter writer, bool value, JsonSerializerOptions options)
+                => writer.WriteBooleanValue(value);
+        }
+
+        /// <summary>Nullable boolean converter: blank means "not set".</summary>
+        private sealed class NullableLenientBooleanConverter : JsonConverter<bool?>
+        {
+            /// <summary>Lets <see cref="Read"/> see the null token as well.</summary>
+            public override bool HandleNull => true;
+
+            /// <summary>Reads a nullable boolean.</summary>
+            /// <param name="reader">Reader.</param>
+            /// <param name="typeToConvert">Target type.</param>
+            /// <param name="options">Options.</param>
+            /// <returns>The boolean, or null when unspecified.</returns>
+            public override bool? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+            {
+                if (reader.TokenType == JsonTokenType.Null) return null;
+
+                if (reader.TokenType == JsonTokenType.String)
+                {
+                    var raw = reader.GetString();
+                    if (string.IsNullOrWhiteSpace(raw)) return null;
+                    if (string.Equals(raw, "null", StringComparison.OrdinalIgnoreCase)) return null;
+                }
+
+                return Parse(ref reader);
+            }
+
+            /// <summary>Writes a nullable boolean.</summary>
+            /// <param name="writer">Writer.</param>
+            /// <param name="value">Value.</param>
+            /// <param name="options">Options.</param>
+            public override void Write(Utf8JsonWriter writer, bool? value, JsonSerializerOptions options)
+            {
+                if (value.HasValue) writer.WriteBooleanValue(value.Value);
+                else writer.WriteNullValue();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Parses durations written as "00:00:30", as a bare number of seconds ("30"), or with a
+    /// unit suffix ("30s", "5m", "2h", "1d"). A blank value on a nullable target means
+    /// "not specified". Without this, a hand-typed timeout failed with a raw format error.
+    /// </summary>
+    private sealed class LenientTimeSpanConverterFactory : JsonConverterFactory
+    {
+        private static readonly Regex ShortForm =
+            new(@"^(\d+(?:\.\d+)?)\s*([smhd]?)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        /// <summary>Handles <see cref="TimeSpan"/> and <see cref="Nullable{TimeSpan}"/>.</summary>
+        /// <param name="typeToConvert">Target type.</param>
+        /// <returns>True when the type is supported.</returns>
+        public override bool CanConvert(Type typeToConvert)
+            => typeToConvert == typeof(TimeSpan) || typeToConvert == typeof(TimeSpan?);
+
+        /// <summary>Creates the matching converter.</summary>
+        /// <param name="typeToConvert">Target type.</param>
+        /// <param name="options">Serializer options.</param>
+        /// <returns>A converter instance.</returns>
+        public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options)
+            => typeToConvert == typeof(TimeSpan?)
+                ? new NullableLenientTimeSpanConverter()
+                : new LenientTimeSpanConverter();
+
         /// <summary>
-        /// Writes the.
+        /// Shared parsing for both converter variants.
         /// </summary>
-        /// <param name="writer">The writer.</param>
-        /// <param name="value">If true, value.</param>
-        /// <param name="options">The options.</param>
-        public override void Write(Utf8JsonWriter writer, bool value, JsonSerializerOptions options)
-            => writer.WriteBooleanValue(value);
+        /// <param name="raw">Raw text.</param>
+        /// <returns>The parsed duration.</returns>
+        internal static TimeSpan Parse(string raw)
+        {
+            var text = (raw ?? string.Empty).Trim();
+
+            /* Checked first on purpose: TimeSpan.Parse("30") means 30 *days*, but someone
+               typing 30 into a timeout box always means seconds. */
+            var shortForm = ShortForm.Match(text);
+            if (shortForm.Success)
+            {
+                var amount = double.Parse(shortForm.Groups[1].Value, CultureInfo.InvariantCulture);
+                return shortForm.Groups[2].Value.ToLowerInvariant() switch
+                {
+                    "m" => TimeSpan.FromMinutes(amount),
+                    "h" => TimeSpan.FromHours(amount),
+                    "d" => TimeSpan.FromDays(amount),
+                    _ => TimeSpan.FromSeconds(amount)
+                };
+            }
+
+            if (TimeSpan.TryParse(text, CultureInfo.InvariantCulture, out var span)) return span;
+
+            throw new JsonException($"Cannot convert '{raw}' to a duration. Use 00:00:30 or 30s.");
+        }
+
+        /// <summary>Non-nullable duration converter.</summary>
+        private sealed class LenientTimeSpanConverter : JsonConverter<TimeSpan>
+        {
+            /// <summary>Reads a duration.</summary>
+            /// <param name="reader">Reader.</param>
+            /// <param name="typeToConvert">Target type.</param>
+            /// <param name="options">Options.</param>
+            /// <returns>The duration.</returns>
+            public override TimeSpan Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+            {
+                if (reader.TokenType == JsonTokenType.String) return Parse(reader.GetString()!);
+                // A bare number is read as seconds, matching Parse("30").
+                if (reader.TokenType == JsonTokenType.Number) return TimeSpan.FromSeconds(reader.GetDouble());
+                throw new JsonException($"Cannot convert token '{reader.TokenType}' to a duration.");
+            }
+
+            /// <summary>Writes a duration in round-trip format.</summary>
+            /// <param name="writer">Writer.</param>
+            /// <param name="value">Value.</param>
+            /// <param name="options">Options.</param>
+            public override void Write(Utf8JsonWriter writer, TimeSpan value, JsonSerializerOptions options)
+                => writer.WriteStringValue(value.ToString("c", CultureInfo.InvariantCulture));
+        }
+
+        /// <summary>Nullable duration converter: blank means "not set".</summary>
+        private sealed class NullableLenientTimeSpanConverter : JsonConverter<TimeSpan?>
+        {
+            /// <summary>Lets <see cref="Read"/> see the null token as well.</summary>
+            public override bool HandleNull => true;
+
+            /// <summary>Reads a nullable duration.</summary>
+            /// <param name="reader">Reader.</param>
+            /// <param name="typeToConvert">Target type.</param>
+            /// <param name="options">Options.</param>
+            /// <returns>The duration, or null when unspecified.</returns>
+            public override TimeSpan? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+            {
+                if (reader.TokenType == JsonTokenType.Null) return null;
+                if (reader.TokenType == JsonTokenType.Number) return TimeSpan.FromSeconds(reader.GetDouble());
+                if (reader.TokenType != JsonTokenType.String)
+                    throw new JsonException($"Cannot convert token '{reader.TokenType}' to a duration.");
+
+                var raw = reader.GetString();
+                if (string.IsNullOrWhiteSpace(raw)) return null;
+                return Parse(raw);
+            }
+
+            /// <summary>Writes a nullable duration.</summary>
+            /// <param name="writer">Writer.</param>
+            /// <param name="value">Value.</param>
+            /// <param name="options">Options.</param>
+            public override void Write(Utf8JsonWriter writer, TimeSpan? value, JsonSerializerOptions options)
+            {
+                if (value.HasValue) writer.WriteStringValue(value.Value.ToString("c", CultureInfo.InvariantCulture));
+                else writer.WriteNullValue();
+            }
+        }
     }
 
     /// <summary>

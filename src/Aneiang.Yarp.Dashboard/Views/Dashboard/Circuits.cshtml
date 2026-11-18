@@ -8,7 +8,6 @@
 
 @section Scripts {
 <script src="/_content/Aneiang.Yarp.Dashboard/js/modules/dashboard-circuits.js"></script>
-<script src="/_content/Aneiang.Yarp.Dashboard/js/modules/plugin-binding-manager.js"></script>
 
 @await Html.PartialAsync("_DashboardPageInit")
 
@@ -31,26 +30,32 @@
                         await DashboardApp.modules.circuit.init();
                     }
                     if (window.CircuitModule) await CircuitModule.load();
-                    hidePluginHint('circuit-plugin-hint');
                 }
             }
         } catch(e) { console.error('Circuit load error:', e); }
 
-        if (window.PluginBindingManager) {
-            window.CircuitBreakerConfigModule = PluginBindingManager.create({
+        // 数据来源诊断条：未启用 / 未绑定 / 等待数据 / 运行中
+        if (window.DashboardDataSource) {
+            await DashboardDataSource.mount({
+                containerId: 'circuit-datasource',
                 pluginId: 'circuit-breaker',
                 scope: 'Cluster',
-                scopeLabel: (window.__ ? __('pluginPage.cluster', 'Cluster') : 'Cluster'),
-                containerId: 'pc-cb-config-content',
-                refreshTimeId: 'pc-cb-config-refresh-time',
-                moduleName: 'CircuitBreakerConfigModule',
-                icon: 'bi-lightning-charge',
-                color: 'text-warning',
-                titleKey: 'circuit.config.title'
+                // 未进入运行中时，把面板里的加载动画换成空状态，避免一直转圈
+                emptyContainerId: 'circuit-content',
+                hasData: function() {
+                    // 熔断列表为空时 tbody 里没有任何行，据此判断是否已有采集结果
+                    return document.querySelectorAll('#circuit-content tbody tr').length > 0;
+                },
+                onRefresh: function() {
+                    if (!window.CircuitModule) return Promise.resolve();
+                    return Promise.resolve(CircuitModule.load()).then(function() {
+                        DashboardDataSource.refresh('circuit-breaker');
+                    });
+                }
             });
-            if (window.CircuitBreakerConfigModule) await CircuitBreakerConfigModule.load();
         }
 
+        // 绑定配置统一放在「插件配置」页（plugin-center#circuit-breaker）
         document.dispatchEvent(new CustomEvent('dashboard:ready'));
     })();
 </script>

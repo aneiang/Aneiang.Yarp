@@ -158,7 +158,6 @@
   "notif.noRules": "暂无通知规则，点击添加",
   "notif.of": "共",
   "notif.page": "第",
-  "notif.page.help": "通知管理支持钉钉、企业微信、飞书、Slack、Discord、Telegram、Teams 等平台推送网关事件与告警，支持按平台订阅事件、冷却去重与送达历史查询。",
   "notif.pageUnit": "页",
   "notif.platforms.title": "通知平台",
   "notif.platforms.connected": "已接入",

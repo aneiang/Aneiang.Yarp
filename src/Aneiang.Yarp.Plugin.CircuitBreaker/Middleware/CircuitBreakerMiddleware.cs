@@ -71,11 +71,22 @@ public sealed class CircuitBreakerMiddleware : GatewayMiddlewareBase
         var candidates = await _destinationCoordinator.ApplyAsync(context, excludeAttempted: false, context.RequestAborted);
         if (candidates.Count == 0)
         {
+            // Distinguish "cluster has no destinations at all" from "every destination is
+            // circuit-broken": the first is a configuration problem, and reporting it as a
+            // circuit failure sends operators looking in the wrong place.
+            var configuredDestinations = proxyFeature?.Cluster?.Config?.Destinations?.Count ?? 0;
+            var message = configuredDestinations == 0
+                ? $"Cluster '{clusterId}' has no destinations configured."
+                : $"No healthy destination with a closed circuit is available for cluster '{clusterId}'.";
+
+            if (configuredDestinations == 0)
+                _logger.LogWarning("Cluster {ClusterId} has no destinations configured; requests cannot be proxied.", clusterId);
+
             context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
             await context.Response.WriteAsJsonAsync(new
             {
                 error = "ServiceUnavailable",
-                message = $"No healthy destination with a closed circuit is available for cluster '{clusterId}'."
+                message
             });
             return;
         }

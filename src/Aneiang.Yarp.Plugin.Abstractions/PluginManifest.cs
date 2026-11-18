@@ -42,7 +42,22 @@ public enum PluginCapability
     RequestMiddleware,
     ProxyPipeline,
     Dashboard,
-    BackgroundService
+    BackgroundService,
+
+    /// <summary>
+    /// Contributes one or more <c>ILoadBalancingPolicy</c> implementations so clusters can select
+    /// them by name. Must be registered through <see cref="IGatewayPluginHostServices"/> — the
+    /// per-plugin runtime domain is built after the host container is frozen, so YARP never sees
+    /// policies registered from <see cref="IGatewayPlugin.ConfigureServices"/>.
+    /// </summary>
+    LoadBalancingPolicy,
+
+    /// <summary>
+    /// Contributes <c>ITransformProvider</c> implementations that cluster/route transforms resolve
+    /// by name. Subject to the same host-registration constraint as
+    /// <see cref="LoadBalancingPolicy"/>.
+    /// </summary>
+    Transform
 }
 
 /// <summary>Resources a plugin may consume while active.</summary>

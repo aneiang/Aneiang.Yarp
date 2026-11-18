@@ -1,66 +1,162 @@
 @{
-    ViewData["Title"] = ((ViewBag.Locale as string) == "en-US") ? "Plugin Center" : "插件中心";
+    var isEn = (ViewBag.Locale as string) == "en-US";
+    ViewData["Title"] = isEn ? "Plugin Configuration" : "插件配置";
     Layout = "~/Views/Shared/_DashboardLayout.cshtml";
 }
+@await Html.PartialAsync("~/Views/Dashboard/Partials/_PluginSubNav.cshtml")
 
 <style>
-    /* ── Plugin Center Tab Bar (flat pills) ── */
+    /* ── Plugin Center tab bar: groups stacked as labelled clusters ── */
     .pc-tabs-bar {
-        display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
+        display: flex; align-items: flex-start; flex-wrap: wrap;
+        gap: 10px 0;
         padding: 10px 0;
-        margin-bottom: 4px;
+        margin-bottom: 14px;
         border-top: 1px solid var(--border-color, #e2e8f0);
         border-bottom: 1px solid var(--border-color, #e2e8f0);
     }
+    .pc-tab-group {
+        display: flex; flex-direction: column; gap: 5px;
+        padding: 0 12px;
+        max-width: 100%;
+    }
+    .pc-tab-group + .pc-tab-group { border-left: 1px solid var(--border-light, #eef2f6); }
+    .pc-tab-group:first-child { padding-left: 0; }
+    .pc-tab-group:last-child { padding-right: 0; }
+    .pc-tab-group-items { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
     .pc-tab-group-label {
-        font-size: 11px; font-weight: 600; color: #94a3b8;
-        letter-spacing: .05em;
-        padding: 4px 10px 4px 0; white-space: nowrap;
+        font-size: 10.5px; font-weight: 700; color: var(--text-muted, #94a3b8);
+        letter-spacing: .08em;
+        padding-left: 2px; white-space: nowrap;
     }
     .pc-tab-btn {
         display: inline-flex; align-items: center; gap: 5px;
-        padding: 5px 12px; font-size: 12.5px; font-weight: 500;
+        padding: 5px 8px; font-size: 12.5px; font-weight: 500;
         border: 1px solid transparent; border-radius: 6px;
-        background: transparent; color: var(--text-secondary, #64748b);
+        background: transparent; color: var(--text-secondary, #475569);
         cursor: pointer; transition: all .15s; white-space: nowrap;
     }
-    .pc-tab-btn:hover {
-        background: var(--hover-bg, #f1f5f9);
-        color: var(--text-color, #1e293b);
-    }
+    .pc-tab-btn:hover { background: var(--border-light, #f1f5f9); color: var(--text-primary, #0f172a); }
     .pc-tab-btn.active {
         background: var(--primary-bg, #eef2ff);
         color: var(--primary-color, #4f46e5);
-        border-color: var(--primary-border, #c7d2fe);
+        border-color: #c7d2fe;
     }
     .pc-tab-btn i { font-size: 13px; }
+
+    /* Scope badge: 路由 = bindable to routes, 集群 = bindable to clusters */
+    .pc-scope {
+        font-size: 10px; font-weight: 700; line-height: 1;
+        padding: 2.5px 4px; border-radius: 3px;
+        letter-spacing: .02em;
+        border: 1px solid transparent;
+    }
+    .pc-scope--route   { background: #dbeafe; color: #1d4ed8; border-color: #bfdbfe; }
+    .pc-scope--cluster { background: #dcfce7; color: #15803d; border-color: #bbf7d0; }
+    .pc-tab-btn.active .pc-scope { filter: saturate(1.2); }
+
     .pc-tab-panel { min-height: 200px; }
-    .pc-feature-config { margin-top: 16px; }
+
+    /* ── Panel header: scope · purpose · activation · entries ── */
+    .pc-head {
+        display: flex; align-items: flex-start; gap: 12px;
+        padding: 14px 16px;
+        margin-bottom: 14px;
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: var(--radius-md, 10px);
+        background: var(--card-bg, #fff);
+    }
+    .pc-head__icon {
+        flex: 0 0 auto;
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 34px; height: 34px; border-radius: 9px;
+        background: #f1f5f9; font-size: 16px;
+    }
+    .pc-head__body { flex: 1 1 auto; min-width: 0; }
+    .pc-head__title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .pc-head__name { font-size: 15px; font-weight: 600; color: var(--text-primary, #0f172a); }
+    .pc-head__id {
+        font-size: 11px; color: var(--text-muted, #94a3b8);
+        background: #f8fafc; border: 1px solid var(--border-light, #eef2f6);
+        border-radius: 4px; padding: 1px 5px;
+    }
+    .pc-head__about {
+        margin: 6px 0 0; font-size: 12.5px; line-height: 1.6;
+        color: var(--text-secondary, #475569);
+    }
+    .pc-head__meta {
+        display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+        margin-top: 9px;
+        font-size: 12px;
+    }
+    .pc-head__cond { color: var(--text-muted, #94a3b8); }
+    .pc-head__cond i { font-size: 11px; margin-right: 3px; }
+    .pc-head__state {
+        display: inline-flex; align-items: center; gap: 5px;
+        font-weight: 500; font-variant-numeric: tabular-nums;
+    }
+    .pc-head__state .loading-spinner { width: 11px; height: 11px; border-width: 1.5px; }
+    .pc-head__state.is-live { color: #15803d; }
+    .pc-head__state.is-warn { color: #b45309; }
+    .pc-head__state.is-off  { color: var(--text-muted, #94a3b8); }
+    .pc-head__act {
+        flex: 0 0 auto;
+        display: flex; align-items: center; gap: 8px;
+    }
+    /* Secondary hop from "configured it" to "what does it cost" - icon only so the
+       primary action keeps its weight. */
+    .pc-head__aux {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 30px; height: 30px; flex: 0 0 auto;
+        border: 1px solid var(--border-color, #e2e8f0); border-radius: 6px;
+        color: var(--text-secondary, #475569); text-decoration: none;
+        background: transparent; transition: all .15s;
+    }
+    .pc-head__aux:hover { color: var(--primary-color, #4f46e5); border-color: #c7d2fe; background: #eef2ff; }
+    .pc-head__aux i { font-size: 14px; }
+    /* Monitor entry while nothing is collecting yet: present but inert. */
+    .pc-head__locked {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 4px 10px; font-size: 12.5px;
+        border: 1px dashed var(--border-color, #e2e8f0);
+        border-radius: 6px;
+        color: #b0bac7; cursor: not-allowed;
+    }
+    @@media (max-width: 900px) {
+        .pc-head { flex-wrap: wrap; }
+        .pc-head__act { width: 100%; justify-content: flex-end; }
+    }
+
     /* Meta line right-end actions (refresh + add), no standalone row */
     .pc-meta-actions {
         display: flex; align-items: center; gap: 8px;
         margin-left: auto;
     }
-    .pc-meta-actions .refresh-badge { font-size: 11px; color: #a8b3c5; }
-    /* pc-meta-line / pc-help-line / pc-panel-head: shared, defined in _DashboardLayout */
+    .pc-meta-actions .refresh-badge { font-size: 11px; color: var(--text-muted, #94a3b8); }
+
+    @@media (max-width: 1200px) {
+        .pc-tab-group { border-left: none; padding: 0 12px 0 0; }
+    }
     @@media (max-width: 768px) {
-        .pc-tabs-bar { overflow-x: auto; flex-wrap: nowrap; }
-        .pc-tab-group-label { display: none; }
+        .pc-tabs-bar { flex-direction: column; gap: 9px; }
+        .pc-tab-group { padding: 0; }
     }
 </style>
 
 <!-- Tab bar (rendered by JS) -->
 <div id="pc-tab-bar"></div>
 
-<!-- Tab panels: config-type (empty, filled by JS) -->
+<!-- Tab panels: one per plugin, all 11 registered plugins are configurable here -->
 <div class="pc-tab-panel" data-plugin="rate-limit" style="display:none"></div>
-<div class="pc-tab-panel" data-plugin="rate-limit-redis" style="display:none"></div>
-<div class="pc-tab-panel" data-plugin="waf" style="display:none"></div>
-<div class="pc-tab-panel" data-plugin="retry" style="display:none"></div>
-<div class="pc-tab-panel" data-plugin="response-cache" style="display:none"></div>
-<div class="pc-tab-panel" data-plugin="service-discovery" style="display:none"></div>
+<div class="pc-tab-panel" data-plugin="request-retry" style="display:none"></div>
 <div class="pc-tab-panel" data-plugin="compression" style="display:none"></div>
+<div class="pc-tab-panel" data-plugin="waf" style="display:none"></div>
+<div class="pc-tab-panel" data-plugin="response-cache" style="display:none"></div>
+<div class="pc-tab-panel" data-plugin="circuit-breaker" style="display:none"></div>
+<div class="pc-tab-panel" data-plugin="service-discovery" style="display:none"></div>
 <div class="pc-tab-panel" data-plugin="proxy-log" style="display:none"></div>
+<div class="pc-tab-panel" data-plugin="traffic-metrics" style="display:none"></div>
+<div class="pc-tab-panel" data-plugin="cluster-metrics" style="display:none"></div>
 
 @section Scripts {
 <script src="/_content/Aneiang.Yarp.Dashboard/js/modules/plugin-binding-manager.js"></script>

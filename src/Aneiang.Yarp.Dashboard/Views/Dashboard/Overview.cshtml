@@ -289,30 +289,12 @@
     .ov-proxy-alert-detail .err-source { font-size: 10.5px; color: #94a3b8; margin-left: 4px; }
 
     /* Help bar (compact) */
-    .ov-help {
-        display: flex; align-items: center; gap: 6px;
-        padding: 6px 14px;
-        background: var(--bg-secondary, #f8fafc);
-        border-radius: 6px;
-        margin-bottom: 12px;
-        font-size: 12px; color: var(--text-muted, #64748b);
-    }
-    .ov-help i { color: var(--primary-color, #6366f1); }
-    .ov-help .close { margin-left: auto; cursor: pointer; border: none; background: none; font-size: 16px; color: var(--text-muted, #94a3b8); }
-
     /* Responsive */
     @@media (max-width: 576px) {
         .ov-hero { flex-direction: column; align-items: flex-start; }
         .ov-hero-info { gap: 10px; }
     }
 </style>
-
-<!-- Help bar -->
-<div class="ov-help" id="overview-help-bar">
-    <i class="bi bi-info-circle"></i>
-    <span data-i18n="page.help.overview">网关维护仪表盘总览，展示集群、路由、健康状态和实时流量。点击统计卡片可跳转到对应管理页面。</span>
-    <button class="close" onclick="document.getElementById('overview-help-bar').style.display='none'">&times;</button>
-</div>
 
 <!-- Proxy config apply-failure alert bar -->
 <div class="ov-proxy-alert" id="proxy-config-alert" role="alert" style="display:none;">

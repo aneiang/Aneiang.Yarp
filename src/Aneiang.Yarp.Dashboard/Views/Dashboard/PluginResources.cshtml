@@ -2,14 +2,9 @@
     ViewData["Title"] = ((ViewBag.Locale as string) == "en-US") ? "Plugin Resources" : "插件资源";
     Layout = "~/Views/Shared/_DashboardLayout.cshtml";
 }
+@await Html.PartialAsync("~/Views/Dashboard/Partials/_PluginSubNav.cshtml")
 
 <div id="plugin-resources-app">
-    <div class="page-help-bar" id="plugin-resources-help-bar">
-        <i class="bi bi-info-circle"></i>
-        <span class="help-text" data-i18n="page.help.pluginResources">此页面展示每个插件在运行时的资源占用和请求统计。数据在请求经过网关时自动采集。</span>
-        <button class="help-close" onclick="document.getElementById('plugin-resources-help-bar').classList.add('collapsed')">&times;</button>
-    </div>
-
     <div class="pr-header">
         <div class="pr-header-left">
             <span class="pr-header-icon"><i class="bi bi-cpu"></i></span>

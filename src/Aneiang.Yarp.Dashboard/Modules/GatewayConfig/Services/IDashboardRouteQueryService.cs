@@ -12,4 +12,10 @@ public interface IDashboardRouteQueryService
     /// </summary>
     /// <returns>List of route responses.</returns>
     IReadOnlyList<DashboardRouteResponse> GetRoutes();
+
+    /// <summary>
+    /// Drops the cached result for the environment currently being edited.
+    /// Call after any configuration mutation so the next read reflects it.
+    /// </summary>
+    void Invalidate();
 }

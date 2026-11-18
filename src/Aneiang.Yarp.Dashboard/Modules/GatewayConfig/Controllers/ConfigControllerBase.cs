@@ -3,6 +3,7 @@ using Aneiang.Yarp.Dashboard.Infrastructure;
 using Aneiang.Yarp.Dashboard.Modules.GatewayConfig.Services;
 using Aneiang.Yarp.Infrastructure;
 using Aneiang.Yarp.Services;
+using Aneiang.Yarp.Validation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
@@ -50,6 +51,13 @@ public abstract class ConfigControllerBase : ControllerBase
     /// </summary>
     protected void InvalidateQueryCaches()
     {
+        // The cache keys are scoped by environment, so a hardcoded name would silently miss.
+        // Ask the services that own the keys instead; fall back to the unscoped names for hosts
+        // that did not register them.
+        var services = HttpContext?.RequestServices;
+        (services?.GetService(typeof(IDashboardRouteQueryService)) as IDashboardRouteQueryService)?.Invalidate();
+        (services?.GetService(typeof(IDashboardClusterQueryService)) as IDashboardClusterQueryService)?.Invalidate();
+
         MemoryCache.Remove("dashboard:routes:query");
         MemoryCache.Remove("dashboard:clusters:query");
     }
@@ -82,6 +90,33 @@ public abstract class ConfigControllerBase : ControllerBase
     }
 
     /// <summary>
+    /// Optimistic concurrency guard for configuration mutations.
+    ///
+    /// The dashboard reads the config version when it opens a form and echoes it back in
+    /// <c>X-Config-Version</c> on save. If the stored version has moved on, another writer
+    /// got there first: refuse the write with 409 instead of silently overwriting their
+    /// change (the classic "two admins, one loses" data loss).
+    ///
+    /// The header is optional on purpose. Scripts and the gRPC registrar keep the previous
+    /// last-write-wins behaviour, and the guarantee here is collision detection rather than
+    /// a linearizable compare-and-swap — the version is sampled immediately before the write.
+    /// </summary>
+    /// <param name="conflict">A 409 result to return when the write is stale.</param>
+    /// <returns><c>true</c> when the caller must abort and return <paramref name="conflict"/>.</returns>
+    protected bool TryRejectStaleWrite(out IActionResult? conflict)
+    {
+        conflict = null;
+
+        var expectedVersion = ConfigConcurrency.ReadExpectedVersion(Request);
+        var currentVersion = DynamicConfig.GetDynamicConfig()?.Version ?? 0;
+        if (!ConfigConcurrency.IsStale(expectedVersion, currentVersion))
+            return false;
+
+        conflict = Conflict(ConfigConcurrency.BuildConflictPayload(expectedVersion!.Value, currentVersion));
+        return true;
+    }
+
+    /// <summary>
     /// Checks whether a JSON element contains a property whose value differs from the expected ID.
     /// </summary>
     protected static bool ContainsDifferentId(JsonElement config, string expectedId, params string[] propertyNames)
@@ -96,6 +131,22 @@ public abstract class ConfigControllerBase : ControllerBase
             }
         }
         return false;
+    }
+
+    /// <summary>
+    /// Whether the payload carries a non-empty <c>destinations</c> object, i.e. saving this
+    /// route would also create its cluster. Used to avoid a false "cluster does not exist"
+    /// error on the very first save.
+    /// </summary>
+    protected static bool HasDestinations(JsonElement config)
+    {
+        if (!(config.TryGetProperty("destinations", out var destinations)
+              || config.TryGetProperty("Destinations", out destinations)))
+        {
+            return false;
+        }
+
+        return destinations.ValueKind == JsonValueKind.Object && destinations.EnumerateObject().Any();
     }
 
     /// <summary>

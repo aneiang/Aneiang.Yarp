@@ -1,5 +1,6 @@
 using Aneiang.Yarp.Models;
 using Aneiang.Yarp.Services.ProxyConfigHealth;
+using Aneiang.Yarp.Storage;
 using Microsoft.Extensions.Logging;
 using Yarp.ReverseProxy.Configuration;
 
@@ -18,6 +19,7 @@ internal class DynamicConfigPublisher : IDynamicConfigPublisher
     private readonly IGatewaySnapshotPublisher _snapshotPublisher;
     private readonly IConfigValidator _configValidator;
     private readonly IProxyConfigErrorStore _errorStore;
+    private readonly IStorageEnvironmentResolver _environments;
     private readonly ILogger<DynamicConfigPublisher> _logger;
 
     public DynamicConfigPublisher(
@@ -26,6 +28,7 @@ internal class DynamicConfigPublisher : IDynamicConfigPublisher
         IGatewaySnapshotPublisher snapshotPublisher,
         IConfigValidator configValidator,
         IProxyConfigErrorStore errorStore,
+        IStorageEnvironmentResolver environments,
         ILogger<DynamicConfigPublisher> logger)
     {
         _configProvider = configProvider;
@@ -33,12 +36,27 @@ internal class DynamicConfigPublisher : IDynamicConfigPublisher
         _snapshotPublisher = snapshotPublisher;
         _configValidator = configValidator;
         _errorStore = errorStore;
+        _environments = environments;
         _logger = logger;
     }
 
     /// <inheritdoc />
     public void Publish(GatewayDynamicConfig config, long version)
     {
+        // The work set mirrors whichever store the dashboard is editing. When that is not the
+        // runtime environment, pushing it would redirect live traffic to a config nobody meant to
+        // deploy — "I opened staging in the dashboard and production changed" is the one failure
+        // mode this whole feature has to make impossible. Refusing here (rather than at each call
+        // site) covers every write path: single route, batch, import, rollback, self-registration.
+        if (!_environments.IsEditingRuntime)
+        {
+            _logger.LogDebug(
+                "Not publishing: editing '{Editing}', serving '{Runtime}'. Changes stay in the '{Editing}' store",
+                _environments.CurrentEnvironment, _environments.RuntimeEnvironment,
+                _environments.CurrentEnvironment);
+            return;
+        }
+
         var publishRoutes = new List<DynamicRouteConfig>(config.Routes.Count);
         foreach (var dynRoute in config.Routes)
         {

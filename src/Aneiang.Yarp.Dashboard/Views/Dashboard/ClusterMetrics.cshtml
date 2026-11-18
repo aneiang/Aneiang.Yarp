@@ -8,7 +8,6 @@
 
 @section Scripts {
 <script src="/_content/Aneiang.Yarp.Dashboard/js/modules/dashboard-cluster-metrics.js"></script>
-<script src="/_content/Aneiang.Yarp.Dashboard/js/modules/plugin-binding-manager.js"></script>
 
 @await Html.PartialAsync("_DashboardPageInit")
 
@@ -26,28 +25,46 @@
         try {
             if (window.DashboardApi) {
                 var plugin = await DashboardApi.getPlugin('cluster-metrics');
-                if (plugin && plugin.enabled) {
-                    if (window.ClusterMetricsModule) await ClusterMetricsModule.load();
-                    hidePluginHint('cm-plugin-hint');
+                if (plugin && plugin.enabled && window.ClusterMetricsModule) {
+                    await ClusterMetricsModule.load();
                 }
             }
         } catch(e) { console.error('ClusterMetrics load error:', e); }
 
-        if (window.PluginBindingManager) {
-            window.ClusterMetricsConfigModule = PluginBindingManager.create({
+        // 数据来源诊断条：未启用 / 未绑定 / 等待数据 / 运行中，各给一个可点的下一步
+        if (window.DashboardDataSource) {
+            await DashboardDataSource.mount({
+                containerId: 'cm-datasource',
                 pluginId: 'cluster-metrics',
                 scope: 'Cluster',
-                scopeLabel: (window.__ ? __('pluginPage.cluster', 'Cluster') : 'Cluster'),
-                containerId: 'pc-cm-config-content',
-                refreshTimeId: 'pc-cm-config-refresh-time',
-                moduleName: 'ClusterMetricsConfigModule',
-                icon: 'bi-diagram-3-fill',
-                color: 'text-primary',
-                titleKey: 'clusterMetrics.config.title'
+                // 未进入运行中时，把面板里的加载动画换成空状态，避免一直转圈
+                emptyContainerId: 'cm-content',
+                hasData: function() {
+                    // 模块在无数据时会渲染一行 colspan 占位，必须排除掉，否则空页会被判成「运行中」
+                    if (!document.querySelector('#cm-content tbody tr')) return false;
+                    return !document.querySelector('#cm-content tbody td[colspan]');
+                },
+                onRefresh: function() {
+                    return reloadClusterMetrics();
+                }
             });
-            if (window.ClusterMetricsConfigModule) await ClusterMetricsConfigModule.load();
+
+            // 用户点「启用插件」成功后自动补一次拉数
+            document.addEventListener('datasource:enabled', function(evt) {
+                if (evt.detail && evt.detail.pluginId === 'cluster-metrics') {
+                    reloadClusterMetrics();
+                }
+            });
         }
 
+        function reloadClusterMetrics() {
+            if (!window.ClusterMetricsModule) return Promise.resolve();
+            return Promise.resolve(ClusterMetricsModule.load()).then(function() {
+                if (window.DashboardDataSource) DashboardDataSource.refresh('cluster-metrics');
+            });
+        }
+
+        // 绑定配置统一放在「插件配置」页（plugin-center#cluster-metrics）
         document.dispatchEvent(new CustomEvent('dashboard:ready'));
     })();
 </script>

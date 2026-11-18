@@ -120,6 +120,9 @@ public class DashboardPagesController : Controller
     [HttpGet("circuits")]
     public IActionResult Circuits() { SetCommonViewBag("circuits"); return View(); }
 
+    [HttpGet("tracing")]
+    public IActionResult Tracing() { SetCommonViewBag("tracing"); return View(); }
+
     #endregion
 
     #region DB Download

@@ -1,18 +1,32 @@
 @using Aneiang.Yarp.Plugin.ProxyLog.Models
 @{
-    ViewData["Title"] = ((ViewBag.Locale as string) == "en-US") ? "Plugin Management" : "插件管理";
+    var isEn = (ViewBag.Locale as string) == "en-US";
+    ViewData["Title"] = isEn ? "Plugin Overview" : "插件总览";
     Layout = "~/Views/Shared/_DashboardLayout.cshtml";
 }
+@await Html.PartialAsync("~/Views/Dashboard/Partials/_PluginSubNav.cshtml")
+
+<style>
+    /* Scope chip: which target type this plugin can be bound to */
+    .plg-scope {
+        display: inline-block;
+        font-size: 10px; font-weight: 700; line-height: 1;
+        padding: 3px 6px; border-radius: 4px;
+        letter-spacing: .02em; white-space: nowrap;
+    }
+    .plg-scope + .plg-scope { margin-left: 4px; }
+    .plg-scope--route   { background: #eff6ff; color: #2563eb; }
+    .plg-scope--cluster { background: #f0fdf4; color: #15803d; }
+    /* Enabled but bound to no target: visible so "on" is never mistaken for "working" */
+    .plg-unbound { color: #b45309; font-weight: 600; }
+    /* The one state with an unambiguous next step gets a labelled button. */
+    .plg-bind-cta { white-space: nowrap; padding: 2px 9px; font-size: 12px; }
+</style>
 
 <div id="plugins-app">
-    <div class="page-help-bar" id="plugins-help-bar">
-        <i class="bi bi-info-circle"></i>
-        <span class="help-text" data-i18n="page.help.plugins">插件为网关提供扩展能力（限流、WAF、重试等）。全局启用后，可在路由或集群上绑定使用。</span>
-        <button class="help-close" onclick="document.getElementById('plugins-help-bar').classList.add('collapsed')">&times;</button>
-    </div>
     <div class="card-panel mb-4">
         <div class="card-header">
-            <span><i class="bi bi-puzzle me-2" style="color:#8b5cf6;"></i><span data-i18n="plugin.title">插件管理</span></span>
+            <span><i class="bi bi-puzzle me-2" style="color:#8b5cf6;"></i><span data-i18n="menu.plugins">插件总览</span></span>
             <div class="card-header-actions">
                 <span id="plugin-refresh-time" class="refresh-badge"></span>
                 <button class="btn btn-sm btn-outline-secondary" onclick="PluginModule.resetAll()" data-i18n-title="plugin.resetAll" title="全部启用">

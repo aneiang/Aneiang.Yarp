@@ -5,13 +5,12 @@
 }
 
 <!-- Cluster panel -->
-<div class="page-help-bar" id="clusters-help-bar">
-    <i class="bi bi-info-circle"></i>
-    <span class="help-text" data-i18n="page.help.clusters">服务集群是一组后端服务节点的集合，路由规则会将请求转发到指定的集群。点击行可展开查看节点详情和绑定的插件能力。</span>
-    <button class="help-close" onclick="document.getElementById('clusters-help-bar').classList.add('collapsed')">&times;</button>
-</div>
 <!-- Proxy config apply-error hint bar (populated by dashboard-clusters.js) -->
 <div id="cluster-config-alert" class="config-alert-bar" style="display:none;" role="alert"></div>
+
+<!-- Canary rollout panel (empty until a rollout exists) -->
+@await Html.PartialAsync("~/Views/Dashboard/Partials/_CanaryPanel.cshtml")
+
 <div id="cluster-panel" class="card-panel mb-4">
     <div class="card-header">
         <span><i class="bi bi-hdd-stack me-2" style="color:#3b82f6;"></i><span data-i18n="index.cluster.title">集群 &amp; 目标节点状态</span></span>
@@ -49,7 +48,7 @@
                         <th style="width:90px"><span data-i18n="index.cluster.health.filter">健康状态</span></th>
                         <th style="width:80px"><span data-i18n="index.cluster.destCount">节点数</span></th>
                         <th style="width:110px"><span data-i18n="index.cluster.loadBalancing">负载策略</span></th>
-                        <th style="width:160px"><span data-i18n="index.cluster.th.actions">操作</span></th>
+                        <th style="width:196px"><span data-i18n="index.cluster.th.actions">操作</span></th>
                     </tr>
                 </thead>
                 <tbody id="cluster-tbody">
@@ -78,6 +77,7 @@
 <script src="/_content/Aneiang.Yarp.Dashboard/js/editors/dashboard-validation-panel.js?v=@v"></script>
 <script src="/_content/Aneiang.Yarp.Dashboard/js/modules/dashboard-batch-plugin.js?v=@v"></script>
 <script src="/_content/Aneiang.Yarp.Dashboard/js/modules/dashboard-clusters.js?v=@v"></script>
+<script src="/_content/Aneiang.Yarp.Dashboard/js/modules/dashboard-canary.js?v=@v"></script>
 <!-- Page config (shared scripts now in _DashboardLayout.cshtml) -->
 @await Html.PartialAsync("_DashboardPageInit")
 

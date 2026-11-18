@@ -328,8 +328,9 @@
             clusters.forEach(function(cluster) {
                 var destinations = cluster.destinations || [];
                 var overallHealth = 'unknown';
-                if (cluster.healthyCount > 0) overallHealth = 'healthy';
-                else if (cluster.unhealthyCount > 0) overallHealth = 'unhealthy';
+                // Any unhealthy destination wins; healthy nodes must not mask partial failures.
+                if (cluster.unhealthyCount > 0) overallHealth = 'unhealthy';
+                else if (cluster.healthyCount > 0) overallHealth = 'healthy';
 
                 var borderColor = overallHealth === 'healthy' ? '#22c55e' : overallHealth === 'unhealthy' ? '#ef4444' : '#94a3b8';
                 var healthIcon = overallHealth === 'healthy' ? 'bi-heart-pulse-fill' : overallHealth === 'unhealthy' ? 'bi-heart-pulse-fill' : 'bi-heart-pulse';
@@ -371,6 +372,7 @@
                 html += '<button class="btn btn-sm btn-outline-success" onclick="event.stopPropagation();window.DashboardApp.modules.clusters.showQuickAddRouteModal(\'' + (cluster.clusterId || '').replace(/'/g, "\\'") + '\')" title="' + __('cluster.quickAddRouteTitle') + '"><i class="bi bi-plus-circle"></i></button>';
                 html += '<button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation();window.DashboardApp.modules.clusters.showEditModal(\'' + (cluster.clusterId || '').replace(/'/g, "\\'") + '\')" title="' + __('index.cluster.edit') + '"><i class="bi bi-pencil"></i></button>';
                 html += '<button class="btn btn-sm btn-outline-warning" onclick="event.stopPropagation();window.DashboardApp.modules.clusters.showRenameModal(\'' + (cluster.clusterId || '').replace(/'/g, "\\'") + '\')" title="' + __('cluster.renameTitle') + '"><i class="bi bi-input-cursor-text"></i></button>';
+                html += '<button class="btn btn-sm btn-outline-info" onclick="event.stopPropagation();window.CanaryModule && window.CanaryModule.openStartDialog(\'' + (cluster.clusterId || '').replace(/'/g, "\\'") + '\')" title="' + __('canary.start') + '"><i class="bi bi-signpost-split"></i></button>';
                 html += '<button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation();window.DashboardApp.modules.clusters.deleteCluster(\'' + (cluster.clusterId || '').replace(/'/g, "\\'") + '\')" title="' + __('index.cluster.delete') + '"><i class="bi bi-trash"></i></button>';
                 html += '</div></div>';
 
@@ -402,9 +404,25 @@
                 }
 
                 // Footer
+                var canarySplitLabel = '';
+                if ((cluster.loadBalancingPolicy || '').toLowerCase() === 'weighted' && destinations.length > 0) {
+                    var weightSum = 0;
+                    var parts = destinations.map(function(dest) {
+                        var raw = dest.metadata ? dest.metadata.Weight : undefined;
+                        var weight = parseInt(raw, 10);
+                        if (isNaN(weight) || weight < 0) weight = 1;
+                        weightSum += weight;
+                        return weight;
+                    });
+                    if (weightSum > 0) {
+                        canarySplitLabel = ' · ' + parts.map(function(weight) {
+                            return Math.round(weight / weightSum * 100) + '%';
+                        }).join(' / ');
+                    }
+                }
                 html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid var(--border-color);">';
                 html += '<span style="font-size:11px;color:#64748b;"><i class="bi bi-nodes me-1"></i>' + destinations.length + ' ' + __('index.cluster.destCount') + '</span>';
-                html += '<span style="font-size:11px;color:#64748b;"><i class="bi bi-sliders me-1"></i>' + (cluster.loadBalancingPolicy || 'RoundRobin') + '</span>';
+                html += '<span style="font-size:11px;color:#64748b;"><i class="bi bi-sliders me-1"></i>' + (cluster.loadBalancingPolicy || 'RoundRobin') + canarySplitLabel + '</span>';
                 html += '</div>';
 
                 html += '</div></div>';
@@ -465,8 +483,9 @@
 
             // Determine overall health status
             var overallHealth = 'Unknown';
-            if (cluster.healthyCount > 0) overallHealth = 'Healthy';
-            else if (cluster.unhealthyCount > 0) overallHealth = 'Unhealthy';
+            // Any unhealthy destination wins; healthy nodes must not mask partial failures.
+            if (cluster.unhealthyCount > 0) overallHealth = 'Unhealthy';
+            else if (cluster.healthyCount > 0) overallHealth = 'Healthy';
 
             // --- Cluster main row ---
             var headerTr = window.DashboardDOM.create('tr', {
@@ -568,7 +587,7 @@
 
             // Actions
             var tdActions = window.DashboardDOM.create('td', {
-                style: { width: '160px', verticalAlign: 'middle', textAlign: 'center' }
+                style: { width: '196px', verticalAlign: 'middle', textAlign: 'center' }
             });
             tdActions.appendChild(this.createActionButtons(cluster));
             headerTr.appendChild(tdActions);
@@ -668,6 +687,20 @@
             });
             renameBtn.appendChild(window.DashboardDOM.create('i', { className: 'bi bi-input-cursor-text' }));
             container.appendChild(renameBtn);
+
+            // Canary rollout button
+            const canaryBtn = window.DashboardDOM.create('button', {
+                className: 'btn btn-sm btn-outline-info',
+                attributes: { title: __('canary.start') },
+                events: {
+                    click: (e) => {
+                        e.stopPropagation();
+                        if (window.CanaryModule) window.CanaryModule.openStartDialog(cluster.clusterId);
+                    }
+                }
+            });
+            canaryBtn.appendChild(window.DashboardDOM.create('i', { className: 'bi bi-signpost-split' }));
+            container.appendChild(canaryBtn);
 
             // Delete button
             const deleteBtn = window.DashboardDOM.create('button', {
@@ -796,7 +829,13 @@
                 detailHtml.push('<div class="detail-section">');
                 detailHtml.push(`<div class="detail-section-title"><i class="bi bi-server"></i>${__('index.cluster.destinations')} <span class="badge bg-light text-dark ms-2">${cluster.destinations.length}</span></div>`);
 
-                const hasWeights = (cluster.loadBalancingPolicy || '').toLowerCase().includes('poweroftwo');
+                const lbPolicy = (cluster.loadBalancingPolicy || '').toLowerCase();
+                const hasWeights = lbPolicy === 'weighted' || lbPolicy.indexOf('poweroftwo') >= 0;
+                const weightTable = hasWeights ? this._destinationWeights(cluster) : null;
+                const weightByIndex = {};
+                if (weightTable) {
+                    weightTable.items.forEach(function(item, index) { weightByIndex[index] = item; });
+                }
 
                 detailHtml.push('<div class="table-responsive">');
                 detailHtml.push('<table class="table table-sm detail-table">');
@@ -806,15 +845,16 @@
                     detailHtml.push(`<thead><tr><th>${__('index.detail.name')}</th><th>${__('index.detail.address')}</th><th>${__('index.detail.active')}</th><th>${__('index.detail.passive')}</th></tr></thead>`);
                 }
                 detailHtml.push('<tbody>');
-                (cluster.destinations || []).forEach(dest => {
+                (cluster.destinations || []).forEach((dest, index) => {
                     const activeBadge = this.createHealthBadgeInline(dest.activeHealth || 'Unknown');
                     const passiveBadge = this.createHealthBadgeInline(dest.passiveHealth || 'Unknown');
-                    const weight = (dest.metadata && dest.metadata.Weight) || '1';
                     detailHtml.push('<tr>');
                     detailHtml.push(`<td><code>${dest.name || '-'}</code></td>`);
                     detailHtml.push(`<td><a href="${dest.address || '#'}" target="_blank" style="text-decoration:none;color:#0ea5e9;">${dest.address || '-'}</a></td>`);
                     if (hasWeights) {
-                        detailHtml.push(`<td><span class="badge bg-light text-dark">${weight}</span></td>`);
+                        const entry = weightByIndex[index] || { weight: 0, share: 0 };
+                        const zeroStyle = entry.weight === 0 ? ' style="color:#94a3b8;text-decoration:line-through;"' : '';
+                        detailHtml.push(`<td><span class="badge bg-light text-dark"${zeroStyle}>${entry.weight}</span> <span style="font-size:11px;color:#64748b;">${entry.share}%</span></td>`);
                     }
                     detailHtml.push(`<td>${activeBadge}</td>`);
                     detailHtml.push(`<td>${passiveBadge}</td>`);
@@ -961,6 +1001,29 @@
 
         _isPolicyMetaKey: function(key) {
             return this._policyMetaPrefixes.some(function(p) { return key.indexOf(p) === 0; });
+        },
+
+        // Reads the canary weight table off destination metadata. Mirrors WeightedLoadBalancingPolicy:
+        // a node without a weight falls back to the cluster default (1), and 0 means "parked".
+        _destinationWeights: function(cluster) {
+            var meta = cluster.metadata || {};
+            var weightKey = meta['Weighted.WeightKey'] || 'Weight';
+            var defaultWeight = parseInt(meta['Weighted.DefaultWeight'], 10);
+            if (isNaN(defaultWeight) || defaultWeight < 0) defaultWeight = 1;
+
+            var items = (cluster.destinations || []).map(function(dest) {
+                var raw = dest.metadata ? dest.metadata[weightKey] : undefined;
+                var weight = parseInt(raw, 10);
+                if (isNaN(weight) || weight < 0) weight = defaultWeight;
+                return { name: dest.name, weight: weight, tag: dest.metadata ? dest.metadata['Tag'] : undefined };
+            });
+
+            var total = items.reduce(function(sum, item) { return sum + item.weight; }, 0);
+            items.forEach(function(item) {
+                item.share = total > 0 ? Math.round(item.weight / total * 100) : 0;
+            });
+
+            return { items: items, total: total };
         },
 
         // Builds a complete native YARP cluster object (PascalCase) from a cluster response,

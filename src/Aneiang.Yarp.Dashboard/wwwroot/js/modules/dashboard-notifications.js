@@ -20,7 +20,7 @@
         { key: 'route',  icon: 'bi-signpost-split', color: '#3b82f6', events: ['AddRoute', 'UpdateRoute', 'RemoveRoute', 'SetRouteEnabled'] },
         { key: 'cluster', icon: 'bi-hdd-network',   color: '#8b5cf6', events: ['AddCluster', 'UpdateCluster', 'RemoveCluster'] },
         { key: 'config', icon: 'bi-gear', color: '#f59e0b', events: ['RollbackConfig'] },
-        { key: 'alert',  icon: 'bi-exclamation-triangle', color: '#ef4444', events: ['CircuitBreakerOpen', 'RetryExhausted', 'WafBlock', 'ProxyError', 'RateLimitExceeded'] }
+        { key: 'alert',  icon: 'bi-exclamation-triangle', color: '#ef4444', events: ['CircuitBreakerOpen', 'RetryExhausted', 'WafBlock', 'ProxyError', 'RateLimitExceeded', 'MetricAlert'] }
     ];
 
     var state = {
