@@ -6,8 +6,11 @@ type: application
 # Chart version is SemVer2, so the product's four-part 2.3.0.40 becomes 2.3.0-40.
 # appVersion keeps the product version verbatim: it is what appears in `helm list` and in the
 # dashboard footer, and those two must agree or support conversations start with a disagreement.
-version: 2.3.0-40
-appVersion: "2.3.0.40"
+#
+# Prerelease: 2.3.0.40-preview.1 becomes 2.3.0-40-preview.1. The "40" stays in the prerelease
+# field so the chart still names the product version it wraps; only the suffix carries "preview".
+version: 2.3.0-40-preview.1
+appVersion: "2.3.0.40-preview.1"
 
 kubeVersion: ">=1.23.0-0"
 

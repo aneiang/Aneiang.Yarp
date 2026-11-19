@@ -27,7 +27,7 @@
       how you end up with two IGatewayPlugin types that are not the same type, and a cast that fails
       in a way nobody can read.
     -->
-    <PackageReference Include="Aneiang.Yarp.Plugin.Abstractions" Version="2.3.0.40" ExcludeAssets="runtime" />
+    <PackageReference Include="Aneiang.Yarp.Plugin.Abstractions" Version="2.3.0.40-preview.1" ExcludeAssets="runtime" />
   </ItemGroup>
 
   <ItemGroup>

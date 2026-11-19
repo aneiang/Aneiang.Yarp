@@ -18,9 +18,9 @@
       UI requires knowing its schema. Builds without the dashboard (a pure data plane with routes
       pushed in over gRPC) can reference only the plugin packages they actually run.
     -->
-    <PackageReference Include="Aneiang.Yarp" Version="2.3.0.40" />
-    <PackageReference Include="Aneiang.Yarp.Dashboard" Version="2.3.0.40" />
-    <PackageReference Include="Aneiang.Yarp.Storage.Sqlite" Version="2.3.0.40" />
+    <PackageReference Include="Aneiang.Yarp" Version="2.3.0.40-preview.1" />
+    <PackageReference Include="Aneiang.Yarp.Dashboard" Version="2.3.0.40-preview.1" />
+    <PackageReference Include="Aneiang.Yarp.Storage.Sqlite" Version="2.3.0.40-preview.1" />
   </ItemGroup>
 
 </Project>

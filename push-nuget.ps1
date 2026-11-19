@@ -13,12 +13,21 @@
       - Aneiang.Yarp.Grpc
       - Aneiang.Yarp
       - Aneiang.Yarp.Plugin.Waf / Retry / CircuitBreaker / RateLimit /
-        RateLimit.Redis / ProxyLog / Cache / Compression / ServiceDiscovery / Metrics
+        ProxyLog / Cache / Compression / ServiceDiscovery / Metrics / FaultInjection
       - Aneiang.Yarp.Dashboard
+      - Aneiang.Yarp.Templates (from templates/, see note below)
 
     Base version comes from src/Directory.Build.props (<Version>). Use
     -VersionSuffix or -Version to override at pack time (passed as -p:Version,
     because --version-suffix is ignored when a static <Version> is declared).
+
+    Two version numbers are NOT covered by -p:Version and must be edited by hand
+    before a release, because they are literal text inside project files:
+      - templates/Aneiang.Yarp.Templates/Aneiang.Yarp.Templates.csproj (<Version>)
+      - the PackageReference versions inside content/AneiangYarpGateway and
+        content/AneiangYarpPlugin -- a template that points at a version nobody
+        published produces a project that only restores on the machine that
+        packed it.
 
     Push behaviour:
       - Packages are pushed one by one; a failed push does NOT abort the
@@ -117,13 +126,14 @@ $Projects = @(
     "src\Aneiang.Yarp.Plugin.Retry\Aneiang.Yarp.Plugin.Retry.csproj",
     "src\Aneiang.Yarp.Plugin.CircuitBreaker\Aneiang.Yarp.Plugin.CircuitBreaker.csproj",
     "src\Aneiang.Yarp.Plugin.RateLimit\Aneiang.Yarp.Plugin.RateLimit.csproj",
-    "src\Aneiang.Yarp.Plugin.RateLimit.Redis\Aneiang.Yarp.Plugin.RateLimit.Redis.csproj",
     "src\Aneiang.Yarp.Plugin.ProxyLog\Aneiang.Yarp.Plugin.ProxyLog.csproj",
     "src\Aneiang.Yarp.Plugin.Cache\Aneiang.Yarp.Plugin.Cache.csproj",
     "src\Aneiang.Yarp.Plugin.Compression\Aneiang.Yarp.Plugin.Compression.csproj",
     "src\Aneiang.Yarp.Plugin.ServiceDiscovery\Aneiang.Yarp.Plugin.ServiceDiscovery.csproj",
     "src\Aneiang.Yarp.Plugin.Metrics\Aneiang.Yarp.Plugin.Metrics.csproj",
-    "src\Aneiang.Yarp.Dashboard\Aneiang.Yarp.Dashboard.csproj"
+    "src\Aneiang.Yarp.Plugin.FaultInjection\Aneiang.Yarp.Plugin.FaultInjection.csproj",
+    "src\Aneiang.Yarp.Dashboard\Aneiang.Yarp.Dashboard.csproj",
+    "templates\Aneiang.Yarp.Templates\Aneiang.Yarp.Templates.csproj"
 )
 
 # ── Helpers ──

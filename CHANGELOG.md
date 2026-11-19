@@ -1,6 +1,16 @@
 # 更新日志
 
-## [2.3.0.40] - 2026-11-18
+## [2.3.0.40-preview.1] - 2026-11-19
+
+> **预览版**：这是 `2.3.0.40` 的预发布版本，稳定版尚未发布。稳定版发布前，API 与插件契约仍可能调整。
+>
+> 预发布版本不会被 `dotnet` 默认选中，安装与引用都必须写完整版本号：
+>
+> - 模板：`dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1`
+> - 包引用：`<PackageReference Include="Aneiang.Yarp" Version="2.3.0.40-preview.1" />`
+> - Helm：`version: 2.3.0-40-preview.1` / `appVersion: "2.3.0.40-preview.1"`
+>
+> 只写 `2.3.0.40` 会还原失败 —— 那个版本还不存在。对外部插件的影响见 [`docs/plugins/plugin-compatibility.md`](docs/plugins/plugin-compatibility.md)。
 
 > **统一发布版本**：`2.3.0` 是 YARP 的版本，`40` 是 Aneiang.Yarp 的版本，合起来就是 `2.3.0.40`。2.3.0.30 之后的所有改动都归入本版，不再按里程碑分开发布 —— 原 2.4.0、2.4.1、2.5.0、2.6.0 四批一次交付。下文出现的 2.4.x / 2.5.x / 2.6.x 指开发过程中的里程碑批次，对外版本一律是 `2.3.0.40`；历史小节（2.3.0.30 及更早）保持原版本号不变。
 

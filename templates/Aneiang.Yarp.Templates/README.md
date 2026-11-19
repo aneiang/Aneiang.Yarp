@@ -4,7 +4,8 @@
 gateway, one for a plugin that plugs into a gateway.
 
 ```bash
-dotnet new install Aneiang.Yarp.Templates
+# Preview: the version is explicit; drop the "::<version>" suffix once a stable build exists
+dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
 ```
 
 ## 网关：`aneiang-yarp`

@@ -12,7 +12,7 @@
     <Title>Aneiang.Yarp project templates</Title>
     <Description>dotnet new templates for Aneiang.Yarp: a gateway with routes, storage and dashboard wired up, and an out-of-tree plugin project that emits a loadable plugin.json.</Description>
     <PackageTags>dotnet-new;templates;yarp;gateway;reverse-proxy;plugin</PackageTags>
-    <Version>2.3.0.40</Version>
+    <Version>2.3.0.40-preview.1</Version>
     <Authors>AneiangSoft Team</Authors>
     <Company>AneiangSoft</Company>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

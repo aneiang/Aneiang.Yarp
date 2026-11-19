@@ -26,6 +26,14 @@ Plugin Architecture · Dashboard · Dynamic Routing · WAF · Service Discovery 
 
 [📖 Documentation](https://yarp.aneiang.com/docs/index.html#overview) · [🚀 Live Demo](https://yarp-test.aneiang.com/aneiang) `admin` / `demo123` 
 
+> **Preview release: `2.3.0.40-preview.1`** · No stable build of this version exists yet. Prerelease packages are never selected by default, so installing the templates takes an explicit version:
+>
+> ```
+> dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
+> ```
+>
+> Installing from the repository checkout also works: `dotnet new install ./templates/Aneiang.Yarp.Templates`. The same rule applies to `PackageReference` entries — write the full `2.3.0.40-preview.1`; a bare `2.3.0.40` will fail to restore because that version does not exist.
+
 ---
 
 ## Aneiang.Yarp vs. Bare YARP
@@ -718,14 +726,15 @@ Three ways to take it, differing in "do you own the image":
 
 ```bash
 # 1. Your own project (recommended): one command, ships a Dockerfile and a README
-dotnet new install Aneiang.Yarp.Templates
+# Preview: the version is explicit; drop the "::<version>" suffix once a stable build exists
+dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
 dotnet new aneiang-yarp -n MyGateway && cd MyGateway && dotnet run
 
 # 2. Kubernetes: the Helm chart. Leave the password empty and install generates one into NOTES
 helm install gw deploy/helm/aneiang-yarp --namespace gateway --create-namespace
 
 # 3. The official reference image (runs this repo's SampleGateway; for trials and integration tests)
-docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:2.3.0.40 .
+docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:2.3.0.40-preview.1 .
 ```
 
 Two things to know first:
@@ -742,7 +751,8 @@ Full details — probes, credentials, security context, verification checklist �
 Out-of-tree plugins are separate assemblies — no need to rebuild the gateway to install one:
 
 ```bash
-dotnet new install Aneiang.Yarp.Templates
+# Preview: the version is explicit; drop the "::<version>" suffix once a stable build exists
+dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
 dotnet new aneiang-yarp-plugin -n MyPlugin --PluginId my-plugin
 dotnet publish -c Release -o out
 # Dashboard → Plugin Market → Install plugin, then paste the absolute path of out/

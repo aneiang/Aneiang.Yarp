@@ -49,9 +49,9 @@ Dockerfile 里 `VOLUME /app/data` + 绝对路径连接串，Helm chart 里 PVC �
 
 ```bash
 # 构建上下文是仓库根目录：镜像要从源码构建，而不是从 deploy/docker 里 COPY 一个 bin/
-docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:2.3.0.40 .
+docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:2.3.0.40-preview.1 .
 
-docker run --rm -p 5200:5200 -v gw-data:/app/data aneiang/yarp-gateway:2.3.0.40
+docker run --rm -p 5200:5200 -v gw-data:/app/data aneiang/yarp-gateway:2.3.0.40-preview.1
 ```
 
 镜像里已经处理的几件事：非 root（uid 10001）、`HEALTHCHECK` 打 `/health`、连接串指到 `/app/data`、
@@ -101,7 +101,8 @@ chart 里几个不那么显然的选择，都写在对应模板的注释里：
 ## dotnet new
 
 ```bash
-dotnet new install Aneiang.Yarp.Templates
+# 预览版需显式指定版本；稳定版发布后去掉 :: 及其后的后缀
+dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
 dotnet new aneiang-yarp -n MyGateway --Framework net9.0
 cd MyGateway && dotnet run
 ```

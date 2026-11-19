@@ -26,6 +26,14 @@
 
 [📖 文档](https://yarp.aneiang.com/docs/index.html#overview) · [🚀 在线演示](https://yarp-test.aneiang.com/aneiang) `admin` / `demo123` 
 
+> **当前为预览版 `2.3.0.40-preview.1`** · 本版稳定版尚未发布。预发布版本不会被 `dotnet` 默认选中，安装模板时要显式指定版本：
+>
+> ```
+> dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
+> ```
+>
+> 在仓库内也可以直接从目录装：`dotnet new install ./templates/Aneiang.Yarp.Templates`。引用 NuGet 包时同理，`PackageReference` 必须写完整的 `2.3.0.40-preview.1`，只写 `2.3.0.40` 会还原失败——那个版本还不存在。稳定版发布后这段说明会删掉。
+
 ---
 
 ## Aneiang.Yarp 与裸 YARP 对比
@@ -739,14 +747,15 @@ GET <prefix>/api-docs           # 人看的版本：按控制器分组、可过�
 
 ```bash
 # 1. 你自己的项目（推荐）：一条命令生成，自带 Dockerfile 与 README
-dotnet new install Aneiang.Yarp.Templates
+# 预览版需显式指定版本；稳定版发布后去掉 :: 及其后的后缀
+dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
 dotnet new aneiang-yarp -n MyGateway && cd MyGateway && dotnet run
 
 # 2. Kubernetes：Helm chart。密码留空则安装时随机生成，写在 NOTES 里
 helm install gw deploy/helm/aneiang-yarp --namespace gateway --create-namespace
 
 # 3. 官方参考镜像（跑本仓库的 SampleGateway，用于试跑和集成测试）
-docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:2.3.0.40 .
+docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:2.3.0.40-preview.1 .
 ```
 
 两件必须先知道的事：
@@ -763,7 +772,8 @@ docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:2.3.0.40 .
 外部插件是独立的程序集，装的时候不需要重新编译网关：
 
 ```bash
-dotnet new install Aneiang.Yarp.Templates
+# 预览版需显式指定版本；稳定版发布后去掉 :: 及其后的后缀
+dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
 dotnet new aneiang-yarp-plugin -n MyPlugin --PluginId my-plugin
 dotnet publish -c Release -o out
 # 面板 →「插件市场」→ 安装外部插件，填 out 目录的绝对路径
