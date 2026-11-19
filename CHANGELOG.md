@@ -4,6 +4,21 @@
 
 > **统一发布版本**：`2.3.0` 是 YARP 的版本，`40` 是 Aneiang.Yarp 的版本，合起来就是 `2.3.0.40`。2.3.0.30 之后的所有改动都归入本版，不再按里程碑分开发布 —— 原 2.4.0、2.4.1、2.5.0、2.6.0 四批一次交付。下文出现的 2.4.x / 2.5.x / 2.6.x 指开发过程中的里程碑批次，对外版本一律是 `2.3.0.40`；历史小节（2.3.0.30 及更早）保持原版本号不变。
 
+### 🛡 安全整改（19 项全落地）
+
+按 `docs/security/security-remediation.md` 的四批计划执行完毕。清单里 19 项从"1 项已完成、17 项零改动"变为全绿，`dotnet build` 0 警告 0 错误，单元测试 668 → 764，全解决方案 `dotnet list package --vulnerable --include-transitive` 无易受攻击包。
+
+其中四项值得单独说，因为**实际做法和清单原方案不一样**：
+
+- **依赖漏洞不能靠 pin 压住**（SEC-14）。清单原方案是"显式引用 `bundle_e_sqlcipher` 2.1.11+ 压住传递版本"，实测压不住 —— `Microsoft.Data.Sqlite` 仍会引入 `bundle_e_sqlite3`，NuGet 把 `lib.e_sqlite3` 解析到 2.1.10，CVE 还在。实际做法是改用 `Microsoft.Data.Sqlite.Core` + 显式 `bundle_e_sqlcipher` 2.1.11，从依赖图里移除 `bundle_e_sqlite3`（`SqliteNativeProvider` 补上 Core 版需要的手工 provider 初始化），漏洞是消失而不是被遮住
+- **数据库加密：实测确认生效，并加了启动自检**（SEC-15）。两条独立证据：`PRAGMA cipher_version` 有返回值，且带 `Password=` 写库后对 `.db` / `-wal` 做 UTF-8 与 UTF-16 全字节扫描搜不到哨兵串，错密钥打开报 `SQLITE_NOTADB`(26)。既然配置承诺了加密，就不再允许"配了密码但不生效"：连接串带 `Password=` 而 provider 不能加密时，`SqliteConnectionFactory` 构造即抛异常
+  - ⚠️ **破坏性变更**：旧版本里若是 `bundle_e_sqlite3` 抢到了 provider 初始化，写出的库是明文；升级后这类库带 `Password=` 会**打不开**（错误码 26）。这是刻意的失败而不是静默继续。处置：去掉 `Password=`（改用文件系统权限保护），或用 `sqlcipher_export()` 迁移
+  - ⚠️ 样例配置长期都是 `Password=123456`。加密真正生效之后，这个口令就是唯一防线 —— 比"不加密"更危险地给人安全感，实际部署务必换成高熵口令
+- **分析器基线只命中两条，两条都修了**（SEC-17）。`CA5359` 指向客户端 gRPC 通道**无条件**跳过证书校验（注释写着 "dev/demo 用"）—— 那不是风格问题，是把"连的是不是自己的网关"这个判断关掉了；现在默认正常校验，只有 `Gateway:Registration:AllowUntrustedGrpcCertificate=true` 才跳过。`CA5350` 指向 TOTP 的 HMAC-SHA1，那是 RFC 6238 规定的，换掉会静默废掉所有已注册的验证器，用带理由的 `SuppressMessage` 保留。基线归零后把整个 Security 分类提升为 `error`
+- **插件沙箱不做，改为契约化**（SEC-18）。.NET 里没有可靠的进程内沙箱，`CollectibleLoadContext` 只解决卸载。安装对话框加显式警告（文档只有在意的人会读，对话框是唯一能改变决定的位置），并把"插件 = full trust、不能当隔离边界"写进 `docs/plugins/plugin-compatibility.md`
+
+其余各条：插件 id 白名单 + 目录边界用尾随分隔符比对（`/plugins-evil` 不再被当成 `/plugins` 的子目录）；`2fa/*` 收紧为 admin-only 且 `setup` 由 GET 改 POST；转发头改由 `IStartupFilter` 注册并清空框架默认信任的 loopback；密码改 PBKDF2-SHA256 210k 自描述格式；会话改 `HttpOnly` cookie 并**移除**响应体与 localStorage 里的 token（两者并存会让前者完全失效）；登录加双键滑动窗口限流；补 CSP/XFO/XCTO/Referrer-Policy/HSTS；Webhook 出站分三段校验（字面量、逐次尝试、关闭自动重定向）；日志与响应里的 URL 凭据脱敏；认证/授权/插件/2FA 全部写审计；JWT 校验 `alg` 头并加 `jti` + 吊销表让 logout 真正生效；凭据比较统一走 `FixedTimeEquals`；TOTP 加 `lastAcceptedCounter` 高水位防重放；密钥文件在 Unix 上 `0600` 且**读取时也收紧一次**。
+
 ### 📌 本版概览
 
 **多环境配置隔离（原 v2.6 第 1 项，三批全交付）** —— v2.6 的第一项「多环境配置隔离」拆成三批，现在三批都在本版里 —— 环境隔离与切换、环境间 diff、两步提升与审批。核心是一条边界：**网关转发哪个环境是启动时定死的，切环境只切"你在编辑哪个"**。这条边界不是设计洁癖 —— 如果切面板会改转发，那"打开 staging 看一眼"就等于把生产流量切走了。
@@ -17,6 +32,31 @@
 **生产化底座（原 v2.4.0）** —— 不再只是"装得上"，而是"敢上线"。核心是把过去只在请求时才暴露的失败提前到保存时，并让指标出得去。
 
 ### 🚀 新增
+
+- **OTLP 导出鉴权：三个来源，只回脱敏值**
+  - `Headers` 以前只能手写配置文件，面板连"有没有配鉴权"都不显示 —— 而企业后端（Grafana Cloud / SigNoz / 商业 APM）几乎都强制鉴权，于是只剩"关掉导出"或"裸传"两个坏选择。后端其实一直支持，缺的只是出口
+  - **三个来源按 header 名逐项合并**：`Gateway:Dashboard:Tracing:Headers`（配置）> `Data/tracing-auth.json`（面板）> `OTEL_EXPORTER_OTLP_HEADERS` / `..._TRACES_HEADERS`（标准环境变量）。最后一项是关键：容器/K8s 部署早已把 token 放在那里，要求改写成项目自定义的嵌套键，只会让人得出"这网关不支持鉴权"的结论
+  - **接口永不返回明文**：只回 `Basic ****cFFxb1Y=`，保留 scheme 与末 8 位供区分两把 token。提交脱敏值本身会被拒绝，否则会把可用凭据替换成字面量 `****`
+  - **留空 = 不使用面板覆盖**，不是"把凭据清空"：编辑器会提交每一行，没填的行必须回退到配置或环境变量，否则改一个 header 会静默丢掉其余来源
+  - **写入独立文件而非改写 `appsettings.json`**：不重排格式、不丢注释，Linux 下权限 `0600`。admin-only，与 webhook 目标同级 —— 改导出目标等于改"数据发给谁"
+  - **协议不再静默退化**：以前只认精确的 `http/protobuf`，`httpprotobuf`/`http-protobuf` 全部落进 gRPC 分支，症状是"collector 连不上"，把人引向网络排查。现在归一化 `-`/`_`/`/` 与大小写，仍不认识的值让导出器启动失败、原因显示在追踪页 —— 降级但可见，而不是拖垮转发面
+  - 值里含换行直接拒绝：否则可以借此向每次导出注入任意 header
+  - **`http/protobuf` 的 `/v1/traces` 改由网关补齐**。导出器 1.15.3 **不会**追加这个尾段 —— 本机用假收集器抓包确认，Endpoint 是什么路径就打到什么路径。而绝大多数 OTLP 教程仍按"SDK 会自动补"来写，照抄会少一段、后端返回 404，再被误读成"token 不对"。现在 `:4318`、`:4318/v1/traces`、`:5080/api/default` 三种写法都落到正确地址，gRPC 模式不做此处理（路径会拼坏方法名）
+  - **启动日志打印最终导出地址**（`OTLP export URL: ...`）。导出失败对业务是静默的，"请求到底打到哪个 URL"是这类问题里第一个要确认的事实
+  - **面板里来自配置文件的 header 变成锁定行**。配置文件优先级最高，在面板改它只会得到一个"保存成功但没生效"的假象；现在该行灰显不可编辑，并提示去改 `appsettings.json`
+  - **示例配置里不再放真实凭据**。`samples/SampleGateway/appsettings.json` 是入库文件，原来直接写着某台 OpenObserve 的地址与 Basic 凭据 —— 提交一次，凭据就永久留在 Git 历史里，删掉当前行也救不回来。现在该文件只留 `http://openobserve:5080/api/default` 与 `Basic <base64(...)>` 占位符，真实值移入 `appsettings.Development.json`（`.gitignore` 已忽略）
+  - 附 `docs/observability/tracing.md`：优先级说明、路径补齐规则、OpenObserve（`/api/{org}` + `organization` header）等各后端的具体填法、凭据该放哪里、以及端口错配这类最常见的坑
+
+- **导出连通性自检：「页面有数据」不再等于「导出正常」**
+  - 起因是一个真实误判：Endpoint 配成一个解析不了的地址，追踪页照样有数据。原因是同一个 provider 上的两条独立分支 —— 列表由 `RecentTraceProcessor` 喂内存缓冲（无条件挂载），导出走 OTLP exporter（仅 `ExportEnabled` 时挂）。导出失败是异步的、重试后静默丢弃，错误进 EventSource 而不进日志，于是**唯一能用的判据只有去后端查**，而那时已经过去很久了
+  - 追踪页「数据出口」列新增「测试」按钮（admin-only），把**当前生效的** Endpoint 与鉴权头真实发一个空 OTLP 批次，结果直接显示在地址下方：`HTTP 200 OK · 74 ms · 2 个鉴权头`，或失败分型 + 原始异常 + 响应片段
+  - **401 与 404 被明确区分**。这两种过去都表现为"连不上"，而它们的处置完全相反：前者换凭据，后者补路径（HTTP 漏 `/api/<org>`，或 gRPC 把路径塞进了 Endpoint）
+  - **401 再往下分一层：`WWW-Authenticate` 原样显示**。起因是拿 OpenObserve 的 gRPC 入口配 Basic 凭据，得到一句 `401 Unauthorized`，看着就是"密码错了"。实测那个路由回的是 `WWW-Authenticate: Bearer realm="openobserve"` —— 它要 Bearer（ingest token），**不收 Basic**；同一把凭据打 `/api/default/v1/traces` 却是 200。现在这类结果标 `auth-challenge` 并把挑战头显示出来，意思是"凭据可能是对的，这个入口不接受这种凭据类型"。少了这一条，人会去轮换一个本来没问题的密码，然后仍然 401
+  - **gRPC 不能只看 HTTP 状态码**：凭据被拒时 HTTP 仍返回 200，真实结果在 `grpc-status` trailer 里。非 0 一律判失败，否则就是这个探测本身最该避免的假绿灯
+  - **gRPC 先做 TCP 预检**。`RequestVersionExact` 会把**所有**失败报成同一个 `VersionNegotiationError` —— 端口关闭、域名不存在也一样。实测确认后加了一步纯 TCP 连接用于分型，否则"主机名写错"会被显示成"协议不匹配"
+  - 顺带查清了一台只开 5080 的 OpenObserve：5080 能连但不接受明文 HTTP/2，5081 无监听。也就是说它的 gRPC 根本不可用、只有 OTLP/HTTP 能走 —— 这类结论以前只能靠反复试
+  - 新增 `POST api/tracing/verify`（admin-only，与改导出凭据同级：它会使用该凭据并让网关代发一次请求）。**接口不接受调用方传 URL**，目标永远是配置里的 Endpoint，返回的地址会剥掉 userinfo
+  - 探测请求包在 `SuppressInstrumentationScope` 里，否则"测试导出"这件事本身会在列表里长出一条 span 冒充网关流量
 
 - **WAF 重写为声明式规则引擎**（`Aneiang.Yarp.Plugin.Waf` 2.0）
   - **5 个硬编码检查器 → 一条有序规则管线**。每个规则 = 可选的**内置检测器**（`sql-injection` / `xss` / `path-traversal`）+ 可选的**条件集合**（用来限定检测范围）+ 一个**动作**。条件与检测器同时存在时是"在这个范围内跑这个检测"，只有条件时条件本身就是规则 —— 所以"只对 /api 开 SQL 检查""拦掉 UA 是扫描器的请求""给合作方打标签"都不需要改代码
@@ -307,7 +347,8 @@
   - 真的把生成的网关跑起来（`dotnet MyGateway.dll`，Production）：`/health` `/ready` `/aneiang/login` 全 200；`POST /aneiang/login` 返回的 JWT 解出 `"role":"admin"`；`GET /aneiang/api/auth/status` 返回 `role=admin, isImplicitRole=false, canWrite=true, canAdminister=true` —— RBAC 的 claim 与状态接口在真实进程里跑通
   - 顺手发现两处文档不能说的话，已改：① 登录端点是 `POST <prefix>/login`，不是 `api/auth/login`；② 集群的 `destinations` 是**以名字为键的对象**，不是数组（写成数组会得到 400 加一句 JSON 路径错误）。另外核实了 `Aneiang.Yarp.Dashboard` 依赖**全部**内置插件包（配置插件需要它的 schema），所以"插件是可选包、只有用到才装"这句话只对不带面板的纯数据面成立 —— 模板 README 与 csproj 注释都改成了准确表述
   - **未验证**：`PUT api/config/routes/{id}` 之后立刻访问该路由仍返回 404（重启进程后同样），沙箱内无法核实是环境问题还是产品行为，已交由用户在面板里确认
-- 用量 **579** 个（上一批 489）：新增 `EnvironmentPromotionTests`（16 个）、`DashboardRoleTests`（52 个）、`OpenApiDocumentBuilderTests`（18 个）、`PluginContractTests`（12 个）、`DashboardI18nTests`（6 个）、`DashboardEndpointCoverageTests`（2 个），`WafEngineTests` 补 9 个、`WafMiddlewareTests` 补 3 个
+- 用量 **635** 个（上一批 489）：新增 `EnvironmentPromotionTests`（16 个）、`DashboardRoleTests`（54 个）、`OpenApiDocumentBuilderTests`（18 个）、`PluginContractTests`（12 个）、`DashboardI18nTests`（6 个）、`DashboardEndpointCoverageTests`（2 个）、`TracingAuthStoreTests`（23 个）、`TracingEndpointTests`（8 个）、`TracingExportProbeTests`（22 个），`WafEngineTests` 补 9 个、`WafMiddlewareTests` 补 3 个、`DashboardRoleTests` 的 admin-only 用例补 1 个（`tracing/verify`）
+- `TracingExportProbeTests`（22 个）里有两条是**做功能时才发现的**：`RequestVersionExact` 会把 DNS 失败、端口关闭、后端不支持 HTTP/2 全部报成同一个 `VersionNegotiationError`，所以 gRPC 分支必须先用一条纯 TCP 连接分型，否则"主机名写错"会被显示成"协议不匹配"；以及 gRPC 凭据被拒时 HTTP 状态码仍是 200，真实结果在 `grpc-status` trailer 里 —— 只看状态码的探测会给出假绿灯。两个用例都钉住了这两点
 - `DashboardI18nTests`（6 个）是补界面时顺手加的，因为它当场抓到一个真缺陷：**中英两包键集合一致**（少一个键在运行时只会静默回落到另一种语言）、**占位符一致**（翻译漏掉 `{count}` 会渲染出一句缺数字的话）、**没有非预期的空白值**（`个` / `个生效中` 这类量词在英文里故意留空，白名单里只放这三个）、**视图与脚本引用的每个字面量键都存在**。最后一条会逐文件识别 `t(key) => __('malert.' + key)` 这种带命名空间前缀的包装、以及 `t('verdict' + record.verdict)` 这种拼接键，避免误报；它抓出了 `settings.config.backupBtn` 缺失
 - `No_key_is_defined_in_more_than_one_domain_file`（1 个）是这次 i18n 清理的判据，不只是"清完留个记录"。它按域文件统计键的出现次数，任何一个键落在两个文件里就红。这条能立住的前提是**清理时保留的是屏幕上的值**：如果顺手把"更通顺"的那份留下，等于在没人知道的情况下改了界面文案；如果留下的是没生效的那份，界面就会立刻回退成旧文案。两种都属于"删重复删出了新 bug"
 - `PluginContractTests`（12 个）里最值得留的一条是**矩阵与代码双向一致**：内置插件少写进文档是"集成方看不到"，文档多写一行是"集成方去装一个不存在的插件"。两边都钉，才能保证这份矩阵不是一份会过期的宣传材料

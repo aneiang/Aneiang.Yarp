@@ -206,7 +206,7 @@ app.Run();
 - **配置预检** —— `POST /api/config/validate` 在保存前给出带字段定位的错误/提醒；`GET /api/config/integrity` 对全量配置体检（指向不存在集群的路由、无目标节点的集群、重复匹配路径）。**自注册、批量导入、历史回滚、AI 写操作走同一道闸**。
 - **策略名不再是盲填** —— 授权 / CORS / 限流 / 输出缓存四个字段改为下拉，内置 9 个 `gw-*` 策略开箱可用；未注册的名字在保存时即被拒绝，而不是等到构建端点时抛异常。
 - **乐观并发** —— 写操作携带 `X-Config-Version`，版本不一致返回 `409`，避免两个标签页互相覆盖。
-- **单元测试基线** —— `tests/Aneiang.Yarp.UnitTests`，579 个 xUnit 用例覆盖 JSON 容错、配置预检、并发契约、加权负载均衡、灰度发布、指标与告警阈值、链路追踪、WAF、RBAC 角色、OpenAPI 生成、插件契约、i18n 键一致性与端点↔界面覆盖；`.github/workflows/ci.yml` 每次推送跑编译 + 测试 + 打包检查。
+- **单元测试基线** —— `tests/Aneiang.Yarp.UnitTests`，764 个 xUnit 用例覆盖 JSON 容错、配置预检、并发契约、加权负载均衡、灰度发布、指标与告警阈值、链路追踪、WAF、RBAC 角色、OpenAPI 生成、插件契约、i18n 键一致性与端点↔界面覆盖；`.github/workflows/ci.yml` 每次推送跑编译 + 测试 + 打包检查。
 
 ```bash
 dotnet test tests/Aneiang.Yarp.UnitTests

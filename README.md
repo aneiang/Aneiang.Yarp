@@ -206,7 +206,7 @@ Config: `Mode` (default `Static`), `Endpoint`, `ServiceName`, `Namespace` (`defa
 - **TTFR** — `gateway_serving` (0/1) and `gateway_first_success_seconds`: from process start to the first successful proxied request. "Up but not routing" is a failure mode every other panel hides.
 - **Policy names are no longer free text** — the authorization / CORS / rate limiter / output cache fields are dropdowns backed by nine built-in `gw-*` policies. A name that was never registered is now rejected at save time instead of throwing when YARP builds the endpoint.
 - **Optimistic concurrency** — writes carry `X-Config-Version`; a stale version returns `409`, so two open tabs cannot silently overwrite each other.
-- **Test baseline** — `tests/Aneiang.Yarp.UnitTests`, 579 xUnit cases covering JSON tolerance, pre-flight validation, the concurrency contract, weighted load balancing, canary rollout, metrics and alert thresholds, tracing, WAF, RBAC roles, OpenAPI generation, plugin contracts, i18n key parity and endpoint↔UI coverage. `.github/workflows/ci.yml` builds, tests and packs on every push.
+- **Test baseline** — `tests/Aneiang.Yarp.UnitTests`, 764 xUnit cases covering JSON tolerance, pre-flight validation, the concurrency contract, weighted load balancing, canary rollout, metrics and alert thresholds, tracing, WAF, RBAC roles, OpenAPI generation, plugin contracts, i18n key parity and endpoint↔UI coverage. `.github/workflows/ci.yml` builds, tests and packs on every push.
 
 ```bash
 dotnet test tests/Aneiang.Yarp.UnitTests
