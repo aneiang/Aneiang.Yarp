@@ -2962,7 +2962,10 @@
         .sidebar.collapsed .brand-text { display: none; }
 
         /* 导航：隐藏分组标题，扁平化展开所有图标 */
-        .sidebar.collapsed .sidebar-nav { padding: 8px 6px 12px; overflow: visible; }
+        /* 收起态必须保留纵向滚动：分组被强制展开后条目总数远超一屏，一旦把
+           overflow 改成 visible，超出视口的条目既不可见也滚不到（表现为菜单“消失”）。
+           提示气泡不再依赖父级溢出——见下方 .side-tip，由 JS 挂到 body 上。 */
+        .sidebar.collapsed .sidebar-nav { padding: 8px 6px 12px; }
         .sidebar.collapsed .section-header { display: none; }
         .sidebar.collapsed .nav-collapse { display: block; max-height: none; overflow: visible; }
         .sidebar.collapsed .nav-link {
@@ -2991,14 +2994,12 @@
             border-top: 1px solid var(--sidebar-border);
         }
 
-        /* Tooltip：图标 hover 显示项目名 */
-        .sidebar.collapsed .nav-link:hover::before {
-            content: attr(data-title);
-            display: block;
-            position: absolute;
-            left: calc(100% + 10px);
-            top: 50%;
-            transform: translateY(-50%);
+        /* Tooltip：图标 hover 显示项目名。
+           气泡挂在 body 上（position: fixed），而不是用 .nav-link::before —
+           伪元素是 .sidebar-nav 的后代，会被它的 overflow 裁掉（滚动容器必然裁剪）。 */
+        .side-tip {
+            position: fixed;
+            z-index: 1200;
             padding: 6px 11px;
             background: #1e293b;
             border: 1px solid #334155;
@@ -3009,9 +3010,11 @@
             line-height: 1.2;
             white-space: nowrap;
             box-shadow: var(--shadow-lg);
-            z-index: 1100;
             pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.12s ease;
         }
+        .side-tip.show { opacity: 1; }
 
         /* Command Palette */
         .cmd-palette-overlay {
@@ -5526,6 +5529,7 @@
             if (!sidebar) return;
             sidebar.classList.toggle('collapsed');
             var collapsed = sidebar.classList.contains('collapsed');
+            if (window.sideTipHide) window.sideTipHide();
             try { localStorage.setItem('sidebar_collapsed', collapsed ? '1' : '0'); } catch (_) {}
             var main = document.querySelector('.main-content');
             if (main) main.classList.toggle('main-collapsed', collapsed);
@@ -5548,6 +5552,77 @@
                     if (main) main.classList.add('main-collapsed');
                 }
             } catch (_) {}
+        })();
+
+        // 收起态图标提示气泡。挂在 body 上（fixed），避免被 .sidebar-nav 的滚动容器裁掉。
+        (function () {
+            var tip = null;
+            var current = null;
+
+            function ensureTip() {
+                if (!tip) {
+                    tip = document.createElement('div');
+                    tip.className = 'side-tip';
+                    document.body.appendChild(tip);
+                }
+                return tip;
+            }
+
+            function hideTip() {
+                current = null;
+                if (tip) tip.classList.remove('show');
+            }
+
+            function linkFrom(target) {
+                if (!target || !target.closest) return null;
+                var sidebar = document.getElementById('sidebar');
+                if (!sidebar || !sidebar.classList.contains('collapsed')) return null;
+                var link = target.closest('.nav-link');
+                return link && sidebar.contains(link) ? link : null;
+            }
+
+            function showTip(link) {
+                // 优先取已本地化的标题，data-title 是服务端下发的兜底值
+                var label = link.querySelector('.nav-title');
+                var text = ((label && label.textContent) || '').trim() || link.getAttribute('data-title');
+                if (!text) return;
+
+                current = link;
+                var el = ensureTip();
+                el.textContent = text;
+                el.style.left = '0px';
+                el.style.top = '0px';
+                el.classList.add('show');
+
+                var r = link.getBoundingClientRect();
+                var w = el.offsetWidth;
+                var h = el.offsetHeight;
+                var left = r.right + 10;
+                if (left + w > window.innerWidth - 8) left = r.left - w - 10;
+                var top = r.top + r.height / 2 - h / 2;
+                top = Math.max(8, Math.min(top, window.innerHeight - h - 8));
+                el.style.left = Math.max(8, left) + 'px';
+                el.style.top = top + 'px';
+            }
+
+            document.addEventListener('mouseover', function (e) {
+                var link = linkFrom(e.target);
+                if (!link) { hideTip(); return; }
+                if (link !== current) showTip(link);
+            });
+            document.addEventListener('mouseout', function (e) {
+                if (!linkFrom(e.target)) hideTip();
+            });
+            document.addEventListener('focusin', function (e) {
+                var link = linkFrom(e.target);
+                if (link) showTip(link);
+            });
+            document.addEventListener('focusout', hideTip);
+            document.addEventListener('scroll', hideTip, true);
+            document.addEventListener('click', hideTip);
+            window.addEventListener('resize', hideTip);
+
+            window.sideTipHide = hideTip;
         })();
 
         window.showToast = function(message, type, duration) {
