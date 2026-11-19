@@ -383,3 +383,7 @@ website/
 
 # AI 助手的本地配置（含 API Key，运行时生成，绝不入库）
 ai-config.json
+
+# 本地开发配置：样例网关把真实 OTLP 地址与凭据放在这里，appsettings.json 只留占位符
+appsettings.Development.json
+appsettings.*.local.json

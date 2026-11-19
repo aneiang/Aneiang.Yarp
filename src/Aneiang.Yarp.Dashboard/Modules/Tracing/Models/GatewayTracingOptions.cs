@@ -31,7 +31,15 @@ public sealed class GatewayTracingOptions
     /// <summary><c>deployment.environment</c> resource attribute, e.g. <c>production</c>.</summary>
     public string? Environment { get; set; }
 
-    /// <summary>OTLP collector endpoint. Port 4317 for gRPC, 4318 for HTTP.</summary>
+    /// <summary>
+    /// OTLP collector endpoint. Use port 4317 for gRPC, 4318 for HTTP.
+    /// </summary>
+    /// <remarks>
+    /// For <c>http/protobuf</c> the base path is kept and <c>/v1/traces</c> is appended if it is not
+    /// already there, so <c>http://collector:4318</c>, <c>http://collector:4318/v1/traces</c> and
+    /// <c>http://openobserve:5080/api/default</c> all resolve to the right URL.
+    /// For <c>grpc</c> this must be scheme + host + port only — a path breaks the gRPC method name.
+    /// </remarks>
     public string Endpoint { get; set; } = "http://localhost:4317";
 
     /// <summary><c>grpc</c> or <c>http/protobuf</c>.</summary>

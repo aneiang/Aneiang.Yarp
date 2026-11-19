@@ -72,6 +72,72 @@
         min-width: 34px; display: inline-block;
     }
 
+    /* ── Export authentication ──
+       One line under the endpoint: "which collector" and "will it accept us" fail
+       together, and a 401 from the exporter is otherwise silent. */
+    .tr-auth-line {
+        display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+        margin-top: 6px; font-size: 11.5px;
+    }
+    .tr-auth-state { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+    .tr-auth-state--on { color: #15803d; }
+    .tr-auth-state--off { color: #b45309; }
+    .tr-auth-names {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px; color: #64748b;
+    }
+    .tr-auth-source {
+        font-size: 10.5px; padding: 1px 6px; border-radius: 999px;
+        background: #f1f5f9; color: #64748b; white-space: nowrap;
+    }
+    .tr-auth-source--empty { display: none; }
+    .tr-auth-link {
+        border: 0; background: none; padding: 0; font-size: 11.5px;
+        color: var(--primary, #2563eb); text-decoration: underline;
+    }
+    .tr-auth-row {
+        display: grid; grid-template-columns: 180px minmax(0, 1fr) auto auto;
+        gap: 8px; align-items: center; margin-bottom: 8px;
+    }
+    .tr-auth-help { font-size: 12.5px; line-height: 1.6; color: #64748b; }
+    .tr-auth-file { font-size: 11.5px; color: #64748b; }
+    .tr-auth-file code { font-size: 11px; }
+    .tr-auth-restart { font-size: 11.5px; color: #b45309; }
+
+    /* ── Export probe ──
+       Reachability and "did the collector accept our credential" are the two failures that leave
+       the page looking healthy, so the verdict sits directly under the endpoint it tested. */
+    .tr-probe-btn {
+        display: inline-flex; align-items: center; gap: 4px;
+        border: 1px solid var(--border-light, #e2e8f0); background: #fff;
+        border-radius: 6px; padding: 1px 8px; font-size: 11.5px;
+        color: #475569; line-height: 18px;
+    }
+    .tr-probe-btn:hover { background: #f8fafc; color: var(--primary, #2563eb); }
+    .tr-probe:empty { display: none; }
+    .tr-probe { margin-top: 6px; font-size: 11.5px; line-height: 1.55; }
+    .tr-probe__state { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+    .tr-probe__state.is-ok { color: #15803d; }
+    .tr-probe__state.is-fail { color: #b91c1c; }
+    .tr-probe__state.is-busy { color: #64748b; font-weight: 500; }
+    .tr-probe__meta { font-weight: 400; color: #94a3b8; }
+    .tr-probe__url, .tr-probe__detail {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px; color: #64748b; word-break: break-all;
+    }
+    .tr-probe__detail { color: #b91c1c; }
+    .tr-probe__snippet {
+        display: block; margin: 3px 0; padding: 4px 6px; border-radius: 4px;
+        background: #fef2f2; color: #b91c1c; font-size: 10.5px;
+        max-height: 62px; overflow: hidden;
+    }
+    .tr-probe__challenge {
+        margin: 4px 0 3px; padding: 3px 6px; border-left: 2px solid #cbd5e1;
+        background: #f8fafc; color: #475569; font-size: 10.5px; word-break: break-all;
+    }
+    .tr-probe__challenge code { font-size: 10.5px; color: #334155; }
+    .tr-probe__note { color: #94a3b8; font-size: 11px; }
+
     /* ── Trace list ── */
     .tr-list {
         border: 1px solid var(--border-color, #e2e8f0);

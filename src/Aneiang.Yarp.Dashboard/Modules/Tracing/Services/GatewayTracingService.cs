@@ -11,18 +11,21 @@ public sealed class GatewayTracingService : IGatewayTracingService
     private readonly RuntimeRatioSampler _sampler;
     private readonly TraceRingBuffer _buffer;
     private readonly GatewayTracingHost _host;
+    private readonly TracingAuthStore _authStore;
 
     /// <summary>Initializes a new instance of the <see cref="GatewayTracingService"/> class.</summary>
     public GatewayTracingService(
         GatewayTracingOptions options,
         RuntimeRatioSampler sampler,
         TraceRingBuffer buffer,
-        GatewayTracingHost host)
+        GatewayTracingHost host,
+        TracingAuthStore authStore)
     {
         _options = options;
         _sampler = sampler;
         _buffer = buffer;
         _host = host;
+        _authStore = authStore;
     }
 
     /// <inheritdoc />
@@ -48,7 +51,11 @@ public sealed class GatewayTracingService : IGatewayTracingService
         TracesEvicted = _buffer.TracesEvicted,
         Sources = GatewayTracingHost.BufferSources,
         SectionName = GatewayTracingOptions.SectionName,
-        RestartRequired = _options.Enabled != _host.IsRunning
+        RestartRequired = _options.Enabled != _host.IsRunning,
+        // Computed per request rather than cached on the status record: the panel file can change
+        // while the provider is running, and the page should say "written, restart to apply"
+        // instead of showing the value the exporter is still using.
+        Auth = _authStore.Describe(_options)
     };
 
     /// <inheritdoc />

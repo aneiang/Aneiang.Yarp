@@ -43,6 +43,7 @@ public sealed class GatewayTracingHost : IHostedService, IAsyncDisposable
     private readonly GatewayTracingOptions _options;
     private readonly RuntimeRatioSampler _sampler;
     private readonly TraceRingBuffer _buffer;
+    private readonly TracingAuthStore _authStore;
     private readonly ILogger<GatewayTracingHost> _logger;
     private readonly string _controlPlanePrefix;
 
@@ -53,12 +54,14 @@ public sealed class GatewayTracingHost : IHostedService, IAsyncDisposable
         GatewayTracingOptions options,
         RuntimeRatioSampler sampler,
         TraceRingBuffer buffer,
+        TracingAuthStore authStore,
         IOptions<Infrastructure.DashboardOptions> dashboardOptions,
         ILogger<GatewayTracingHost> logger)
     {
         _options = options;
         _sampler = sampler;
         _buffer = buffer;
+        _authStore = authStore;
         _logger = logger;
         _controlPlanePrefix = "/" + (dashboardOptions.Value.RoutePrefix ?? "apigateway").Trim('/');
     }
@@ -165,13 +168,33 @@ public sealed class GatewayTracingHost : IHostedService, IAsyncDisposable
         if (_options.ExportEnabled)
         {
             var endpoint = ParseEndpoint(_options.Endpoint);
-            var protocol = string.Equals(_options.Protocol, "http/protobuf", StringComparison.OrdinalIgnoreCase)
-                ? OtlpExportProtocol.HttpProtobuf
-                : OtlpExportProtocol.Grpc;
+            var protocol = ParseProtocol(_options.Protocol);
 
-            var headers = _options.Headers.Count == 0
+            // Verified against exporter 1.15.3 with a local capture server: it sends to
+            // `Endpoint` verbatim and appends nothing. Earlier exporter versions appended
+            // `/v1/traces` for HTTP, which is what most OTLP guides still describe, so an endpoint
+            // copied from those guides reaches the collector one path segment short and gets a 404
+            // that looks like an authentication or network problem. Normalising here means both the
+            // old ("http://collector:4318") and the explicit ("http://collector:4318/v1/traces")
+            // spellings work, and neither depends on the exporter version installed.
+            if (protocol == OtlpExportProtocol.HttpProtobuf)
+                endpoint = NormalizeHttpTracesEndpoint(endpoint);
+
+            // Effective, not configured: the panel file and the standard environment variables are
+            // merged in here so that a header set from the dashboard survives a restart.
+            var effectiveHeaders = _authStore.ResolveEffective(_options);
+
+            // OTel parses this with Split('=', 2), so base64 padding survives the trip.
+            var headers = effectiveHeaders.Count == 0
                 ? null
-                : string.Join(",", _options.Headers.Select(x => $"{x.Key}={x.Value}"));
+                : string.Join(",", effectiveHeaders.Select(x => $"{x.Key}={x.Value}"));
+
+            if (effectiveHeaders.Count > 0)
+                _logger.LogInformation("OTLP export will carry {Count} authentication header(s).", effectiveHeaders.Count);
+
+            // Logged because it is the single most common cause of "the collector received
+            // nothing": the request went somewhere other than the URL the operator had in mind.
+            _logger.LogInformation("OTLP export URL: {Url}", endpoint);
 
             builder.AddOtlpExporter(options =>
             {
@@ -197,7 +220,60 @@ public sealed class GatewayTracingHost : IHostedService, IAsyncDisposable
            || path.StartsWithSegments("/live", StringComparison.OrdinalIgnoreCase)
            || path.StartsWithSegments("/favicon.ico", StringComparison.OrdinalIgnoreCase);
 
-    private static Uri ParseEndpoint(string endpoint)    {
+    /// <summary>
+    /// Maps the configured protocol name onto the exporter's enum.
+    /// </summary>
+    /// <remarks>
+    /// The previous implementation only recognised the exact string <c>http/protobuf</c> and sent
+    /// every other value down the gRPC path. A typo such as <c>httpprotobuf</c> or
+    /// <c>http-protobuf</c> therefore did not fail — it silently switched protocol, and the symptom
+    /// ("collector unreachable") pointed at the network instead of at the configuration. Separator
+    /// and casing differences are normalised here; anything still unrecognised is a startup error.
+    /// </remarks>
+    internal static OtlpExportProtocol ParseProtocol(string? protocol)
+    {
+        var normalized = (protocol ?? string.Empty)
+            .Trim()
+            .ToLowerInvariant()
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace("/", string.Empty, StringComparison.Ordinal);
+
+        return normalized switch
+        {
+            "grpc" => OtlpExportProtocol.Grpc,
+            "httpprotobuf" => OtlpExportProtocol.HttpProtobuf,
+            _ => throw new InvalidOperationException(
+                $"Tracing protocol '{protocol}' is not supported. Use 'grpc' or 'http/protobuf'.")
+        };
+    }
+
+    /// <summary>
+    /// Makes sure an OTLP/HTTP endpoint ends at the traces path the exporter will actually call.
+    /// </summary>
+    /// <remarks>
+    /// The exporter no longer appends <c>/v1/traces</c> (measured on 1.15.3), so a bare host:port
+    /// reaches <c>/</c> and a backend path such as OpenObserve's <c>/api/default</c> reaches the
+    /// wrong handler. Trailing slashes are handled because <c>api/default/</c> and
+    /// <c>api/default</c> are the same resource to the operator but not to string comparison.
+    /// </remarks>
+    internal static Uri NormalizeHttpTracesEndpoint(Uri endpoint)
+    {
+        const string tracesPath = "/v1/traces";
+
+        var path = endpoint.AbsolutePath.TrimEnd('/');
+        if (path.EndsWith(tracesPath, StringComparison.OrdinalIgnoreCase))
+            return endpoint;
+
+        var builder = new UriBuilder(endpoint)
+        {
+            Path = path + tracesPath
+        };
+
+        return builder.Uri;
+    }
+
+    internal static Uri ParseEndpoint(string endpoint)    {
         if (string.IsNullOrWhiteSpace(endpoint))
             throw new InvalidOperationException("Tracing endpoint is empty; set Endpoint or ExportEnabled=false.");
 

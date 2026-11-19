@@ -71,6 +71,13 @@ public sealed record GatewayTracingStatus
 
     /// <summary>True when the configuration changed but the provider needs a restart to pick it up.</summary>
     public bool RestartRequired { get; init; }
+
+    /// <summary>
+    /// Whether exports carry authentication headers, which ones, and where each value came from.
+    /// Values are always masked — the page never receives a credential.
+    /// </summary>
+    public TracingAuthStatus Auth { get; init; } =
+        new(false, 0, Array.Empty<TracingAuthHeader>(), string.Empty, null);
 }
 
 /// <summary>Read/write access to the gateway's tracing state.</summary>

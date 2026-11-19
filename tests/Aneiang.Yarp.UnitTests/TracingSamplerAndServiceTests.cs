@@ -247,10 +247,13 @@ public class TracingSamplerAndServiceTests
 
     private sealed class Harness : IAsyncDisposable
     {
-        private Harness(GatewayTracingOptions options, GatewayTracingHost host, GatewayTracingService service)
+        private readonly string _authRoot;
+
+        private Harness(GatewayTracingOptions options, GatewayTracingHost host, GatewayTracingService service, string authRoot)
         {
             Host = host;
             Service = service;
+            _authRoot = authRoot;
         }
 
         public GatewayTracingHost Host { get; }
@@ -264,19 +267,38 @@ public class TracingSamplerAndServiceTests
                 GatewayTracingHost.BufferSources,
                 options.RecentTraceCapacity,
                 options.MaxSpansPerTrace);
+
+            // Isolated content root per harness: the store caches the override file, so sharing a
+            // directory would let one test's headers leak into the next one's status.
+            var authRoot = Path.Combine(Path.GetTempPath(), "yarp-tracing-auth-" + Guid.NewGuid().ToString("N"));
+            var authStore = new TracingAuthStore(authRoot, NullLogger<TracingAuthStore>.Instance);
+
             var host = new GatewayTracingHost(
                 options,
                 sampler,
                 buffer,
+                authStore,
                 Options.Create(new Aneiang.Yarp.Dashboard.Infrastructure.DashboardOptions()),
                 NullLogger<GatewayTracingHost>.Instance);
-            return new Harness(options, host, new GatewayTracingService(options, sampler, buffer, host));
+            return new Harness(
+                options,
+                host,
+                new GatewayTracingService(options, sampler, buffer, host, authStore),
+                authRoot);
         }
 
         public async ValueTask DisposeAsync()
         {
             await Host.StopAsync(CancellationToken.None);
             await Host.DisposeAsync();
+
+            try
+            {
+                if (Directory.Exists(_authRoot))
+                    Directory.Delete(_authRoot, recursive: true);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
         }
     }
 }
