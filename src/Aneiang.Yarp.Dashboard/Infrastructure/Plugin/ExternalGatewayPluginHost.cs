@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -21,6 +22,17 @@ public sealed record ExternalPluginRegistration(
 /// <summary>Discovers plugin.json files without loading plugin assemblies and activates enabled plugins in collectible contexts.</summary>
 public sealed class ExternalGatewayPluginHost : IDisposable
 {
+    /// <summary>
+    /// A plugin id becomes a directory name, so it is restricted to one safe path segment. Without
+    /// this an <c>"id": "../../../app"</c> manifest installs outside the plugin root — and the
+    /// installer deletes the target directory before copying into it.
+    /// </summary>
+    private static readonly Regex PluginIdPattern =
+        new("^[a-z0-9][a-z0-9._-]{0,63}$", RegexOptions.CultureInvariant);
+
+    private static readonly StringComparison PathComparison =
+        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true,
@@ -180,9 +192,7 @@ public sealed class ExternalGatewayPluginHost : IDisposable
         {
             var manifest = registration.Manifest;
             var pluginDirectory = Path.GetDirectoryName(registration.ManifestPath)!;
-            var assemblyPath = Path.GetFullPath(Path.Combine(pluginDirectory, manifest.EntryAssembly!));
-            if (!assemblyPath.StartsWith(Path.GetFullPath(pluginDirectory) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("entryAssembly must stay inside the plugin directory.");
+            var assemblyPath = EnsureWithin(pluginDirectory, manifest.EntryAssembly!);
             if (!File.Exists(assemblyPath))
                 throw new FileNotFoundException("Plugin entry assembly was not found.", assemblyPath);
 
@@ -238,12 +248,37 @@ public sealed class ExternalGatewayPluginHost : IDisposable
     private static void ValidateManifest(PluginManifest manifest, string manifestPath)
     {
         if (string.IsNullOrWhiteSpace(manifest.Id)) throw new InvalidDataException("id is required.");
+        if (!PluginIdPattern.IsMatch(manifest.Id))
+            throw new InvalidDataException(
+                $"id '{manifest.Id}' is not a valid plugin id: it must start with a lowercase letter or digit and contain only [a-z0-9._-], up to 64 characters.");
         if (string.IsNullOrWhiteSpace(manifest.Name)) throw new InvalidDataException("name is required.");
         if (!SemanticVersion.TryParse(manifest.Version, out _)) throw new InvalidDataException($"version '{manifest.Version}' is not semantic versioning compatible.");
         if (string.IsNullOrWhiteSpace(manifest.EntryAssembly)) throw new InvalidDataException("entryAssembly is required for external plugins.");
         if (string.IsNullOrWhiteSpace(manifest.EntryType)) throw new InvalidDataException("entryType is required for external plugins.");
         if (Path.IsPathRooted(manifest.EntryAssembly)) throw new InvalidDataException("entryAssembly must be relative to plugin.json.");
         _ = manifestPath;
+    }
+
+    /// <summary>
+    /// Resolves a path inside <paramref name="root"/> and refuses anything that would land outside it.
+    /// </summary>
+    /// <remarks>
+    /// The check is on the resolved path, not on the input text: <c>a/../../b</c> looks harmless
+    /// until <see cref="Path.GetFullPath(string)"/> collapses it. The trailing separator in the
+    /// boundary is what stops <c>/plugins-evil</c> from passing as <c>/plugins</c>.
+    /// </remarks>
+    internal static string EnsureWithin(string root, string relative)
+    {
+        var fullRoot = Path.GetFullPath(root);
+        var candidate = Path.GetFullPath(Path.Combine(fullRoot, relative));
+        var boundary = fullRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? fullRoot
+            : fullRoot + Path.DirectorySeparatorChar;
+
+        if (!candidate.StartsWith(boundary, PathComparison))
+            throw new InvalidDataException($"'{relative}' resolves outside '{fullRoot}'.");
+
+        return candidate;
     }
 
     private void UpdateStatus(
@@ -311,7 +346,7 @@ public sealed class ExternalGatewayPluginHost : IDisposable
                 return false;
             }
 
-            var targetDir = Path.Combine(_pluginRoot, manifest.Id);
+            var targetDir = EnsureWithin(_pluginRoot, manifest.Id);
             if (Directory.Exists(targetDir))
                 Directory.Delete(targetDir, recursive: true);
             CopyDirectory(sourceDirectory, targetDir);
@@ -356,7 +391,17 @@ public sealed class ExternalGatewayPluginHost : IDisposable
         try
         {
             var pluginDir = Path.GetDirectoryName(registration.ManifestPath);
-            if (!string.IsNullOrEmpty(pluginDir) && Directory.Exists(pluginDir))
+            if (string.IsNullOrEmpty(pluginDir))
+            {
+                error = "Plugin directory could not be resolved.";
+                return false;
+            }
+
+            // Discovery only ever produces paths under the root, but a recursive delete is not an
+            // operation to run on a path that an operator-influenced value once formed.
+            pluginDir = EnsureWithin(_pluginRoot, Path.GetRelativePath(_pluginRoot, pluginDir));
+
+            if (Directory.Exists(pluginDir))
                 Directory.Delete(pluginDir, recursive: true);
 
             _registrations.Remove(pluginId);

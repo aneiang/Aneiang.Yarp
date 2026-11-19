@@ -24,44 +24,16 @@ public static class ClientIpResolver
     /// This is intended for load-balancing scenarios (e.g. sticky sessions) where the
     /// actual network peer is more relevant than a potentially spoofed forwarded header.
     /// </summary>
+    /// <remarks>
+    /// There used to be a fallback to raw <c>X-Forwarded-For</c> here when
+    /// <c>RemoteIpAddress</c> was null. It was removed: the other method in this class documents
+    /// those headers as attacker-controlled, and a second code path that trusts them means the
+    /// guarantee only holds for callers who picked the right method. Proxied deployments get their
+    /// address from <c>UseForwardedHeaders</c> with a configured trust list, which writes to
+    /// <c>RemoteIpAddress</c> anyway.
+    /// </remarks>
     public static string? GetConnectionIp(HttpContext context)
     {
-        if (context.Connection.RemoteIpAddress != null)
-            return context.Connection.RemoteIpAddress.ToString();
-
-        // Fallback to X-Forwarded-For for proxied deployments
-        if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var forwardedFor))
-        {
-            var value = forwardedFor.FirstOrDefault();
-            if (!string.IsNullOrEmpty(value))
-                return StripIpv6PortSuffix(ExtractFirstIp(value));
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Extracts the first IP from a comma-separated X-Forwarded-For value.
-    /// Uses <see cref="ReadOnlySpan{T}"/> to avoid string allocations.
-    /// </summary>
-    private static string ExtractFirstIp(string value)
-    {
-        var commaIdx = value.IndexOf(',');
-        return commaIdx > 0
-            ? value.AsSpan(0, commaIdx).Trim().ToString()
-            : value.Trim();
-    }
-
-    /// <summary>
-    /// Strips an IPv4-mapped IPv6 port suffix (e.g. ::ffff:192.168.1.1:8080 → ::ffff:192.168.1.1).
-    /// Only removes the suffix when there is exactly one colon (port separator), preserving
-    /// genuine IPv6 addresses with multiple colon groups.
-    /// </summary>
-    private static string StripIpv6PortSuffix(string ip)
-    {
-        var colonIdx = ip.LastIndexOf(':');
-        if (colonIdx > 0 && !ip.AsSpan(0, colonIdx).Contains(':'))
-            return ip.Substring(0, colonIdx);
-        return ip;
+        return context.Connection.RemoteIpAddress?.ToString();
     }
 }

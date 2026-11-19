@@ -1,5 +1,7 @@
 using Aneiang.Yarp.Controllers;
+using Aneiang.Yarp.Infrastructure.Security;
 using Aneiang.Yarp.Models;
+using Microsoft.AspNetCore.Hosting;
 using Aneiang.Yarp.Services;
 using Aneiang.Yarp.Services.ProxyConfigHealth;
 using Aneiang.Yarp.Validation;
@@ -48,6 +50,12 @@ public static class AneiangYarpServiceCollectionExtensions
         services.TryAddSingleton<GatewayApiAuthFilter>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IConfigureOptions<MvcOptions>, GatewayApiAuthMvcOptionsSetup>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, GatewayControlPlaneSecurityValidator>());
+
+        // Trusted-proxy support: installed as a startup filter so it always runs before WAF, rate
+        // limiting and audit logging, and so it is opt-in through configuration rather than an
+        // app.Use... call every host has to remember. Empty configuration installs nothing.
+        services.AddOptions<TrustedProxyOptions>().BindConfiguration(TrustedProxyOptions.SectionName);
+        services.TryAddEnumerable(ServiceDescriptor.Transient<IStartupFilter, ForwardedHeadersStartupFilter>());
 
         var proxyBuilder = services.AddReverseProxy();
 
