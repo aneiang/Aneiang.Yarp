@@ -356,6 +356,13 @@
                     '</div>' +
                     '<div class="alert alert-secondary py-2 px-3 mt-3 mb-0 small">' + esc(t('pm.install.note',
                         '安装只做复制与登记，不会重启网关，也不会自动启用插件。启用与绑定在「插件配置」里完成。')) + '</div>' +
+                    // SEC-18: the boundary is full trust, not a sandbox. Saying it in the dialog is
+                    // the only place it can change a decision - by the time it reaches the docs the
+                    // plugin is already installed.
+                    '<div class="alert alert-warning py-2 px-3 mt-2 mb-0 small">' +
+                        '<i class="bi bi-exclamation-triangle me-1"></i>' +
+                        esc(t('pm.install.trust',
+                            '插件以网关进程的完整权限运行：可以读写任意文件、启动进程、读取环境变量。这里没有沙箱。只安装来源可信的插件。')) + '</div>' +
                     '<div data-role="error" class="text-danger small mt-2"></div>' +
                 '</div>' +
                 '<div class="modal-footer">' +

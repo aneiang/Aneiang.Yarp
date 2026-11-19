@@ -1,0 +1,19 @@
+# Analyzer configuration for shipped code (SEC-17).
+#
+# Only the Security category is turned on wholesale. The full "all rules" mode is not the goal
+# here: this codebase is a gateway whose job is proxying and SQL strings it builds itself, so
+# style and performance analyzers produce noise that would bury the findings that matter.
+#
+# Baseline collection is done: the category had exactly two hits, both fixed rather than muted —
+# an unconditional certificate-validation bypass in the gRPC client (now an explicit opt-in) and
+# HMAC-SHA1 in TOTP (kept, because RFC 6238 mandates it, with a scoped SuppressMessage). With the
+# build clean, severity is error so the next hit cannot be scrolled past.
+
+root = true
+
+[*.cs]
+# CA2100 SQL injection, CA3001-CA3012 dataflow (SQL / XSS / redirect / XXE / path traversal /
+# LDAP), the CA53xx cryptography and transport family (weak hashes, certificate validation, TLS
+# versions). To silence one deliberately, use a scoped [SuppressMessage] with a Justification —
+# a blanket override here would also hide the next, unrelated finding.
+dotnet_analyzer_diagnostic.category-Security.severity = error

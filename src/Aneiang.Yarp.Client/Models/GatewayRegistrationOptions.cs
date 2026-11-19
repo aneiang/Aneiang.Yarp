@@ -58,6 +58,17 @@ public class GatewayRegistrationOptions
     /// <summary>Route priority - lower = higher precedence. Default: 50.</summary>
     public int? Order { get; set; }
 
+    /// <summary>
+    /// Accept any TLS certificate on the gRPC registration channel. Default: false (validate).
+    /// </summary>
+    /// <remarks>
+    /// Only for development against a gateway using a self-signed certificate. Turning this on in
+    /// production removes the only check that the client is talking to the gateway it thinks it is:
+    /// on a shared network, anyone who can answer on that address receives this service's
+    /// registration — including the destination address it advertises to receive traffic.
+    /// </remarks>
+    public bool AllowUntrustedGrpcCertificate { get; set; }
+
     /// <summary>Auto-resolve localhost/127.0.0.1/0.0.0.0 to LAN IPv4. Default: true.</summary>
     public bool? AutoResolveIp { get; set; }
 

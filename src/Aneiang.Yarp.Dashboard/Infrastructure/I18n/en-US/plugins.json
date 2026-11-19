@@ -450,6 +450,7 @@
   "pm.install.dirHint": "It must already contain plugin.json and the assemblies - usually the output directory of dotnet publish.",
   "pm.install.dirRequired": "Enter the plugin directory.",
   "pm.install.note": "Installing only copies files and registers the manifest. It does not restart the gateway or enable the plugin - enable and bind it in Plugin Configuration.",
+  "pm.install.trust": "Plugins run with the full privileges of the gateway process: they can read and write any file, start processes, and read environment variables. There is no sandbox. Only install plugins from sources you trust enough to hand them the gateway.",
   "pm.install.ok": "Installed. Enable and bind it from the list.",
   "pm.upgrade.title": "Upgrade plugin",
   "pm.upgrade.ok": "Upgraded. Restart the gateway to apply.",

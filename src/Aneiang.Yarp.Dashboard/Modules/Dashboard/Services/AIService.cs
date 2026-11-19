@@ -304,7 +304,11 @@ public class AIService
         var hasToolCalls = false;
         var dataLineCount = 0;
 
-        while (!reader.EndOfStream)
+        // No EndOfStream here: it peeks the underlying stream synchronously, so it blocks the
+        // thread it runs on (CA2024) — in a streaming proxy that is one blocked thread per open
+        // conversation. ReadLineAsync already returns null at end of stream, so the check was
+        // redundant as well as blocking.
+        while (true)
         {
             var line = await reader.ReadLineAsync(ct);
             if (line == null) break;

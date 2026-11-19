@@ -77,17 +77,11 @@ public static class AneiangYarpClientServiceCollectionExtensions
                 gatewayUrl = $"{gwUri.Scheme}://{gwUri.Host}:{grpcPort}{gwUri.PathAndQuery}";
             }
 
-            // NOTE: Insecure cert validation is used here for dev/demo scenarios
-            // with self-signed or ASP.NET dev certs. In production, use proper certificate setup instead.
-            var handler = new SocketsHttpHandler
-            {
-                EnableMultipleHttp2Connections = true,
-                SslOptions = new System.Net.Security.SslClientAuthenticationOptions
-                {
-                    RemoteCertificateValidationCallback =
-                        (sender, cert, chain, errors) => true
-                }
-            };
+            // Certificate validation used to be disabled unconditionally here, for self-signed and
+            // ASP.NET dev certificates. That is the whole check that this channel reaches the
+            // gateway it intends to, so it is now an explicit opt-in (SEC-17 / CA5359). A plain
+            // http:// gateway never reaches this branch — there is no certificate to validate.
+            var handler = CreateGrpcHandler(options.AllowUntrustedGrpcCertificate);
 
             return GrpcChannel.ForAddress(gatewayUrl, new GrpcChannelOptions
             {
@@ -100,6 +94,35 @@ public static class AneiangYarpClientServiceCollectionExtensions
             return new GatewayGrpc.GatewayRegistryClient(channel);
         });
         services.AddSingleton<KestrelAutoConfigService>();
+    }
+
+    /// <summary>
+    /// Builds the HTTP handler for the gRPC registration channel.
+    /// </summary>
+    /// <param name="allowUntrustedCertificate">
+    /// When true, TLS certificate validation is skipped. The caller passes
+    /// <see cref="GatewayRegistrationOptions.AllowUntrustedGrpcCertificate"/>, which defaults to
+    /// false so the validating path is what a deployment gets without asking.
+    /// </param>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Security", "CA5359:Do not disable certificate validation",
+        Justification = "The non-validating branch is reachable only when Gateway:Registration:AllowUntrustedGrpcCertificate is explicitly true; the default path returns a handler that validates normally.")]
+    private static SocketsHttpHandler CreateGrpcHandler(bool allowUntrustedCertificate)
+    {
+        var handler = new SocketsHttpHandler
+        {
+            EnableMultipleHttp2Connections = true
+        };
+
+        if (!allowUntrustedCertificate)
+            return handler;
+
+        handler.SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+        {
+            RemoteCertificateValidationCallback = (_, _, _, _) => true
+        };
+
+        return handler;
     }
 
     internal static void ConfigureRegistrationOptions(

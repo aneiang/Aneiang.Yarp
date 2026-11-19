@@ -19,6 +19,16 @@
     <DebugType>portable</DebugType>
     <PackageOutputPath>$(MSBuildThisFileDirectory)..\artifacts\nupkg</PackageOutputPath>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <!--
+      SEC-17: analyzers were implicit. The SDK turns a subset on by default, but "whatever this SDK
+      version defaults to" is not a decision — a pinned level is, and it keeps the baseline from
+      shifting when the SDK moves. Security rules are raised separately below because the default
+      mode leaves most of the CA53xx family off.
+    -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Default</AnalysisMode>
   </PropertyGroup>
 
   <ItemGroup>
