@@ -235,12 +235,24 @@ public static class DashboardServiceCollectionExtensions
         services.AddSingleton(sp => new Modules.Tracing.Services.RuntimeRatioSampler(
             sp.GetRequiredService<IOptions<Modules.Tracing.Models.GatewayTracingOptions>>().Value.SamplingRatio));
 
+        // Owns the panel-written credential file. Registered before the host so the host can merge
+        // the panel's headers into what it hands the exporter.
+        services.AddSingleton(sp => new Modules.Tracing.Services.TracingAuthStore(
+            sp.GetRequiredService<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>().ContentRootPath,
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Modules.Tracing.Services.TracingAuthStore>>()));
+
         // Registered twice on purpose: the hosted service starts the provider, and the tracing API
         // reads IsRunning / StartError off the same instance.
         services.AddSingleton<Modules.Tracing.Services.GatewayTracingHost>();
         services.AddHostedService(sp => sp.GetRequiredService<Modules.Tracing.Services.GatewayTracingHost>());
         services.AddSingleton<Modules.Tracing.Services.IGatewayTracingService,
             Modules.Tracing.Services.GatewayTracingService>();
+
+        // Null path: named client with only the probe's own linked timeout. Registered separately
+        // from the other named clients so a future change to their handlers cannot alter what the
+        // probe measures.
+        services.AddHttpClient(Modules.Tracing.Services.TracingExportProbe.HttpClientName);
+        services.AddSingleton<Modules.Tracing.Services.TracingExportProbe>();
 
         return services;
     }
