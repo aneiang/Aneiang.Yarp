@@ -45,9 +45,6 @@ public sealed class SqliteConnectionFactory : IDbConnectionFactory
     /// </summary>
     private readonly ConcurrentDictionary<string, Slot> _slots = new(StringComparer.OrdinalIgnoreCase);
 
-    private static bool _providerSet;
-    private static readonly object _providerLock = new();
-
     public SqliteConnectionFactory(IOptions<StorageOptions> options, IServiceProvider serviceProvider)
         : this(options, serviceProvider, null)
     {
@@ -62,6 +59,7 @@ public sealed class SqliteConnectionFactory : IDbConnectionFactory
         _serviceProvider = serviceProvider;
         _resolver = resolver;
         EnsureProvider();
+        EnsureEncryptionIsHonoured(_options);
     }
 
     /// <summary>
@@ -205,14 +203,46 @@ public sealed class SqliteConnectionFactory : IDbConnectionFactory
         return builder.ToString();
     }
 
-    private static void EnsureProvider()
+    private static void EnsureProvider() => SqliteNativeProvider.EnsureInitialized();
+
+    /// <summary>
+    /// Refuses to run when the connection string asks for encryption the provider cannot deliver.
+    /// </summary>
+    /// <remarks>
+    /// This is the point of SEC-15: <c>Password=</c> is only meaningful if SQLCipher is the active
+    /// provider. When it was not, the password was accepted and ignored, and every shipped sample
+    /// config — all of which set <c>Password=123456</c> — produced a plaintext database that the
+    /// operator believed was encrypted. Failing here makes that impossible to miss, at the moment
+    /// the factory is first resolved rather than on the first query against a leaked file.
+    /// </remarks>
+    private static void EnsureEncryptionIsHonoured(StorageOptions options)
     {
-        if (_providerSet) return;
-        lock (_providerLock)
+        if (!RequestsPassword(options.Sqlite.ConnectionString)) return;
+        if (SqliteNativeProvider.SupportsEncryption) return;
+
+        throw new InvalidOperationException(
+            "Gateway:Storage:Sqlite:ConnectionString sets Password=, but the installed SQLite " +
+            "provider cannot encrypt it (PRAGMA cipher_version returned no value). The database " +
+            "would be written in plaintext while the configuration claims otherwise. Either " +
+            "reference SQLitePCLRaw.bundle_e_sqlcipher and remove any " +
+            "SQLitePCLRaw.bundle_e_sqlite3 / Microsoft.Data.Sqlite reference, or drop Password= " +
+            "and protect the file with filesystem permissions.");
+    }
+
+    /// <summary>True when the connection string carries a non-empty <c>Password</c>.</summary>
+    private static bool RequestsPassword(string? connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString)) return false;
+
+        try
         {
-            if (_providerSet) return;
-            SQLitePCL.Batteries_V2.Init();
-            _providerSet = true;
+            return !string.IsNullOrEmpty(new SqliteConnectionStringBuilder(connectionString).Password);
+        }
+        catch (ArgumentException)
+        {
+            // An unparseable string fails on first use with a message about the actual problem;
+            // guessing at the password here would only add a confusing error in front of it.
+            return false;
         }
     }
 

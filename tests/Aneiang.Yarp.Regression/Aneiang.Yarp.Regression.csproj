@@ -7,7 +7,10 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.4" />
+    <!-- No direct Microsoft.Data.Sqlite reference: the meta package re-introduces
+         SQLitePCLRaw.bundle_e_sqlite3 (GHSA-2m69-gcr7-jv3q). Microsoft.Data.Sqlite.Core already
+         arrives through Aneiang.Yarp.Storage.Sqlite, and SqliteConnectionFactory initializes the
+         SQLCipher provider, so SqliteConnection is usable here without it. -->
     <ProjectReference Include="..\..\src\Aneiang.Yarp\Aneiang.Yarp.csproj" />
     <ProjectReference Include="..\..\src\Aneiang.Yarp.Dashboard\Aneiang.Yarp.Dashboard.csproj" />
     <ProjectReference Include="..\..\src\Aneiang.Yarp.Storage.Sqlite\Aneiang.Yarp.Storage.Sqlite.csproj" />

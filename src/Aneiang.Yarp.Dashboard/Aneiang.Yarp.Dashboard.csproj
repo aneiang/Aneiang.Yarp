@@ -20,7 +20,12 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.4" />
+    <!-- Core + explicit SQLCipher bundle for the same reason as Aneiang.Yarp.Storage.Sqlite:
+         the meta package brings the vulnerable lib.e_sqlite3 and a second provider. The dashboard
+         opens SqliteConnection directly for the VACUUM INTO backup, so it needs its own provider
+         init — see Infrastructure/DashboardSqliteProvider.cs. -->
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="9.0.4" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.11" />
 
     <!--
       Tracing lives in the management plane, not in Aneiang.Yarp itself: the core library only
@@ -71,6 +76,15 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <PackageCopyToOutput>true</PackageCopyToOutput>
     </None>
+  </ItemGroup>
+
+  <!--
+    Endpoint normalisation is worth asserting on directly: getting it wrong produces a 404 from the
+    collector that operators reasonably read as "the token is wrong". Kept internal rather than
+    public so the package surface does not grow for a testing concern.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Aneiang.Yarp.UnitTests" />
   </ItemGroup>
 
 </Project>

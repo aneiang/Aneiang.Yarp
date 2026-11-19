@@ -15,12 +15,21 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.4" />
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.10" />
+    <!-- Core, not the meta package: the meta package drags in SQLitePCLRaw.bundle_e_sqlite3,
+         which both carries the vulnerable lib.e_sqlite3 (GHSA-2m69-gcr7-jv3q) and competes with
+         the SQLCipher provider over Batteries_V2.Init(). SqliteNativeProvider covers the manual
+         provider init that Core requires. See docs/security/security-remediation.md SEC-14/15. -->
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="9.0.4" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.11" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Aneiang.Yarp.Storage.Abstractions\Aneiang.Yarp.Storage.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Lets the encryption tests install the provider the same way the host does. -->
+    <InternalsVisibleTo Include="Aneiang.Yarp.UnitTests" />
   </ItemGroup>
 
 </Project>

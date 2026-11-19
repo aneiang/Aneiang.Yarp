@@ -51,6 +51,11 @@ public class DashboardPagesController : Controller
 
         _defaultLocale = dashboardOptions.Value.Locale;
         _authMode = dashboardOptions.Value.Auth.AuthMode.ToString();
+
+        // BackupDatabase opens a raw SqliteConnection (Microsoft.Data.Sqlite.Core has no implicit
+        // provider init). Doing it here ties the init to the one action that needs it instead of
+        // to whichever component happens to run first.
+        DashboardSqliteProvider.EnsureInitialized();
     }
 
     /// <summary>
