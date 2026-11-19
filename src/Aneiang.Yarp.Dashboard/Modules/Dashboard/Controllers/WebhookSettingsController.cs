@@ -1,6 +1,9 @@
+using Aneiang.Yarp.Dashboard.Infrastructure.Auth;
 using Aneiang.Yarp.Dashboard.Infrastructure.Notifications;
+using Aneiang.Yarp.Dashboard.Infrastructure.Security;
 using Aneiang.Yarp.Storage;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -21,19 +24,28 @@ public sealed class WebhookSettingsController : ControllerBase
     private readonly WebhookNotificationService _webhooks;
     private readonly NotificationDispatcher _dispatcher;
     private readonly IServiceProvider _services;
+    private readonly IConfiguration _configuration;
+    private readonly ISecurityAuditWriter _audit;
     private readonly ILogger<WebhookSettingsController> _logger;
 
     public WebhookSettingsController(
         WebhookNotificationService webhooks,
         NotificationDispatcher dispatcher,
         IServiceProvider services,
+        IConfiguration configuration,
+        ISecurityAuditWriter audit,
         ILogger<WebhookSettingsController> logger)
     {
         _webhooks = webhooks;
         _dispatcher = dispatcher;
         _services = services;
+        _configuration = configuration;
+        _audit = audit;
         _logger = logger;
     }
+
+    private bool AllowPrivateTargets =>
+        _configuration.GetValue("Gateway:Notifications:AllowPrivateTargets", false);
 
     // GET api/webhook/settings
     [HttpGet("settings")]
@@ -119,7 +131,11 @@ public sealed class WebhookSettingsController : ControllerBase
                 .ToList();
         }
 
+        var refusal = ValidateTargets(settings);
+        if (refusal is not null) return BadRequest(new { code = 400, message = refusal });
+
         await _webhooks.SaveSettingsAsync(settings, ct);
+        AuditTargetsChanged(settings);
         _logger.LogInformation(
             "Webhook settings saved: {PlatformCount} platform(s), {EventCount} global event(s), {PlatformEventCount} platform subscription(s)",
             settings.Platforms.Count, settings.EnabledEvents.Count, settings.PlatformEvents.Count);
@@ -158,7 +174,11 @@ public sealed class WebhookSettingsController : ControllerBase
         else
             settings.Platforms[platform] = endpoints;
 
+        var refusal = ValidateTargets(settings);
+        if (refusal is not null) return BadRequest(new { code = 400, message = refusal });
+
         await _webhooks.SaveSettingsAsync(settings, ct);
+        AuditTargetsChanged(settings);
         _logger.LogInformation(
             "Webhook platform '{Platform}' saved: {EndpointCount} endpoint(s)", platform, endpoints.Count);
 
@@ -264,22 +284,57 @@ public sealed class WebhookSettingsController : ControllerBase
     }
 
     /// <summary>Hide access tokens / secrets in endpoint URLs before echoing them to the client.</summary>
-    private static string MaskUrl(string url)
+    private static string MaskUrl(string url) => WebhookUrlMasker.MaskForDisplay(url);
+
+    /// <summary>
+    /// Refuses destinations the gateway should not be talked into contacting.
+    /// </summary>
+    /// <remarks>
+    /// Only literal addresses and schemes are checked here — no DNS at save time, so a name that
+    /// resolves to an internal address only in production still saves, and is refused at send time
+    /// with the reason recorded in the delivery detail.
+    /// </remarks>
+    private string? ValidateTargets(WebhookSettingsData settings)
     {
-        if (string.IsNullOrEmpty(url)) return url;
-        try
+        if (AllowPrivateTargets) return null;
+
+        foreach (var (platform, endpoints) in settings.Platforms)
         {
-            // Mask the value of common token-bearing query parameters.
-            return System.Text.RegularExpressions.Regex.Replace(
-                url,
-                "(?<=[?&](?:access_token|token|key|secret)=)[^&]+",
-                "***",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            foreach (var endpoint in endpoints)
+            {
+                var check = OutboundUrlGuard.CheckLiteral(endpoint.Url);
+                if (check.Allowed) continue;
+
+                _logger.LogWarning(
+                    "Webhook target refused on save: platform {Platform}, reason {Reason}",
+                    platform, check.Reason);
+
+                return check.Reason switch
+                {
+                    "scheme" => $"Only http and https are allowed ('{WebhookUrlMasker.MaskForDisplay(endpoint.Url)}').",
+                    "loopback" or "private" =>
+                        $"'{WebhookUrlMasker.MaskForDisplay(endpoint.Url)}' points at a loopback or private address. " +
+                        "Set Gateway:Notifications:AllowPrivateTargets to allow an internal receiver.",
+                    _ => $"'{WebhookUrlMasker.MaskForDisplay(endpoint.Url)}' is not a valid absolute URL."
+                };
+            }
         }
-        catch
-        {
-            return url;
-        }
+
+        return null;
+    }
+
+    private void AuditTargetsChanged(WebhookSettingsData settings)
+    {
+        var principal = HttpContext.RequestServices.GetService<IDashboardAuthorizationService>()?
+            .ResolvePrincipal(HttpContext);
+
+        _audit.Write(new SecurityEvent(
+            SecurityEventType.WebhookTargetChanged,
+            Actor: principal?.Username,
+            Role: principal?.Role.ToClaimValue(),
+            ClientIp: Aneiang.Yarp.Infrastructure.ClientIpResolver.GetClientIp(HttpContext),
+            UserAgent: Request.Headers.UserAgent.ToString(),
+            Target: string.Join(",", settings.Platforms.Keys.OrderBy(k => k, StringComparer.Ordinal))));
     }
 }
 

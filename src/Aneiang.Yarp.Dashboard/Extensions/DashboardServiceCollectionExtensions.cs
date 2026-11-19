@@ -536,8 +536,11 @@ public static class DashboardServiceCollectionExtensions
         services.AddHostedService<OverviewBroadcastService>();
         services.AddSingleton<Infrastructure.Realtime.IOverviewSnapshotProvider, Infrastructure.Realtime.OverviewSnapshotProvider>();
 
-        // Webhook notifications (DingTalk / generic endpoints for config-change events)
-        services.AddHttpClient("webhook");
+        // Webhook notifications (DingTalk / generic endpoints for config-change events).
+        // Redirects are not followed: the SSRF guard checks the URL that was configured, and a 302
+        // to http://169.254.169.254/ would arrive at the same place without ever being checked.
+        services.AddHttpClient("webhook")
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddSingleton<Infrastructure.Notifications.WebhookNotificationService>();
 
         services.AddSingleton<RecyclableMemoryStreamManager>();

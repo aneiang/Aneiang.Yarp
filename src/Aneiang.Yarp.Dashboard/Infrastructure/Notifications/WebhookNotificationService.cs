@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Aneiang.Yarp.Dashboard.Infrastructure.Security;
 using Aneiang.Yarp.Storage;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -78,17 +80,27 @@ public sealed class WebhookNotificationService
 
     private readonly IHttpClientFactory _httpFactory;
     private readonly IServiceProvider _services;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<WebhookNotificationService> _logger;
 
     public WebhookNotificationService(
         IHttpClientFactory httpFactory,
         IServiceProvider services,
+        IConfiguration configuration,
         ILogger<WebhookNotificationService> logger)
     {
         _httpFactory = httpFactory;
         _services = services;
+        _configuration = configuration;
         _logger = logger;
     }
+
+    /// <summary>
+    /// Escape hatch for an internal webhook receiver. Off by default: an SSRF guard with a switch
+    /// that defaults to on is not a guard.
+    /// </summary>
+    private bool AllowPrivateTargets =>
+        _configuration.GetValue("Gateway:Notifications:AllowPrivateTargets", false);
 
     /// <summary>Load persisted webhook settings.</summary>
     public async Task<WebhookSettingsData> GetSettingsAsync(CancellationToken ct = default)
@@ -206,8 +218,11 @@ public sealed class WebhookNotificationService
                 if (detail.Success) report.Succeeded++;
                 report.Details.Add(detail);
 
+                // The URL carries the credential on DingTalk/Slack/Telegram. Masking it here is what
+                // keeps a collected log file from being a list of working webhook tokens.
                 _logger.LogDebug("Webhook {Platform} -> {Result} after {Attempts} attempt(s) ({Url})",
-                    platformKey, detail.Success ? "OK" : detail.Error, detail.Attempts, endpoint.Url);
+                    platformKey, detail.Success ? "OK" : detail.Error, detail.Attempts,
+                    WebhookUrlMasker.MaskForLog(endpoint.Url));
 
                 if (recordHistory)
                     await RecordDeliveryAsync(platformKey, message, detail, ct);
@@ -222,7 +237,8 @@ public sealed class WebhookNotificationService
         string platform, WebhookEndpointConfig endpoint, WebhookNotificationMessage message,
         TimeSpan timeout, int maxAttempts, CancellationToken ct)
     {
-        var detail = new WebhookDeliveryDetail { Platform = platform, Url = endpoint.Url };
+        // Already masked: this object is returned to the browser and persisted into delivery history.
+        var detail = new WebhookDeliveryDetail { Platform = platform, Url = WebhookUrlMasker.MaskForDisplay(endpoint.Url) };
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         var client = _httpFactory.CreateClient("webhook");
@@ -234,6 +250,23 @@ public sealed class WebhookNotificationService
             try
             {
                 var payload = BuildPayload(platform, message, endpoint, out var requestUrl);
+
+                // Checked per attempt on the URL that is actually called - the DingTalk signature is
+                // appended to the query, and the target is whatever the operator last saved.
+                if (!AllowPrivateTargets)
+                {
+                    var guard = await OutboundUrlGuard.CheckAsync(requestUrl, ct);
+                    if (!guard.Allowed)
+                    {
+                        detail.Success = false;
+                        detail.Error = "blocked:" + guard.Reason;
+                        _logger.LogWarning(
+                            "Webhook {Platform} -> target refused ({Reason}); set Gateway:Notifications:AllowPrivateTargets to allow an internal receiver.",
+                            platform, guard.Reason);
+                        break;
+                    }
+                }
+
                 using var request = new HttpRequestMessage(HttpMethod.Post, requestUrl)
                 {
                     Content = new StringContent(payload, Encoding.UTF8, "application/json")

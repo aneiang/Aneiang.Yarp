@@ -1,7 +1,10 @@
+using Aneiang.Yarp.Dashboard.Infrastructure.Auth;
 using Aneiang.Yarp.Dashboard.Infrastructure.I18n;
 using Aneiang.Yarp.Dashboard.Infrastructure.Plugin;
+using Aneiang.Yarp.Dashboard.Infrastructure.Security;
 using Aneiang.Yarp.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Aneiang.Yarp.Plugins;
 
 namespace Aneiang.Yarp.Dashboard.Modules.Dashboard.Controllers;
@@ -261,6 +264,8 @@ public class PluginsController : ControllerBase
             return BadRequest(new { code = 400, message = "SourceDirectory is required." });
 
         var result = _manager.InstallPlugin(request.SourceDirectory);
+        Audit(SecurityEventType.PluginInstalled, request.SourceDirectory, result.Succeeded, result.Error);
+
         if (!result.Succeeded)
             return Conflict(new { code = 409, message = result.Error });
 
@@ -273,6 +278,8 @@ public class PluginsController : ControllerBase
     public IActionResult UninstallPlugin(string pluginId)
     {
         var result = _manager.UninstallPlugin(pluginId);
+        Audit(SecurityEventType.PluginUninstalled, pluginId, result.Succeeded, result.Error);
+
         if (!result.Succeeded)
             return Conflict(new { code = 409, message = result.Error });
 
@@ -288,11 +295,36 @@ public class PluginsController : ControllerBase
             return BadRequest(new { code = 400, message = "SourceDirectory is required." });
 
         var result = _manager.UpgradePlugin(pluginId, request.SourceDirectory);
+        Audit(SecurityEventType.PluginUpgraded, pluginId, result.Succeeded, result.Error);
+
         if (!result.Succeeded)
             return Conflict(new { code = 409, message = result.Error });
 
         _dynamicConfig.RefreshConfig();
         return Ok(new { code = 200, message = "Plugin upgraded successfully" });
+    }
+
+    /// <summary>
+    /// Records a plugin lifecycle action. Installed plugins run with the gateway's own privileges
+    /// (there is no in-process sandbox), so "who installed this" is a question worth answering later.
+    /// </summary>
+    private void Audit(SecurityEventType type, string? target, bool success, string? error)
+    {
+        var writer = HttpContext.RequestServices.GetService(typeof(ISecurityAuditWriter)) as ISecurityAuditWriter;
+        if (writer is null) return;
+
+        var principal = HttpContext.RequestServices.GetService<IDashboardAuthorizationService>()?
+            .ResolvePrincipal(HttpContext);
+
+        writer.Write(new SecurityEvent(
+            type,
+            Actor: principal?.Username,
+            Role: principal?.Role.ToClaimValue(),
+            ClientIp: Aneiang.Yarp.Infrastructure.ClientIpResolver.GetClientIp(HttpContext),
+            UserAgent: Request.Headers.UserAgent.ToString(),
+            Success: success,
+            Reason: success ? null : error,
+            Target: target));
     }
 
     private string[] GetEnabledPluginIds() => _manager.GetAllManifests()
