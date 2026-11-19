@@ -94,7 +94,20 @@ public sealed class DashboardUserOptions
 {
     public string? Username { get; set; }
 
+    /// <summary>
+    /// Legacy plaintext password. Still honoured so an existing deployment keeps logging in, but it
+    /// is compared in constant time and a warning is logged once per account. Use
+    /// <see cref="PasswordHash"/> instead — a configuration file is copied, backed up and pasted
+    /// into tickets far more often than anyone intends.
+    /// </summary>
     public string? Password { get; set; }
+
+    /// <summary>
+    /// PBKDF2 hash produced by <see cref="PasswordHasher.Hash"/>. Takes precedence over
+    /// <see cref="Password"/> when both are present, which is what makes the migration a matter of
+    /// adding a line rather than deleting one.
+    /// </summary>
+    public string? PasswordHash { get; set; }
 
     /// <summary><c>viewer</c>, <c>operator</c> or <c>admin</c>. Defaults to admin so an existing single-user setup keeps working.</summary>
     public string? Role { get; set; }

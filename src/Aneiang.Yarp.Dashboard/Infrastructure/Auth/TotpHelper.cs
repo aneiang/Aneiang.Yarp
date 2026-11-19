@@ -21,22 +21,55 @@ public static class TotpHelper
     }
 
     /// <summary>Validate a TOTP code with a ±1 period window.</summary>
-    public static bool ValidateCode(string base32Secret, string code)
+    /// <remarks>
+    /// Without a replay guard this accepts the same six digits for up to 90 seconds: an observer who
+    /// sees a code once can use it again, from anywhere, once. <see cref="Validate"/> is the version
+    /// that actually closes that.
+    /// </remarks>
+    public static bool ValidateCode(string base32Secret, string code) =>
+        Validate(base32Secret, code, lastAcceptedCounter: null).Valid;
+
+    /// <summary>
+    /// Validates a code and reports which time step matched, so the caller can refuse to accept that
+    /// step twice.
+    /// </summary>
+    /// <param name="base32Secret">The account's secret.</param>
+    /// <param name="code">Six digits as typed.</param>
+    /// <param name="lastAcceptedCounter">Highest counter already used, or null when nothing is tracked.</param>
+    /// <param name="timestamp">Test seam for the clock.</param>
+    public static TotpValidation Validate(
+        string base32Secret,
+        string code,
+        long? lastAcceptedCounter,
+        DateTimeOffset? timestamp = null)
     {
         if (string.IsNullOrWhiteSpace(code) || code.Length != Digits)
-            return false;
+            return TotpValidation.Failed;
 
-        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var now = (timestamp ?? DateTimeOffset.UtcNow).ToUnixTimeSeconds();
+        var secret = Base32Decode(base32Secret);
+
         for (var offset = -1; offset <= 1; offset++)
         {
             var counter = (now / PeriodSeconds) + offset;
-            var expected = GenerateCode(Base32Decode(base32Secret), counter);
-            if (CryptographicOperations.FixedTimeEquals(
+            if (counter < 0) continue;
+
+            var expected = GenerateCode(secret, counter);
+            var matched = CryptographicOperations.FixedTimeEquals(
                 Encoding.ASCII.GetBytes(expected.PadLeft(Digits, '0')),
-                Encoding.ASCII.GetBytes(code.PadLeft(Digits, '0'))))
-                return true;
+                Encoding.ASCII.GetBytes(code.PadLeft(Digits, '0')));
+
+            if (!matched) continue;
+
+            // The window is deliberate (clock skew), the reuse is not. A code that matched an
+            // already-used step is refused even though it is arithmetically correct.
+            if (lastAcceptedCounter is not null && counter <= lastAcceptedCounter.Value)
+                return TotpValidation.Failed;
+
+            return new TotpValidation(true, counter);
         }
-        return false;
+
+        return TotpValidation.Failed;
     }
 
     /// <summary>Generate a new random base32 secret (32 chars = 20 bytes).</summary>
@@ -52,6 +85,9 @@ public static class TotpHelper
         return $"otpauth://totp/{Uri.EscapeDataString(issuer)}:{Uri.EscapeDataString(account)}?secret={base32Secret}&issuer={Uri.EscapeDataString(issuer)}&algorithm=SHA1&digits={Digits}&period={PeriodSeconds}";
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Security", "CA5350:Do not use weak cryptographic algorithms",
+        Justification = "RFC 6238 specifies HMAC-SHA1 for TOTP and every mainstream authenticator app assumes it; the otpauth:// URI advertises algorithm=SHA1. SHA-1 collisions do not apply to HMAC, and switching the hash would silently break existing enrolments.")]
     private static string GenerateCode(byte[] secret, long counter)
     {
         var counterBytes = BitConverter.GetBytes(counter);
@@ -117,4 +153,13 @@ public static class TotpHelper
         return result.ToString();
     }
 
+}
+
+/// <summary>Result of a TOTP check: whether it passed and which time step it belonged to.</summary>
+/// <param name="Valid">True when the code matched a step newer than any previously accepted one.</param>
+/// <param name="Counter">Matched time step, to be persisted as the new high-water mark.</param>
+public readonly record struct TotpValidation(bool Valid, long Counter)
+{
+    /// <summary>The failing result — counter -1 never matches a real step.</summary>
+    public static TotpValidation Failed => new(false, -1);
 }

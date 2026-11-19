@@ -1,5 +1,6 @@
 using System.Text;
 using Aneiang.Yarp.Models;
+using Aneiang.Yarp.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -43,9 +44,11 @@ internal sealed class GatewayApiAuthFilter : IAsyncAuthorizationFilter
         {
             var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(h[6..]));
             var idx = decoded.IndexOf(':');
+            // Constant-time on both halves: == returns at the first difference, which is a
+            // measurable oracle for a credential that is checked on every gateway API call.
             return idx >= 0
-                && decoded[..idx] == _opts.Username
-                && decoded[(idx + 1)..] == _opts.Password;
+                && SecureCompare.Equals(decoded[..idx], _opts.Username)
+                && SecureCompare.Equals(decoded[(idx + 1)..], _opts.Password);
         }
         catch (FormatException)
         {
@@ -59,11 +62,11 @@ internal sealed class GatewayApiAuthFilter : IAsyncAuthorizationFilter
         if (string.IsNullOrWhiteSpace(_opts.ApiKey)) return false;
 
         if (req.Headers.TryGetValue(_opts.ApiKeyHeaderName, out var hv)
-            && hv.Any(v => v == _opts.ApiKey))
+            && hv.Any(v => SecureCompare.Equals(v, _opts.ApiKey)))
             return true;
 
         return _opts.AllowApiKeyInQuery
             && req.Query.TryGetValue("api-key", out var qv)
-            && qv.Any(v => v == _opts.ApiKey);
+            && qv.Any(v => SecureCompare.Equals(v, _opts.ApiKey));
     }
 }

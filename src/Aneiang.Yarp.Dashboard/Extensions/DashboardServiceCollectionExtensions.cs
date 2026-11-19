@@ -10,6 +10,7 @@ using Aneiang.Yarp.Dashboard.Infrastructure.Deployment;
 using Aneiang.Yarp.Dashboard.Infrastructure.Plugin;
 using Aneiang.Yarp.Dashboard.Infrastructure.Policies;
 using Aneiang.Yarp.Dashboard.Infrastructure.Realtime;
+using Aneiang.Yarp.Dashboard.Infrastructure.Security;
 using Aneiang.Yarp.Dashboard.Modules.Dashboard.Controllers;
 using Aneiang.Yarp.Dashboard.Modules.Dashboard.Services;
 using Aneiang.Yarp.Dashboard.Modules.Environments;
@@ -350,6 +351,19 @@ public static class DashboardServiceCollectionExtensions
         services.AddSingleton<IDashboardAuthorizationService, DashboardAuthorizationService>();
         services.AddSingleton<JwtSecretProvider>();
         services.AddSingleton<IConfigureOptions<MvcOptions>, DashboardMvcOptionsSetup>();
+
+        // Security events go to the same audit table as config changes, under their own target
+        // type. Registered here rather than with the storage backend because auth is what needs
+        // them, and storage is optional.
+        services.TryAddSingleton<ISecurityAuditWriter, SecurityAuditWriter>();
+
+        // Login budget: per account and per address, in this process. Single control plane is the
+        // documented deployment (ADR-1), so a shared cache would be a promise the code cannot keep.
+        services.TryAddSingleton<LoginThrottle>();
+
+        // A JWT cannot be un-signed, so early invalidation needs a list of ids. In-memory, and that
+        // limitation is documented on the type rather than hidden.
+        services.TryAddSingleton<DashboardTokenRevocationStore>();
 
         return services;
     }

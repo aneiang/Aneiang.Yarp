@@ -149,7 +149,9 @@
             var container = document.getElementById('twofa-content');
             container.innerHTML = '<div class="loading-state"><div class="loading-spinner"></div><div class="loading-text">' + __('twofa.generating') + '</div></div>';
             try {
-                var data = await window.DashboardApi.get('/api/2fa/setup');
+                // POST, not GET: minting a secret is a write in spirit, and a read method is what
+                // a viewer is allowed to issue.
+                var data = await window.DashboardApi.post('/api/2fa/setup');
                 this.twoFactorState.setupData = data;
                 this.render(container, document.getElementById('twofa-status-badge'));
             } catch (error) {

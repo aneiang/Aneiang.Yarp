@@ -59,6 +59,12 @@ public sealed class JwtSecretProvider
                     if (!string.IsNullOrWhiteSpace(secret))
                     {
                         _logger.LogDebug("JWT secret loaded from {File}", _filePath);
+
+                        // A file written by an earlier version (or copied in by an operator) may
+                        // still be world-readable. Tightening it on read means the fix applies to
+                        // existing deployments without anyone having to chmod by hand.
+                        RestrictToOwner();
+
                         return secret;
                     }
                 }
@@ -85,11 +91,39 @@ public sealed class JwtSecretProvider
         {
             var payload = JsonSerializer.Serialize(new { secret, generatedAt = DateTime.Now });
             File.WriteAllText(_filePath, payload);
+            RestrictToOwner();
             _logger.LogDebug("JWT secret persisted to {File}", _filePath);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to persist JWT secret to {File} — tokens will not survive restart", _filePath);
+        }
+    }
+
+    /// <summary>
+    /// Restricts the secret file to owner read/write on Unix.
+    /// </summary>
+    /// <remarks>
+    /// Anyone who can read this file can mint a dashboard session for any role, so the default
+    /// umask mode (0644 on most shared hosts, 0664 with a permissive umask) is too open. Windows
+    /// is left to the inherited ACL of the content root: emulating POSIX bits with an ACL edit here
+    /// would more likely break the deployment than harden it, and that asymmetry is documented
+    /// rather than silently skipped.
+    /// </remarks>
+    private void RestrictToOwner()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        try
+        {
+            File.SetUnixFileMode(_filePath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+            // Not fatal: the secret still works, it is just readable more widely than intended.
+            // Saying so is the difference between a hardening gap and an invisible one.
+            _logger.LogWarning(ex,
+                "Could not restrict {File} to owner-only permissions; the JWT signing key may be readable by other users.", _filePath);
         }
     }
 

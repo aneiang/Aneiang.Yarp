@@ -364,8 +364,10 @@
                     })
                 });
                 const json = await res.json();
-                if (json.code === 200 && json.token) {
-                    localStorage.setItem('dashboard_token', json.token);
+                if (json.code === 200) {
+                    // No token in the body and nothing to store: the response carries an HttpOnly
+                    // cookie, which the browser attaches to every same-origin request. Storing it
+                    // here would put it back within one line of any script on the page.
                     window.location.href = basePath + '/';
                 } else if (json.code === 202 && json.requiresTwoFactor) {
                     if (twofaGroup) {

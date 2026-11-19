@@ -3,6 +3,7 @@ using Aneiang.Yarp.Dashboard.Infrastructure.Deployment;
 using Aneiang.Yarp.Dashboard.Infrastructure.Middleware;
 using Aneiang.Yarp.Dashboard.Infrastructure.Plugin;
 using Aneiang.Yarp.Dashboard.Infrastructure.Realtime;
+using Aneiang.Yarp.Dashboard.Infrastructure.Security;
 using Aneiang.Yarp.Dashboard.Infrastructure.Yarp;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -121,6 +122,10 @@ public static class DashboardApplicationBuilderExtensions
         }
 
         autoUseMiddleware = useOptions.AutoUseMiddleware ?? autoUseMiddleware;
+
+        // First in the dashboard pipeline: a 401 or a 403 is exactly the response a hostile iframe
+        // or a sniffing browser would act on, so the headers must be attached before any of it.
+        app.UseMiddleware<SecurityHeadersMiddleware>();
 
         var dashboardActive = mode != DeploymentMode.ProxyOnly;
         var proxyActive = mode != DeploymentMode.DashboardOnly;

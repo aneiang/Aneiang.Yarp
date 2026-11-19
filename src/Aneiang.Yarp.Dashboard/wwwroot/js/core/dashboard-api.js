@@ -17,24 +17,19 @@
         const dashboard = window.__dashboard;
         if (dashboard) {
             config.baseUrl = dashboard.basePath || '';
-            config.token = dashboard.token || null;
         }
         // Warm the config version so the first save already carries a precondition.
         setTimeout(() => window.DashboardApi.loadConfigVersion(), 0);
     };
 
-    window.DashboardApi.setToken = function(token) {
-        config.token = token;
-        if (token) {
-            localStorage.setItem('dashboard_token', token);
-        } else {
-            localStorage.removeItem('dashboard_token');
-        }
-    };
+    /*
+     * The session lives in an HttpOnly cookie, so there is nothing here for a script to hold.
+     * These two stay as no-ops because call sites and older pages still reference them; deleting
+     * them would turn every remaining reference into a TypeError at exactly the wrong moment.
+     */
+    window.DashboardApi.setToken = function() { };
 
-    window.DashboardApi.getToken = function() {
-        return config.token || localStorage.getItem('dashboard_token');
-    };
+    window.DashboardApi.getToken = function() { return null; };
 
     /*
      * Optimistic concurrency for configuration writes.
@@ -111,15 +106,16 @@
 
         const requestHeaders = {
             'Content-Type': 'application/json',
+            // The session is a cookie, and cookies ride along on cross-site form posts too. This
+            // header is the browser-level thing an attacker's page cannot add without a CORS
+            // preflight the gateway will not grant, so the server uses its presence to tell a real
+            // dashboard request from a forged one.
+            'X-Requested-With': 'XMLHttpRequest',
             ...headers
         };
 
-        if (requireAuth) {
-            const token = this.getToken();
-            if (token) {
-                requestHeaders['Authorization'] = `Bearer ${token}`;
-            }
-        }
+        // No Authorization header: the token is HttpOnly by design, and reading it here is exactly
+        // what made the HttpOnly attribute meaningless.
 
         if (isConfigMutation(method, url)) {
             // Fall back to a single fetch when no version was captured yet (e.g. the page

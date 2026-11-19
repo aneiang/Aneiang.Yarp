@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Http;
 using Aneiang.Yarp.Models;
 
+using Aneiang.Yarp.Dashboard.Infrastructure.Security;
+
 namespace Aneiang.Yarp.Dashboard.Infrastructure;
 
 /// <summary>Dashboard authorization mode.</summary>
@@ -50,6 +52,9 @@ public class DashboardOptions
 
     /// <summary>Proxy logging configuration.</summary>
     public ProxyLogOptions ProxyLog { get; set; } = new();
+
+    /// <summary>Response hardening for the dashboard's own pages.</summary>
+    public DashboardSecurityOptions Security { get; set; } = new();
 
     // ──────────────── Core properties ────────────────
 

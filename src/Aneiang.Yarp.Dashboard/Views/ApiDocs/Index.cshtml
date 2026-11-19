@@ -101,8 +101,8 @@
         <span>ℹ️</span>
         <div>
             @(isEn
-                ? $"Generated from the routes this gateway actually serves — add an endpoint and this page changes with it. Authentication is required for every endpoint: send the token from POST /{prefix}/login as a Bearer header. Endpoints marked admin are refused for operator and viewer accounts."
-                : $"本页由网关当前实际映射的路由生成 —— 加一个接口，它就跟着变。所有接口都需要认证：把 POST /{prefix}/login 返回的 token 放进 Bearer 头。标注 admin 的接口对运维与只读账号会被拒绝。")
+                ? $"Generated from the routes this gateway actually serves — add an endpoint and this page changes with it. Authentication is required for every endpoint: POST /{prefix}/login sets an HttpOnly session cookie; non-browser clients may instead send a Bearer token. Endpoints marked admin are refused for operator and viewer accounts."
+                : $"本页由网关当前实际映射的路由生成 —— 加一个接口，它就跟着变。所有接口都需要认证：POST /{prefix}/login 会种下 HttpOnly 会话 Cookie；非浏览器客户端也可以改用 Bearer 头。标注 admin 的接口对运维与只读账号会被拒绝。")
         </div>
     </div>
     <div id="content"><div class="empty">@(isEn ? "Loading…" : "加载中…")</div></div>
@@ -122,16 +122,10 @@
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    function token() {
-        try { return localStorage.getItem('dashboard_token'); } catch (_) { return null; }
-    }
-
-    /* The page is served behind the same auth filter as the API, so the cookie is normally enough.
-       The explicit header matters when the deployment uses a JWT stored in localStorage only. */
+    /* The page is served behind the same auth filter as the API, and the session cookie is
+       HttpOnly — same-origin fetch is the whole credential story here. */
     function load() {
         var headers = { 'Accept': 'application/json' };
-        var t = token();
-        if (t) headers['Authorization'] = 'Bearer ' + t;
 
         return fetch('@($"/{prefix}/api/openapi.json")', { headers: headers, credentials: 'same-origin' })
             .then(function (response) {

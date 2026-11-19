@@ -118,8 +118,53 @@ public class DashboardRoleTests
     [InlineData("DELETE", "/apigateway/api/plugins/waf")]
     [InlineData("POST", "/apigateway/api/webhook/settings")]
     [InlineData("POST", "/apigateway/api/webhook/platform")]
+    // Export credentials decide where span data is sent, same blast radius as a webhook target.
+    [InlineData("POST", "/apigateway/api/tracing/auth")]
+    // The probe exercises that credential and makes the gateway send a request on the caller's
+    // behalf, so it belongs to the same tier rather than to the operator's everyday tools.
+    [InlineData("POST", "/apigateway/api/tracing/verify")]
     public void An_operator_may_not_change_who_can_write(string method, string path)
         => Assert.Equal(DashboardRolePolicy.AdminRequired, Policy(DashboardRole.Operator, method, path));
+
+    [Theory]
+    [InlineData("POST", "/apigateway/api/2fa/setup")]
+    [InlineData("POST", "/apigateway/api/2fa/verify")]
+    [InlineData("POST", "/apigateway/api/2fa/disable")]
+    [InlineData("POST", "/apigateway/api/users")]
+    [InlineData("POST", "/apigateway/api/auth/mode")]
+    public void An_operator_may_not_rewrite_the_second_factor_or_the_account_list(string method, string path)
+    {
+        // Identity configuration is the one area where allow-by-default is wrong: an operator who
+        // can replace the TOTP secret becomes admin on the next login, which is precisely the
+        // escalation the three-tier split exists to prevent.
+        Assert.Equal(DashboardRolePolicy.AdminRequired, Policy(DashboardRole.Operator, method, path));
+    }
+
+    [Fact]
+    public void The_auth_status_read_stays_available_to_operators_and_viewers()
+    {
+        // The write-side rule above must not take out the read the whole UI boots from.
+        Assert.Null(Policy(DashboardRole.Operator, "GET", "/apigateway/api/auth/status"));
+        Assert.Null(Policy(DashboardRole.Viewer, "GET", "/apigateway/api/auth/status"));
+        Assert.Null(Policy(DashboardRole.Operator, "GET", "/apigateway/api/2fa/status"));
+    }
+
+    [Fact]
+    public void Minting_a_2fa_secret_is_a_write_not_a_read()
+    {
+        // It used to be a GET, which meant a viewer - denied by method - could still call it.
+        Assert.Equal(DashboardRolePolicy.ReadOnlyDenied,
+            Policy(DashboardRole.Viewer, "POST", "/apigateway/api/2fa/setup"));
+    }
+
+    [Fact]
+    public void Tracing_sampling_stays_available_to_operators()
+    {
+        // Only the credential endpoint is admin-only. Turning sampling down during an incident is
+        // exactly the kind of thing an operator must be able to do without waking someone up.
+        Assert.Null(Policy(DashboardRole.Operator, "POST", "/apigateway/api/tracing/sampling"));
+        Assert.Null(Policy(DashboardRole.Operator, "GET", "/apigateway/api/tracing"));
+    }
 
     [Fact]
     public void An_operator_may_still_read_the_admin_only_areas()
@@ -246,7 +291,52 @@ public class DashboardRoleTests
         Assert.Equal(DashboardRole.Viewer, principal.Role);
     }
 
+    [Fact]
+    public void A_logged_out_token_stops_working_before_it_expires()
+    {
+        // Logout used to only delete the cookie, which left any copy of the token valid for the
+        // remaining eight hours. This is the regression test for the revocation list.
+        var options = JwtOptions();
+        var token = Token("alice", DashboardRole.Admin);
+        var revoked = new DashboardTokenRevocationStore();
+
+        Assert.Equal(DashboardRole.Admin, Resolve(options, token).Role);
+
+        revoked.Revoke(DashboardJwtHelper.ReadTokenId(token), DateTimeOffset.UtcNow.AddHours(1));
+
+        Assert.Equal(DashboardRole.Viewer, Resolve(options, token, revoked).Role);
+    }
+
+    [Fact]
+    public void A_token_with_alg_none_is_rejected()
+    {
+        // The classic JWT confusion attack: a token that declares it needs no signature. Accepting
+        // it would let anyone write their own claims, so the header is checked before the HMAC.
+        var header = Base64Url("""{"alg":"none","typ":"JWT"}""");
+        var payload = Base64Url(
+            $$"""{"sub":"mallory","iss":"{{DashboardJwtHelper.Issuer}}","role":"admin","exp":4102444800}""");
+
+        var (valid, username) = DashboardJwtHelper.ValidateToken($"{header}.{payload}.", Secret);
+
+        Assert.False(valid);
+        Assert.Null(username);
+    }
+
+    [Fact]
+    public void A_correctly_signed_token_carries_a_token_id()
+    {
+        // Without a jti there is nothing for the revocation list to key on, and logout silently
+        // reverts to "delete the cookie and hope".
+        var token = Token("alice", DashboardRole.Viewer);
+
+        Assert.False(string.IsNullOrEmpty(DashboardJwtHelper.ReadTokenId(token)));
+    }
+
     // ──────────────── helpers ────────────────
+
+    private static string Base64Url(string json)
+        => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(json))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
     private static string? Policy(DashboardRole role, string method, string path)
         => DashboardRolePolicy.Deny(new DashboardPrincipal("someone", role, Implicit: false), method, new PathString(path));
@@ -262,10 +352,10 @@ public class DashboardRoleTests
     private static string Token(string username, DashboardRole role)
         => DashboardJwtHelper.GenerateToken(username, Secret, role);
 
-    private static DashboardPrincipal Resolve(DashboardOptions options, string? token = null)
+    private static DashboardPrincipal Resolve(DashboardOptions options, string? token = null, DashboardTokenRevocationStore? revoked = null)
     {
         var service = new DashboardAuthorizationService(
-            Options.Create(options), NullLogger<DashboardAuthorizationService>.Instance);
+            Options.Create(options), revoked ?? new DashboardTokenRevocationStore(), NullLogger<DashboardAuthorizationService>.Instance);
 
         var context = new DefaultHttpContext();
         if (token is not null)

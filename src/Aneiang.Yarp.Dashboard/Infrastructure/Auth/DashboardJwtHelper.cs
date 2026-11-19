@@ -12,6 +12,12 @@ public static class DashboardJwtHelper
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
+    /// <summary>The only issuer this gateway accepts.</summary>
+    public const string Issuer = "Aneiang.Yarp.Dashboard";
+
+    /// <summary>Token lifetime. Kept here so the cookie expiry and the claim cannot drift apart.</summary>
+    public static readonly TimeSpan Lifetime = TimeSpan.FromHours(8);
+
     /// <summary>Generate a signed JWT token.</summary>
     /// <param name="username">Subject claim.</param>
     /// <param name="secret">HMAC-SHA256 signing key.</param>
@@ -27,10 +33,13 @@ public static class DashboardJwtHelper
         var payload = JsonSerializer.Serialize(new
         {
             sub = username,
-            iss = "Aneiang.Yarp.Dashboard",
+            iss = Issuer,
             role = role?.ToClaimValue(),
+            // The id is what makes "log out this session" expressible: a signature cannot be
+            // un-signed, so the only way to invalidate a token early is to remember its id.
+            jti = Guid.NewGuid().ToString("N"),
             iat = now,
-            exp = now + 28800  // 8 hours
+            exp = now + (long)Lifetime.TotalSeconds
         }, _jsonOptions);
 
         var headerB64 = Base64UrlEncode(Encoding.UTF8.GetBytes(header));
@@ -66,6 +75,11 @@ public static class DashboardJwtHelper
         var parts = token.Split('.');
         if (parts.Length != 3) return (false, null, null);
 
+        // The header is part of the signed input, so an attacker cannot swap it without breaking
+        // the signature - but "cannot" only holds if the algorithm is actually checked. Accepting
+        // whatever the header says is the classic JWT confusion bug.
+        if (!HasExpectedHeader(parts[0])) return (false, null, null);
+
         var signingInput = $"{parts[0]}.{parts[1]}";
         var expectedSig = ComputeSignature(signingInput, secret);
 
@@ -97,6 +111,12 @@ public static class DashboardJwtHelper
                 if (expTime < DateTimeOffset.UtcNow) return (false, null, null);
             }
 
+            // The issuer is generated but was never checked, which made it decoration. A token
+            // signed with the same secret by another system would otherwise be accepted here.
+            if (!root.TryGetProperty("iss", out var issEl) ||
+                !string.Equals(issEl.GetString(), Issuer, StringComparison.Ordinal))
+                return (false, null, null);
+
             var username = root.TryGetProperty("sub", out var subEl) ? subEl.GetString() : null;
 
             DashboardRole? role = null;
@@ -109,6 +129,46 @@ public static class DashboardJwtHelper
         {
             // Invalid or unexpected payload structure — treat as invalid, never throw.
             return (false, null, null);
+        }
+    }
+
+    /// <summary>Reads the <c>jti</c> claim of an already validated token.</summary>
+    public static string? ReadTokenId(string token)
+    {
+        var parts = token.Split('.');
+        if (parts.Length != 3) return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(Base64UrlDecode(parts[1]));
+            return doc.RootElement.TryGetProperty("jti", out var jti) ? jti.GetString() : null;
+        }
+        catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private static bool HasExpectedHeader(string headerB64)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(Base64UrlDecode(headerB64));
+            var root = doc.RootElement;
+
+            var alg = root.TryGetProperty("alg", out var algEl) ? algEl.GetString() : null;
+            if (!string.Equals(alg, "HS256", StringComparison.Ordinal)) return false;
+
+            // typ is optional in the RFC; when it is present it has to be JWT.
+            if (root.TryGetProperty("typ", out var typEl) && typEl.ValueKind == JsonValueKind.String &&
+                !string.Equals(typEl.GetString(), "JWT", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            return true;
+        }
+        catch (Exception ex) when (ex is JsonException or FormatException or ArgumentException)
+        {
+            return false;
         }
     }
 

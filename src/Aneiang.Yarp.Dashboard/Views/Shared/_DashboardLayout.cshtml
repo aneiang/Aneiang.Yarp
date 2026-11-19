@@ -5495,15 +5495,21 @@
                 });
             });
         }
-        function getJwtUsername() {
-            var token = localStorage.getItem('dashboard_token');
-            if (!token) return null;
-            try {
-                var payload = JSON.parse(atob(token.split('.')[1]));
-                return payload.username || payload.sub || null;
-            } catch (e) {
-                return null;
-            }
+        // The token is HttpOnly now, so the name can no longer be read out of it in the browser.
+        // Ask the server instead — this is also the only version that stays correct when the
+        // session was established by something other than a JWT.
+        function applyUsername(username) {
+            if (!username) return;
+            var usernameEl = document.getElementById('topbar-username');
+            var dropdownUsernameEl = document.getElementById('topbar-dropdown-username');
+            if (usernameEl) usernameEl.textContent = username;
+            if (dropdownUsernameEl) dropdownUsernameEl.textContent = username;
+        }
+        function loadUsername() {
+            if (!window.DashboardApi || !window.DashboardApi.getAuthStatus) return Promise.resolve();
+            return window.DashboardApi.getAuthStatus()
+                .then(function (data) { applyUsername(data && (data.Username || data.username)); })
+                .catch(function () { });
         }
 
         function toggleMobileSidebar(forceState) {
@@ -5678,15 +5684,7 @@
                 if (key && I18N[key]) el.title = I18N[key];
             });
             // Show username in sidebar
-            var username = getJwtUsername();
-            var usernameEl = document.getElementById('topbar-username');
-            var dropdownUsernameEl = document.getElementById('topbar-dropdown-username');
-            if (usernameEl && username) {
-                usernameEl.textContent = username;
-            }
-            if (dropdownUsernameEl && username) {
-                dropdownUsernameEl.textContent = username;
-            }
+            loadUsername();
 
             // Initialize submenu toggles
             document.querySelectorAll('[data-toggle="submenu"]').forEach(function(toggle) {

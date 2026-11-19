@@ -12,13 +12,18 @@ public sealed class DashboardAuthorizationService : IDashboardAuthorizationServi
 {
     private readonly DashboardOptions _options;
     private readonly ILogger<DashboardAuthorizationService> _logger;
+    private readonly DashboardTokenRevocationStore _revocations;
 
     /// <summary>
     /// Creates the authorization service.
     /// </summary>
-    public DashboardAuthorizationService(IOptions<DashboardOptions> options, ILogger<DashboardAuthorizationService> logger)
+    public DashboardAuthorizationService(
+        IOptions<DashboardOptions> options,
+        DashboardTokenRevocationStore revocations,
+        ILogger<DashboardAuthorizationService> logger)
     {
         _options = options.Value;
+        _revocations = revocations;
         _logger = logger;
     }
 
@@ -91,7 +96,7 @@ public sealed class DashboardAuthorizationService : IDashboardAuthorizationServi
             if (token is not null)
             {
                 var details = DashboardJwtHelper.ValidateTokenDetails(token, secret!);
-                if (details.Valid)
+                if (details.Valid && !_revocations.IsRevoked(DashboardJwtHelper.ReadTokenId(token)))
                 {
                     var username = details.Username ?? "unknown";
                     var role = details.Role ?? RoleOfConfiguredUser(username);
@@ -127,8 +132,9 @@ public sealed class DashboardAuthorizationService : IDashboardAuthorizationServi
         var headerName = _options.Auth.ApiKeyHeaderName;
 
         // Check header
-        if (context.Request.Headers.TryGetValue(headerName, out var hv) && 
-            hv.Any(v => v == apiKey))
+        // Constant-time: with == the response time leaks how much of the key was correct.
+        if (context.Request.Headers.TryGetValue(headerName, out var hv) &&
+            hv.Any(v => PasswordHasher.SecureEquals(v, apiKey)))
         {
             return true;
         }
@@ -152,6 +158,15 @@ public sealed class DashboardAuthorizationService : IDashboardAuthorizationServi
             return false;
 
         var (valid, _) = DashboardJwtHelper.ValidateToken(token, secret);
+
+        // Signature and expiry say "this was issued by us"; the revocation list says "and it is
+        // still allowed to be used", which is the part logout needs.
+        if (valid && _revocations.IsRevoked(DashboardJwtHelper.ReadTokenId(token)))
+        {
+            _logger.LogInformation("Rejected a logged-out dashboard token for {Path}.", context.Request.Path);
+            valid = false;
+        }
+
         if (!valid)
         {
             _logger.LogWarning(

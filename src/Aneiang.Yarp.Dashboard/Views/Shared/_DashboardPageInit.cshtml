@@ -1,12 +1,13 @@
 @* Shared dashboard client initialization.
-   Sets window.__dashboard with basePath, token, locale, i18n translations, and current page.
+   Sets window.__dashboard with basePath, locale, i18n translations, and current page.
+   The session token is deliberately absent: it lives in an HttpOnly cookie, and putting it here
+   would hand it to any script on the page — the exact weakness the attribute exists to prevent.
    Also initializes DashboardI18n so that __() works everywhere immediately.
    Usage: @@await Html.PartialAsync("_DashboardPageInit") inside @@section Scripts. *@
 <script>
     window.__dashboard = window.__dashboard || {};
     var dash = window.__dashboard;
     dash.basePath = '/' + '@ViewBag.DashboardRoutePrefix';
-    dash.token = localStorage.getItem('dashboard_token');
     dash.CURRENT_LOCALE = '@ViewBag.Locale';
     dash.I18N = @Html.Raw(ViewBag.AllI18nJson ?? "{}");
     dash.currentPage = '@ViewBag.CurrentPage';
