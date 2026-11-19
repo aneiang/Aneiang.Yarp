@@ -68,7 +68,14 @@ public sealed class SqliteConnectionFactory : IDbConnectionFactory
     /// The environment connections are opened against right now. Without a resolver this is the
     /// configured runtime environment, which is what every single-environment host wants.
     /// </summary>
-    private string CurrentEnvironment => _resolver?.CurrentEnvironment ?? _options.Environments.Runtime;
+    /// <remarks>
+    /// A <see cref="StorageEnvironmentScope"/> override wins over the resolver. It exists so the
+    /// control plane can read or write another environment without switching the editing view —
+    /// switching reloads the working set and publishes, which is far too much side effect for an
+    /// operation that only meant to look at another store.
+    /// </remarks>
+    private string CurrentEnvironment =>
+        StorageEnvironmentScope.Ambient ?? _resolver?.CurrentEnvironment ?? _options.Environments.Runtime;
 
     /// <summary>
     /// Creates a new pooled SQLite connection against the current environment. The first call for

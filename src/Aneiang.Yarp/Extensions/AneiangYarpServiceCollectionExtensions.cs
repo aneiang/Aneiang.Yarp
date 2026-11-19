@@ -91,6 +91,11 @@ public static class AneiangYarpServiceCollectionExtensions
         services.AddSingleton<DynamicYarpConfigService>();
         services.AddSingleton<IDynamicYarpConfigService>(sp => sp.GetRequiredService<DynamicYarpConfigService>());
 
+        // Cross-environment reads and replace-writes for diff and promotion. Kept off the dynamic
+        // config service on purpose: it must not touch the in-memory working set, which belongs to
+        // whichever environment the control plane is editing.
+        services.TryAddSingleton<IEnvironmentConfigStore, EnvironmentConfigStore>();
+
         // Pre-flight guard for configuration writes. Permissive by default: a host that uses the
         // core library alone keeps its historical "accept what you are given" behaviour. The
         // dashboard calls Replace(...) later to plug in the real validator, which is what makes

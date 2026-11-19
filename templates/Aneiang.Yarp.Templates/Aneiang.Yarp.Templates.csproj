@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      A `dotnet new` template package. Nothing here is compiled: the content folder is shipped
+      verbatim and `dotnet new` copies it out with the project name substituted.
+
+      Version is declared locally because src/Directory.Build.props only applies to src/.
+    -->
+    <PackageType>Template</PackageType>
+    <PackageId>Aneiang.Yarp.Templates</PackageId>
+    <Title>Aneiang.Yarp project templates</Title>
+    <Description>dotnet new templates for Aneiang.Yarp: a gateway with routes, storage and dashboard wired up, and an out-of-tree plugin project that emits a loadable plugin.json.</Description>
+    <PackageTags>dotnet-new;templates;yarp;gateway;reverse-proxy;plugin</PackageTags>
+    <Version>2.3.0.40</Version>
+    <Authors>AneiangSoft Team</Authors>
+    <Company>AneiangSoft</Company>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/aneiangsoft/Aneiang.Yarp</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/aneiangsoft/Aneiang.Yarp</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <TargetFramework>net8.0</TargetFramework>
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <ContentTargetFolders>content</ContentTargetFolders>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- NU5128: the package has no lib/ folder, which is expected for a template. -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="content\**\*" Exclude="content\**\bin\**;content\**\obj\**" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

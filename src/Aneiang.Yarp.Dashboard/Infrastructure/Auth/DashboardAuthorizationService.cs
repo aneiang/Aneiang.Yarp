@@ -53,14 +53,69 @@ public sealed class DashboardAuthorizationService : IDashboardAuthorizationServi
         if (_options.Auth.AuthorizeRequest != null)
             return "Custom Delegate";
 
+        var accounts = _options.Auth.Users.Count;
+        var suffix = accounts > 0 ? $" · {accounts} account(s)" : string.Empty;
+
         return _options.Auth.AuthMode switch
         {
             DashboardAuthMode.None => "None",
             DashboardAuthMode.ApiKey => "API Key",
-            DashboardAuthMode.CustomJwt => $"JWT (User: {_options.Auth.JwtUsername ?? "N/A"})",
-            DashboardAuthMode.DefaultJwt => "JWT (Admin)",
+            DashboardAuthMode.CustomJwt => $"JWT (User: {_options.Auth.JwtUsername ?? "N/A"}){suffix}",
+            DashboardAuthMode.DefaultJwt => $"JWT (Admin){suffix}",
             _ => "Unknown"
         };
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Role resolution follows the credential: a token carries its role, an API key is a machine
+    /// credential and is treated as admin, and an unauthenticated deployment is an implicit admin.
+    /// Tokens minted before roles existed fall back to the configured account of the same name —
+    /// they expire within eight hours, so this is a one-release bridge rather than a policy.
+    /// </remarks>
+    public DashboardPrincipal ResolvePrincipal(HttpContext context)
+    {
+        // A host-provided delegate decides everything; we cannot infer a role from it, and guessing
+        // "viewer" would break every existing integration that authorizes service accounts there.
+        if (_options.Auth.AuthorizeRequest != null)
+            return new DashboardPrincipal("delegate", DashboardRole.Admin, Implicit: true);
+
+        if (_options.Auth.AuthMode == DashboardAuthMode.ApiKey)
+            return new DashboardPrincipal("api-key", DashboardRole.Admin, Implicit: true);
+
+        if (_options.Auth.AuthMode is DashboardAuthMode.CustomJwt or DashboardAuthMode.DefaultJwt)
+        {
+            var secret = _options.Auth.JwtSecret;
+            var token = secret is null ? null : ExtractJwtToken(context);
+
+            if (token is not null)
+            {
+                var details = DashboardJwtHelper.ValidateTokenDetails(token, secret!);
+                if (details.Valid)
+                {
+                    var username = details.Username ?? "unknown";
+                    var role = details.Role ?? RoleOfConfiguredUser(username);
+                    return new DashboardPrincipal(username, role, Implicit: false);
+                }
+            }
+
+            // Authenticated by something we could not attribute (should not happen: the filter runs
+            // after IsAuthorizedAsync). Treat as the lowest privilege that can still see the pages.
+            return new DashboardPrincipal("unknown", DashboardRole.Viewer, Implicit: false);
+        }
+
+        return new DashboardPrincipal("anonymous", DashboardRole.Admin, Implicit: true);
+    }
+
+    private DashboardRole RoleOfConfiguredUser(string username)
+    {
+        var account = _options.Auth.Users.FirstOrDefault(user =>
+            string.Equals(user.Username, username, StringComparison.OrdinalIgnoreCase));
+
+        if (account is not null)
+            return DashboardRoles.Parse(account.Role, DashboardRole.Admin, out _);
+
+        return DashboardRole.Admin;
     }
 
     /// <summary>

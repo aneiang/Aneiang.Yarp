@@ -96,3 +96,115 @@ jobs:
           name: nupkg
           path: out/*.nupkg
           retention-days: 7
+
+  deployables:
+    name: deployables (templates + helm + docker)
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      # The template references the published packages, so the only way to prove it is usable is to
+      # pack this commit and restore from that feed. Pointing the template at nuget.org would test
+      # whatever was published last, which is precisely not the thing that needs testing.
+      #
+      # Every project under src/ is packed rather than a hand-maintained list: the last version of
+      # this list named a project that no longer existed, and a missing project fails the job with an
+      # error that says nothing about templates.
+      - name: Pack into a local feed
+        run: |
+          mkdir -p localfeed
+          for p in src/*/*.csproj; do
+            dotnet pack "$p" -c Release -o localfeed --nologo -v quiet
+          done
+          ls -1 localfeed | grep '\.nupkg$' | wc -l
+
+      # A template package that installs but produces a project that does not compile is the standard
+      # failure mode, and it only surfaces for the user. This step is the user.
+      - name: Template instantiates and compiles
+        run: |
+          dotnet pack templates/Aneiang.Yarp.Templates/Aneiang.Yarp.Templates.csproj -c Release -o out --nologo -v quiet
+          # Glob rather than a pinned filename: the template package carries its own version, and a
+          # bump should not fail CI with a "file not found" that looks like a missing template.
+          dotnet new install out/Aneiang.Yarp.Templates.*.nupkg
+          mkdir -p tmpltest && cd tmpltest
+          dotnet new aneiang-yarp -n GeneratedGateway --Framework net9.0
+          # The heredoc body has to start in column 0 of the generated file, so these lines sit at the
+          # same indentation as everything else in this block and YAML strips it uniformly.
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="utf-8"?>' \
+            '<configuration>' \
+            '  <packageSources>' \
+            '    <clear />' \
+            '    <add key="local" value="../../localfeed" />' \
+            '  </packageSources>' \
+            '</configuration>' > GeneratedGateway/nuget.config
+          dotnet build GeneratedGateway/GeneratedGateway.csproj -c Release --nologo
+          # The Dockerfile ships with the project; a stale assembly name there is a broken image
+          # that nobody notices until `docker run`.
+          grep -q 'ENTRYPOINT \["dotnet", "GeneratedGateway.dll"\]' GeneratedGateway/Dockerfile
+
+      # A plugin template fails differently from a gateway template: it compiles, then the host
+      # refuses to load it because the manifest points at the wrong assembly or the wrong type.
+      # So this step asserts the *rendered manifest*, not just that the build succeeded.
+      - name: Plugin template builds a loadable manifest
+        run: |
+          cd tmpltest
+          dotnet new aneiang-yarp-plugin -n DemoPlugin --PluginId demo-plugin --Framework net9.0
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="utf-8"?>' \
+            '<configuration>' \
+            '  <packageSources>' \
+            '    <clear />' \
+            '    <add key="local" value="../../localfeed" />' \
+            '  </packageSources>' \
+            '</configuration>' > DemoPlugin/nuget.config
+          dotnet publish DemoPlugin/DemoPlugin.csproj -c Release -o DemoPlugin/out --nologo
+          # The contract assembly must NOT be in the plugin folder: the host resolves it to its own
+          # copy, and a second one produces two IGatewayPlugin types that are not the same type.
+          test ! -f DemoPlugin/out/Aneiang.Yarp.Plugin.Abstractions.dll
+          # Identity fields are rendered from MSBuild properties; these three are the ones that
+          # break silently when a project is renamed.
+          grep -q '"id": "demo-plugin"' DemoPlugin/out/plugin.json
+          grep -q '"entryAssembly": "DemoPlugin.dll"' DemoPlugin/out/plugin.json
+          grep -q '"entryType": "DemoPlugin.DemoPluginEntry"' DemoPlugin/out/plugin.json
+          grep -q '"capabilities": \[ "ProxyPipeline" \]' DemoPlugin/out/plugin.json
+
+      # `helm lint` catches the class of bug that only shows up at install time on a cluster:
+      # an unclosed template, a value referenced with the wrong case, a required field that is
+      # only required sometimes.
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: Helm lint and render
+        run: |
+          helm lint deploy/helm/aneiang-yarp
+          helm template gw deploy/helm/aneiang-yarp --namespace gateway > rendered.yaml
+          for kind in Deployment Service ConfigMap Secret PersistentVolumeClaim ServiceAccount; do
+            grep -q "kind: $kind" rendered.yaml || { echo "::error::$kind is missing from the rendered chart"; exit 1; }
+          done
+          helm template gw deploy/helm/aneiang-yarp \
+            --set ingress.enabled=true --set grpc.enabled=false --set persistence.enabled=false \
+            --set auth.mode=None > rendered-minimal.yaml
+          # The guard is a feature: two replicas over one SQLite file is the silent-inconsistency
+          # bug ADR-001 exists to prevent, so the chart must refuse rather than warn.
+          if helm template gw deploy/helm/aneiang-yarp --set replicaCount=2 > /dev/null 2>&1; then
+            echo "::error::The chart rendered with replicaCount=2 and no allowMultipleReplicas — the guard is broken"
+            exit 1
+          fi
+          helm template gw deploy/helm/aneiang-yarp --set replicaCount=2 --set allowMultipleReplicas=true \
+            --set persistence.accessMode=ReadWriteMany > /dev/null
+
+      # The image is built, not shipped: `docker build` is the only check that proves the COPY
+      # paths in the Dockerfile still match the repository layout.
+      - name: Docker build (no push)
+        run: docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:ci .
+

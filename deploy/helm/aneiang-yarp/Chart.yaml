@@ -1,0 +1,25 @@
+apiVersion: v2
+name: aneiang-yarp
+description: Aneiang.Yarp API gateway — YARP data plane with dynamic routes, plugin bindings and a management dashboard.
+type: application
+
+# Chart version is SemVer2, so the product's four-part 2.3.0.40 becomes 2.3.0-40.
+# appVersion keeps the product version verbatim: it is what appears in `helm list` and in the
+# dashboard footer, and those two must agree or support conversations start with a disagreement.
+version: 2.3.0-40
+appVersion: "2.3.0.40"
+
+kubeVersion: ">=1.23.0-0"
+
+home: https://github.com/aneiangsoft/Aneiang.Yarp
+sources:
+  - https://github.com/aneiangsoft/Aneiang.Yarp
+keywords:
+  - yarp
+  - reverse-proxy
+  - api-gateway
+  - gateway
+
+maintainers:
+  - name: AneiangSoft Team
+    url: https://github.com/aneiangsoft/Aneiang.Yarp

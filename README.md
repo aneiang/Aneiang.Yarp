@@ -34,7 +34,7 @@ Plugin Architecture · Dashboard · Dynamic Routing · WAF · Service Discovery 
 |:-----|:----------|:-------------|
 | Management UI | Build your own | ✅ Included |
 | Edit config at runtime | Reload file only | ✅ CRUD + form/JSON editor + rollback + audit |
-| Security (WAF) | None | ✅ WAF plugin (IP allow/deny, SQLi, XSS, path traversal) |
+| Security (WAF) | None | ✅ WAF plugin (declarative rules, IP allow/deny, SQLi / XSS / path traversal, monitor mode) |
 | Microservice registration | None | ✅ One-line REST/gRPC + heartbeat recovery |
 | Observability | Logging only | ✅ Metrics, request logs, health, circuit-breaker panel |
 | Service discovery | Manual clusters | ✅ Consul / Nacos / Eureka / K8s / HTTP-JSON / Static |
@@ -76,7 +76,7 @@ Plugin Architecture · Dashboard · Dynamic Routing · WAF · Service Discovery 
 
 ## Highlights
 
-- **Plugin architecture** — everything is a plugin; 10 first-party plugins provide WAF, rate limiting, retry, circuit breaking, compression, caching, metrics and more. Bring your own `IGatewayPlugin` in minutes.
+- **Plugin architecture** — everything is a plugin; 10 first-party plugins provide WAF, rate limiting, retry, circuit breaking, compression, caching, metrics and more. Bring your own `IGatewayPlugin` in minutes; the **Plugin Market page** shows what is installed and where it came from, and installs, upgrades or removes external plugins from a local directory.
 - **Visual dashboard** — clusters, routes, plugins, WAF, health, circuit breakers, logs, notifications, audit trail and config history in one place.
 - **Runtime dynamic routing** — create / edit clusters & routes without restarting; auto-persists and auto-recovers on restart.
 - **Native YARP config editing** — dual-mode **form + JSON** editor that works directly on the standard YARP schema.
@@ -166,8 +166,8 @@ app.Run();
 | Area | What you get | Detail |
 |:-----|:-------------|:-------|
 | **Routing** | Dynamic clusters & routes, drag-sort priority, dual form/JSON editor, import/export, snapshot & rollback, audit log | [:link:](https://yarp.aneiang.com/docs/index.html#dynamic-routing) |
-| **Authentication** | `None` / `DefaultJwt` / `CustomJwt` / `ApiKey` / custom delegate; TOTP **2FA** | [:link:](https://yarp.aneiang.com/docs/index.html#authentication) |
-| **Security** | WAF: IP allow/deny, SQLi / XSS / path-traversal detection, request limits, security headers | [:link:](https://yarp.aneiang.com/docs/index.html#waf-firewall) |
+| **Authentication** | `None` / `DefaultJwt` / `CustomJwt` / `ApiKey` / custom delegate; TOTP **2FA**; **RBAC with three roles** (viewer / operator / admin, per-account) | [:link:](https://yarp.aneiang.com/docs/index.html#authentication) |
+| **Security** | WAF: declarative rules (conditions x actions incl. `rate-limit`), IP allow/deny, SQLi / XSS / path-traversal detection, monitor mode | [:link:](https://yarp.aneiang.com/docs/index.html#waf-firewall) |
 | **Observability** | Request logs (TraceID pairing, sanitization, sampling), real-time WebSocket stream, OpenTelemetry tracing (waterfall + export to Jaeger/Tempo) | [:link:](https://yarp.aneiang.com/docs/index.html#request-logs) |
 | **Monitoring** | Request / latency / status metrics (P50/P90/P99), health checks, circuit-breaker panel | [:link:](https://yarp.aneiang.com/docs/index.html#health-check) |
 | **Notification** | Webhook channels (DingTalk / HTTP), event rules with cooldown, delivery history | [:link:](https://yarp.aneiang.com/docs/index.html#notifications) |
@@ -176,7 +176,7 @@ app.Run();
 | **Client SDK** | Auto-register / unregister, heartbeat recovery, `GetServicesAsync` / `UpdateDestinationsAsync` | [:link:](https://yarp.aneiang.com/docs/index.html#client-registration) |
 | **Extensibility** | `IGatewayPlugin` contract, plugin-center management, hot-reconfigured bindings | [:link:](https://yarp.aneiang.com/docs/index.html#plugin-system) |
 | **Chaos drills** | Per-route delay / error / connection-abort injection, header gate + ratio, off by toggling a binding | [:link:](https://yarp.aneiang.com/docs/index.html#plugin-system) |
-| **Multi-environment** | dev / staging / prod isolation, one store file each; switching only moves the editing view, never forwarding | [:link:](https://yarp.aneiang.com/docs/index.html#plugin-system) |
+| **Multi-environment** | dev / staging / prod isolation, one store file each; switching only moves the editing view, never forwarding; field-level diff + two-step promotion | [:link:](https://yarp.aneiang.com/docs/index.html#plugin-system) |
 | **Config safety** | Auto-snapshot, rollback, `GET /api/config/apply-errors`, SQLCipher-encrypted store | [:link:](https://yarp.aneiang.com/docs/index.html#config-history) |
 
 ---
@@ -206,7 +206,7 @@ Config: `Mode` (default `Static`), `Endpoint`, `ServiceName`, `Namespace` (`defa
 - **TTFR** — `gateway_serving` (0/1) and `gateway_first_success_seconds`: from process start to the first successful proxied request. "Up but not routing" is a failure mode every other panel hides.
 - **Policy names are no longer free text** — the authorization / CORS / rate limiter / output cache fields are dropdowns backed by nine built-in `gw-*` policies. A name that was never registered is now rejected at save time instead of throwing when YARP builds the endpoint.
 - **Optimistic concurrency** — writes carry `X-Config-Version`; a stale version returns `409`, so two open tabs cannot silently overwrite each other.
-- **Test baseline** — `tests/Aneiang.Yarp.UnitTests`, 158 xUnit cases covering JSON tolerance, pre-flight validation, the concurrency contract, metrics rendering, the policy catalog and connection-pool collection. `.github/workflows/ci.yml` builds, tests and packs on every push.
+- **Test baseline** — `tests/Aneiang.Yarp.UnitTests`, 579 xUnit cases covering JSON tolerance, pre-flight validation, the concurrency contract, weighted load balancing, canary rollout, metrics and alert thresholds, tracing, WAF, RBAC roles, OpenAPI generation, plugin contracts, i18n key parity and endpoint↔UI coverage. `.github/workflows/ci.yml` builds, tests and packs on every push.
 
 ```bash
 dotnet test tests/Aneiang.Yarp.UnitTests
@@ -351,7 +351,7 @@ Design decisions worth spelling out:
 - **Control-plane requests are not traced.** `/{RoutePrefix}`, `/_content`, `/metrics`, `/health|/ready|/live` and `/favicon.ico` are excluded — otherwise the tracing page's five-second poll fills the buffer with the act of looking at it and pushes real traffic out.
 - **It works without a collector.** With `ExportEnabled: false` spans go only to the in-memory buffer and the waterfall still renders. The buffer is bounded on every axis (trace count, spans per trace, tag count and tag length) and **never retains an `Activity`** — that would pin the `HttpContext` and the request body. Spans are flattened to strings the moment they end.
 - **A failed start does not block the process.** A malformed endpoint or unreachable collector is recorded and shown on the tracing page while the gateway keeps forwarding — the gateway should not refuse to boot because observability is unavailable.
-- **The numbers say what they are.** "Sampling decisions / dropped" counts **decisions**, including control-plane requests that get filtered out right after sampling, so it will exceed the number of traces actually captured. "Buffer" is the answer to "how many traces do I have".
+- **The numbers say what they are.** "Kept / dropped" in the sampling column counts **decisions**, including control-plane requests that get filtered out right after sampling, so it will exceed the number of traces actually captured. "Buffer" on the same line is the answer to "how many traces do I have".
 
 Point `Endpoint` at `4317` (gRPC) or `4318` (http/protobuf); one line of Jaeger to look at them:
 
@@ -435,6 +435,136 @@ The panel's toggle does the same thing.
 
 ---
 
+## WAF (2.3.0.40)
+
+The WAF used to be five hard-coded checkers behind a row of switches: SQL injection was all-on or all-off, there was no way to say "only on `/api`", and adding "block requests whose UA is sqlmap" meant changing code.
+
+It is now a **declarative rule pipeline**. A rule is an optional detector, an optional set of conditions, and an action:
+
+```json
+{
+  "mode": "enforce",
+  "rules": [
+    { "id": "health", "action": "allow",
+      "conditions": [ { "source": "path", "op": "prefix", "value": "/health" } ] },
+
+    { "id": "scanners", "action": "block", "matchMode": "any",
+      "conditions": [
+        { "source": "userAgent", "op": "regex", "value": "(?i)sqlmap|nikto|nmap" },
+        { "source": "bodySize", "op": "greaterThan", "value": "1048576" }
+      ] },
+
+    { "id": "sql", "builtin": "sql-injection",
+      "conditions": [ { "source": "path", "op": "prefix", "value": "/api/" } ] }
+  ]
+}
+```
+
+## The three parts
+
+| Part | Values | Meaning |
+|:--|:--|:--|
+| **Detector** `builtin` | `sql-injection` / `xss` / `path-traversal` | Built-in attack-shape detection |
+| **Conditions** `conditions` | see below | Alongside a detector they **scope** it; without one they *are* the rule |
+| **Action** `action` | `block` / `allow` / `log` / `tag` / `rate-limit` | `allow` stops evaluation and forwards, `log` only records, `tag` writes `X-Waf-Tag` for the upstream, `rate-limit` throttles a rule that keeps matching |
+
+Conditions are one uniform shape — `source` × `op` — instead of a field per combination:
+
+| `source` | Meaning |
+|:--|:--|
+| `method` / `path` / `query` | Method, decoded path, decoded query string |
+| `body` / `bodySize` / `contentType` | Body text, declared size, content type |
+| `header` / `cookie` | Requires `name` |
+| `userAgent` / `ip` | User agent and client IP |
+
+`op` supports `equals` / `contains` / `prefix` / `suffix` / `regex` / `cidr` / `greaterThan` / `lessThan`; `matchMode` decides whether conditions combine as `all` (default) or `any`.
+
+## Editing rules in the dashboard
+
+Hand-writing the JSON above is not how anyone should configure a WAF. In the dashboard a rule is a card whose title reads as a sentence:
+
+```
+⛔ Block SQL injection (path prefix /api/)
+   Detect  [SQL injection ▾]
+   [path ▾] [prefix ▾] [/api/          ] [Aa] [×]
+   Then    [block ▾] [403]
+   ▸ Identity and name
+```
+
+A few deliberate choices:
+
+- **Four things are editable on a fresh rule**: what to detect, where to compare, what to compare against, what to do. `tag` appears only for the tag action, `statusCode` only when blocking, `matchMode` only with two or more conditions, and the header/cookie name only for the sources that need it. Putting `tag` on a blocking rule just invites people to fill a field that gets thrown away
+- **Operators follow the source**. `cidr` is not offered on a path condition, `greaterThan` not on a user agent. The value control follows too: a method gets suggestions, a size gets a byte readout, a CIDR block is validated, a regex gets a monospace field
+- **`id` and `name` are folded under "Identity and name"** - nobody needs to name a rule before it works
+- **Five templates**: SQL injection, XSS, path traversal, IP range, observe-only. Starting from a filled card beats starting from fourteen empty fields
+- **Rules can be reordered.** Order matters: an `allow` near the top short-circuits everything below it
+
+## Rate limiting: a gate, not traffic shaping
+
+The `rate-limit` action does not answer "what is this route's quota?" It answers "someone keeps hitting the same rule — make them wait":
+
+```json
+{ "id": "login-attempts", "action": "rate-limit",
+  "conditions": [ { "source": "path", "op": "equals", "value": "/login" } ],
+  "rateLimit": { "limit": 5, "window": "1m", "partition": "ip" } }
+```
+
+Past five attempts the request gets 429 with `Retry-After`. A few deliberate choices:
+
+- **No queue.** Queuing an attacker's request only converts their flood into our latency.
+- **Fixed window, not sliding.** A sliding window exists so bursts get through as long as the long-run average holds; a gate exists precisely to stop the burst. Fixed window also makes `Retry-After` exact.
+- **Rejected requests do not extend the window**, otherwise the gate degenerates into a permanent ban.
+- **Buckets are separate from the `rate-limit` plugin.** A route quota is a contract with a client ("1000/min"); a WAF quota is a judgement about behaviour ("five failed attempts"). A shared key space means blocked requests silently eat the client's legitimate allowance. Only the duration syntax (`30s` / `1m` / `1h`) is shared.
+- **Bare numbers are refused.** `300` is not 300 seconds — `TimeSpan.Parse("300")` is 300 *days*. Better to drop the rule with a warning at validation time than to amplify a unit typo into a three-month ban.
+- `partition` accepts `ip` (default) / `path` / `ip-path` / `global`.
+
+## monitor: watch the hits before enforcing
+
+With `"mode": "monitor"` the rules still run and still log, but nothing is blocked:
+
+```
+[WRN] WAF [SqlInjectionBlocked] rule=sql-from-report from IP: 10.0.0.9, Path: /api/report, Enforced: False
+```
+
+That is the only way to find out which real requests a new rule would reject before it starts rejecting them.
+
+## What gets inspected
+
+Only bodies that can be read **whole** — truncation is deliberately not attempted:
+
+| Dimension | Default |
+|:--|:--|
+| Content types | `text/*`, JSON, XML, form-urlencoded, GraphQL (plus `+json` / `+xml` suffixes) |
+| Skipped | `multipart/*` and binary types — the envelope is transport metadata, not payload |
+| Size ceiling | 64KB (`bodyInspection.maxBytes`, hard ceiling 1MB) |
+| Over the ceiling | Body check skipped, request forwarded |
+| No `Content-Length` | Skipped (cannot be bounded without buffering all of it) |
+
+An inspected body is rewound, so the rest of the pipeline — including the forwarder — sees the original request untouched.
+
+## What a block looks like
+
+```json
+{ "error": "Forbidden", "message": "Blocked by security policy", "waf": true, "rule": "sql" }
+```
+
+The response carries `X-Waf-Rule: sql`, which answers the first question anyone asks about a 403. Status, body and extra headers are configurable under `response`, and a single rule can override the status code:
+
+```json
+{ "response": { "statusCode": 429, "contentType": "text/plain", "body": "slow down" } }
+```
+
+## Facts worth knowing
+
+- **IP and size checks are a preamble no rule can bypass.** An `allow` rule exempts content inspection, never an IP ban — otherwise one mistyped condition switches the blocklist off
+- **Existing configuration upgrades in place.** `enableSqlInjectionDetection`, `ipWhitelist`, `maxRequestBodySize` and friends are all still there; with `rules` empty the classic three-rule pipeline is synthesised, so behaviour matches the previous version — minus the false positives
+- **The three switches and the rule list never both apply.** While rules exist those switches take no part in detection — the dashboard greys them out and says why, and offers "convert to editable rules" to turn them into the same three real rules (preamble order: path traversal → SQL injection → XSS). Same behaviour, now visible and adjustable
+- **The form validates more strictly than the server, on purpose.** The server's response to a malformed condition is to drop that one condition and log a warning, so an empty value does not fail the save — it disappears, and a rule scoped to `/admin` quietly starts applying everywhere. Nobody reads that warning, so the form has to refuse first
+- **A broken rule does not disable the firewall.** Unknown members are ignored; a bad regex or unknown action drops that one rule with a warning while the rest keep running
+- **Detectors match attack shapes, not keywords.** `select a size from the list`, `--help` and multipart `------` boundaries pass; `' OR '1'='1`, `admin'--`, `UNION SELECT`, `; DROP TABLE`, `../../etc/passwd` do not
+
+---
+
 ## Multi-Environment (2.3.0.40)
 
 One configuration, one environment. Splitting dev / staging / prod needs **two separate answers to two separate questions**: which environment's configuration the gateway is **serving**, and which one you are **editing**. Most tools collapse those into one switch, and then "let me take a look at staging" quietly moves production traffic.
@@ -491,7 +621,145 @@ A few facts worth knowing before using it:
 - **Switching reloads the working set and refreshes the page**, so unsaved form content is lost — the confirmation dialog says so.
 - **Logs, metrics and traces are runtime data.** After switching to an environment that never handled traffic, those pages are empty. That is not a bug: there is no traffic there.
 - **Environment names are limited to letters, digits, `_` and `-`**, because the name becomes part of a file name. `../prod` fails at configuration time rather than at the moment the store is opened.
-- **Promotion (pushing dev's config to prod) is not built yet**; it belongs to a later batch (environment diff → one-click promotion → approval).
+
+### Environment diff and one-click promotion
+
+Once dev looks right, promoting it to prod is two questions: **what actually differs**, and **is this the same thing I reviewed**:
+
+```bash
+# Read: field-level diff, described from the target's point of view
+curl "http://localhost:5000/apigateway/api/environments/diff?source=dev&target=prod"
+
+# Write: step one — diff + problems + a single-use token (5 minutes)
+curl -X POST http://localhost:5000/apigateway/api/environments/promote/prepare \
+  -H "Content-Type: application/json" -d '{"source":"dev","target":"prod"}'
+
+# Write: step two — apply with the token
+curl -X POST http://localhost:5000/apigateway/api/environments/promote/apply \
+  -H "Content-Type: application/json" -d '{"token":"…"}'
+```
+
+Deliberate choices:
+
+- **The diff is rendered as text per field** (`Destinations: 2 → 5`), not `-{...}+{...}`. Only fields that change what traffic does are compared — editing a description is not a difference.
+- **The token binds to a config fingerprint, not to the diff.** The first version hashed the diff and a test proved it misses a whole class of change: an "added" route carries no field-level detail, so editing its content between approval and apply produced an identical diff and the promotion went ahead with unreviewed content.
+- **A candidate is validated against its own clusters.** Validating staging's routes against prod's cluster table fails in both directions: it rejects sound promotions and accepts broken ones.
+- **The token is consumed on use**, so a refused apply cannot be replayed; if either side changes after approval, apply answers 409 and the review has to happen again.
+
+---
+
+## Roles and permissions (2.3.0.40)
+
+Three roles, split by **blast radius rather than seniority**:
+
+| Role | Can do | Refused by |
+|:--|:--|:--|
+| `viewer` | Read every page | **Method**: any non-GET/HEAD/OPTIONS is 403 |
+| `operator` | Change the gateway: routes, clusters, plugin bindings, environment switches, promotions | **Path**: only the endpoints that decide *who can change the gateway* |
+| `admin` | Everything above, plus installing/removing plugins and changing notification targets | — |
+
+```json
+{
+  "Gateway": {
+    "Dashboard": {
+      "Auth": {
+        "AuthMode": "CustomJwt",
+        "JwtSecret": "at least 32 random bytes",
+        "Users": [
+          { "Username": "alice", "Password": "…", "Role": "admin" },
+          { "Username": "bob",   "Password": "…", "Role": "operator" },
+          { "Username": "carol", "Password": "…", "Role": "viewer",
+            "TwoFactorSecret": "BASE32SECRET" }
+        ]
+      }
+    }
+  }
+}
+```
+
+Deliberate choices:
+
+- **An empty `Users` falls back to the original single-account behaviour** (treated as admin). Existing `JwtUsername` / `JwtPassword` deployments need no change — an upgrade must not lock anyone out of their own dashboard.
+- **A viewer is refused by method, not by a path allow-list.** A path list breaks the moment someone adds a page: a new page is a new write entry point, and nobody remembers to update the table.
+- **An operator's path deny-list is allow-by-default.** New operational endpoints work without anyone maintaining a table. The cost is explicit: the control-plane endpoints have to be marked — and the opposite failure (an operator blocked by their own dashboard) happens daily.
+- **The role travels in the JWT `role` claim**, so **reducing a role requires a new login** (8-hour tokens). That is the behaviour you want for a privilege reduction: not "he'll pick it up after the next refresh".
+- **With auth off, an API key, or a custom delegate, the principal is an implicit admin.** Pretending otherwise when there is no account to attribute to only locks existing deployments out. The dashboard does not show a "read-only" notice in that case — the sentence would be false.
+- **403 carries a `reason` code** (`read-only` / `admin-required`) that the UI localizes. You read "this account is read-only and cannot change any configuration", not a bare 403 plus an English sentence.
+- **Hiding write affordances is experience, not a security boundary.** The enforcement is in the filter — between page load and click, the token can be replaced with a higher-privileged one.
+
+See [`docs/adr/ADR-004-rbac-three-roles.md`](docs/adr/ADR-004-rbac-three-roles.md) for the decision record.
+
+---
+
+## Management API reference (2.3.0.40)
+
+The dashboard *is* the API, so the reference is generated from the routes that are actually mapped rather than hand-written:
+
+```bash
+GET <prefix>/api/openapi.json   # OpenAPI 3.1, for generators / Postman / Apifox
+GET <prefix>/api-docs           # the human version: grouped by controller, filterable, expandable
+```
+
+Also reachable from the sidebar: **System → API Reference**.
+
+A few notes:
+
+- **Add an endpoint and the document changes with it.** A hand-written spec drifts the first time somebody adds an endpoint, and a spec that lies is worse than no spec — it makes the integrator build to the wrong shape and fail in production. Plugin-contributed controllers (circuit breaker, rate limiting, WAF…) hang off the same prefix and are included too.
+- **Bodies are derived from CLR types; where that cannot know better it says "any".** `JsonElement` parameters (native YARP config) carry a pointer to the "Configuration reference" section instead of an invented schema — a precise-looking wrong schema makes people write requests that cannot work.
+- **`required` follows MVC's rule**: `[FromBody] Model body` is required, `Model? body` or a default value makes it optional.
+- **403 descriptions carry the `reason` code** (`read-only` / `admin-required`), matching the RBAC section.
+- **The rendering page has zero dependencies** (no CDN, no Swagger UI). A control plane that cannot explain itself offline fails exactly where it matters most.
+
+---
+
+## Deployment (2.3.0.40)
+
+Three ways to take it, differing in "do you own the image":
+
+```bash
+# 1. Your own project (recommended): one command, ships a Dockerfile and a README
+dotnet new install Aneiang.Yarp.Templates
+dotnet new aneiang-yarp -n MyGateway && cd MyGateway && dotnet run
+
+# 2. Kubernetes: the Helm chart. Leave the password empty and install generates one into NOTES
+helm install gw deploy/helm/aneiang-yarp --namespace gateway --create-namespace
+
+# 3. The official reference image (runs this repo's SampleGateway; for trials and integration tests)
+docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:2.3.0.40 .
+```
+
+Two things to know first:
+
+- **The config store is a single SQLite file, so one replica is the correct number.** Two replicas are two route tables that do not know about each other; the load balancer alternates dashboard requests between them and "the route I just saved is gone". Scale the data plane with `Deployment:Mode: Split`, not with `replicaCount: 2` — the chart refuses to render that and says why.
+- **The store must live outside the container.** It holds every route, snapshot and audit record; both official artifacts handle it (`VOLUME /app/data`, and a PVC annotated with `helm.sh/resource-policy: keep`).
+
+Full details — probes, credentials, security context, verification checklist — in [`deploy/README.md`](deploy/README.md).
+
+---
+
+## Plugin development (2.3.0.40)
+
+Out-of-tree plugins are separate assemblies — no need to rebuild the gateway to install one:
+
+```bash
+dotnet new install Aneiang.Yarp.Templates
+dotnet new aneiang-yarp-plugin -n MyPlugin --PluginId my-plugin
+dotnet publish -c Release -o out
+# Dashboard → Plugin Market → Install plugin, then paste the absolute path of out/
+# or copy out/ into the host's plugins/my-plugin/ by hand and restart
+```
+
+**The Plugin Market page (`<prefix>/plugin-market`)** is the front door to this workflow, and it answers four things on one screen: what is installed (built-in vs external), how many targets each plugin is bound to, upgrade/uninstall for external ones, and the contract an external plugin has to satisfy. Installing only copies files and registers the manifest — it does **not** restart the gateway and does **not** enable the plugin, so "it is installed" and "it is changing traffic" stay two separate actions. Install/upgrade/uninstall require the admin role; the enable switch requires operator or above.
+
+Four things worth knowing first — every one of them is the difference between working code and code that never runs:
+
+- **Middleware goes in `ConfigureProxyPipeline`, not `ConfigureMiddleware`.** The app-level pipeline is built at startup; plugins are enabled and reloaded afterwards, so they cannot add to it. `ConfigureMiddleware` is currently only honoured for the built-in `waf`.
+- **`plugin.json` is generated at build time.** `entryAssembly` / `entryType` / `version` are derived from csproj properties, because getting those wrong only shows up **after somebody else installs the plugin**.
+- **The contract assembly is not shipped with the plugin** (`ExcludeAssets="runtime"`). The host always uses its own copy; a second one produces two `IGatewayPlugin` types that do not recognise each other.
+- **`LoadBalancingPolicy` / `Transform` contributions must go through `IGatewayPluginHostServices`.** Registering them in `ConfigureServices` is a silent no-op.
+
+Scopes, capabilities, `order` and schema versions for the 11 built-in plugins, plus the runtime validation rules
+for `plugin.json`, are in [`docs/plugins/plugin-compatibility.md`](docs/plugins/plugin-compatibility.md).
 
 ---
 
@@ -501,7 +769,7 @@ Stating the boundaries up front prevents the wrong tool being picked for the job
 
 | Non-goal | Why | Use instead |
 |:--|:--|:--|
-| **API portal / developer self-service console** | It turns this into a second Kong Dev Portal, while the gateway's value is data-plane stability, not doc hosting | A dedicated portal, or a static site generated from OpenAPI |
+| **API portal / developer self-service console** | It turns this into a second Kong Dev Portal, while the gateway's value is data-plane stability, not doc hosting | A dedicated portal; this repo ships `<prefix>/api-docs` and `api/openapi.json`, which is what integrators need |
 | **Built-in IdP / user directory** | Identity is a specialist domain; a home-grown account system only weakens the security boundary | Keycloak, Auth0, Azure AD — the gateway validates and forwards tokens |
 | **Log storage and search** | The gateway collects and forwards; storing and querying is Elasticsearch / Loki's job | `proxy-log` plugin output plus an external log platform |
 | **Service mesh control plane** | Sidecar and ingress-gateway are different architectures; combining them adds both complexities | Istio / Linkerd |
@@ -514,7 +782,7 @@ Stating the boundaries up front prevents the wrong tool being picked for the job
 
 | ID | Scope | What it does |
 |:---|:------|:-------------|
-| `waf` | Route | IP allow/deny, SQLi / XSS / path-traversal detection, request limits, security headers |
+| `waf` | Route | Declarative rules (detector / conditions / action), IP allow/deny, request limits, monitor mode |
 | `rate-limit` | Route | FixedWindow / SlidingWindow / TokenBucket / Concurrency |
 | `request-retry` | Route | Retry with exponential backoff + jitter, status/exception policy |
 | `circuit-breaker` | Cluster | Failure threshold, recovery timeout, half-open probing |

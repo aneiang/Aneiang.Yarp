@@ -174,7 +174,7 @@
                     <button class="btn btn-outline-secondary btn-sm" id="settings-reset-btn" onclick="SettingsModule.reset()">
                         <i class="bi bi-arrow-counterclockwise me-1"></i><span data-i18n="settings.logging.reset">重置为默认</span>
                     </button>
-                    <button class="btn btn-primary btn-sm" id="settings-save-btn" onclick="SettingsModule.save()">
+                    <button class="btn btn-primary btn-sm" id="settings-save-btn" onclick="SettingsModule.save()" data-requires-write>
                         <i class="bi bi-check-lg me-1"></i><span data-i18n="settings.logging.save">保存日志设置</span>
                     </button>
                 </div>
@@ -281,7 +281,7 @@
                             <button class="btn btn-outline-secondary btn-sm" id="config-import-back" onclick="SettingsModule.resetImportFile()">
                                 <i class="bi bi-arrow-left me-1"></i><span data-i18n="config.importManifestBack">返回重选</span>
                             </button>
-                            <button class="btn btn-primary btn-sm" id="config-import-confirm" onclick="SettingsModule.confirmImportConfig()">
+                            <button class="btn btn-primary btn-sm" id="config-import-confirm" onclick="SettingsModule.confirmImportConfig()" data-requires-write>
                                 <i class="bi bi-check-lg me-1"></i><span data-i18n="config.importManifestContinue">确认导入</span>
                             </button>
                         </div>
@@ -790,7 +790,7 @@ async with Client("http://localhost:8090/mcp") as client:
             <div id="ai-test-result" class="ai-test-result" style="display:none;"></div>
 
             <div class="settings-action-bar">
-                <button class="btn btn-sm btn-primary" id="ai-btn-save">
+                <button class="btn btn-sm btn-primary" id="ai-btn-save" data-requires-write>
                     <i class="bi bi-check-lg"></i> <span data-i18n="ai.save">保存配置</span>
                 </button>
                 <button class="btn btn-sm btn-outline-secondary" id="ai-btn-test">

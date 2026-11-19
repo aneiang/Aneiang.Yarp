@@ -1,0 +1,171 @@
+/* ── environment comparison / promotion ────────────────────────────────────
+   Prefixed `envp-` and scoped to its own overlay: this modal is the only place
+   the two environments are shown side by side, and it must not inherit the
+   table styling of the page underneath it. */
+
+.envp-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1080;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, .38);
+    padding: 24px;
+}
+
+.envp-modal {
+    width: 100%;
+    max-width: 760px;
+    max-height: calc(100vh - 48px);
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 24px 64px rgba(15, 23, 42, .22);
+    overflow: hidden;
+    font-size: 13px;
+}
+
+.envp-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border-bottom: 1px solid #eef2f6;
+}
+
+.envp-title { font-size: 13.5px; font-weight: 600; color: #0f172a; }
+
+.envp-close {
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    line-height: 1;
+    padding: 4px;
+}
+.envp-close:hover { color: #475569; }
+
+.envp-picker {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid #eef2f6;
+    background: #f8fafc;
+    flex-wrap: wrap;
+}
+
+.envp-picker label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11.5px;
+    color: #64748b;
+}
+
+.envp-picker select {
+    border: 1px solid #dbe3ea;
+    border-radius: 7px;
+    background: #fff;
+    font-size: 12.5px;
+    padding: 4px 8px;
+    min-width: 132px;
+    color: #0f172a;
+}
+
+.envp-picker i { color: #94a3b8; padding-bottom: 6px; }
+
+.envp-diff-btn {
+    margin-left: auto;
+    border: 1px solid #dbe3ea;
+    background: #fff;
+    border-radius: 7px;
+    padding: 5px 12px;
+    font-size: 12.5px;
+    color: #334155;
+    cursor: pointer;
+}
+.envp-diff-btn:hover { background: #f1f5f9; }
+
+.envp-body {
+    flex: 1 1 auto;
+    overflow: auto;
+    padding: 12px 14px;
+    min-height: 120px;
+}
+
+.envp-note { color: #64748b; font-size: 12.5px; padding: 6px 0; }
+.envp-note--bad { color: #b91c1c; }
+
+.envp-problems { margin: 6px 0 0; padding-left: 18px; color: #b91c1c; font-size: 12.5px; }
+.envp-problems li { margin-bottom: 4px; }
+
+.envp-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+
+.envp-chip {
+    font-size: 11.5px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #475569;
+}
+.envp-chip--add { background: rgba(5, 150, 105, .1); color: #047857; }
+.envp-chip--del { background: rgba(220, 38, 38, .09); color: #b91c1c; }
+.envp-chip--mod { background: rgba(217, 119, 6, .12); color: #b45309; }
+
+.envp-list { display: flex; flex-direction: column; gap: 6px; }
+
+.envp-row {
+    border: 1px solid #eef2f6;
+    border-left: 3px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 6px 9px;
+}
+.envp-row--add { border-left-color: #059669; }
+.envp-row--del { border-left-color: #dc2626; }
+.envp-row--mod { border-left-color: #d97706; }
+
+.envp-row__head { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.envp-row__head i { font-size: 12px; color: #94a3b8; }
+.envp-row__head code { color: #0f172a; font-size: 12px; }
+
+.envp-row__changes { margin: 4px 0 0 18px; display: flex; flex-direction: column; gap: 2px; }
+
+.envp-change { font-size: 12px; color: #475569; }
+.envp-change--add { color: #047857; }
+.envp-change--del { color: #b91c1c; }
+
+.envp-before { color: #94a3b8; text-decoration: line-through; }
+.envp-after { color: #0f172a; font-weight: 600; }
+
+.envp-foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 14px;
+    border-top: 1px solid #eef2f6;
+    background: #fff;
+}
+
+.envp-cancel,
+.envp-apply {
+    border-radius: 7px;
+    padding: 6px 14px;
+    font-size: 12.5px;
+    cursor: pointer;
+}
+
+.envp-cancel { border: 1px solid #dbe3ea; background: #fff; color: #475569; }
+.envp-cancel:hover { background: #f8fafc; }
+
+.envp-apply { border: 1px solid #1d4ed8; background: #1d4ed8; color: #fff; }
+.envp-apply:hover:not(:disabled) { background: #1e40af; }
+.envp-apply:disabled { opacity: .5; cursor: not-allowed; }
+
+@media (max-width: 640px) {
+    .envp-picker { flex-direction: column; align-items: stretch; }
+    .envp-picker i { display: none; }
+    .envp-diff-btn { margin-left: 0; }
+}

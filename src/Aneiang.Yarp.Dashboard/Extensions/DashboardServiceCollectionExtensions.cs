@@ -12,6 +12,7 @@ using Aneiang.Yarp.Dashboard.Infrastructure.Policies;
 using Aneiang.Yarp.Dashboard.Infrastructure.Realtime;
 using Aneiang.Yarp.Dashboard.Modules.Dashboard.Controllers;
 using Aneiang.Yarp.Dashboard.Modules.Dashboard.Services;
+using Aneiang.Yarp.Dashboard.Modules.Environments;
 using Aneiang.Yarp.Dashboard.Modules.GatewayConfig.Services;
 using Aneiang.Yarp.Plugin.Cache;
 using Aneiang.Yarp.Plugin.CircuitBreaker;
@@ -542,6 +543,14 @@ public static class DashboardServiceCollectionExtensions
         services.AddSingleton<ConfigPersistenceService>();
         services.AddSingleton<IConfigPersistenceService>(sp => sp.GetRequiredService<ConfigPersistenceService>());
         services.AddSingleton<IConfigDiffService, ConfigDiffService>();
+
+        // Cross-environment comparison and promotion. Registration is unconditional; the endpoints
+        // refuse with a clear message when only one environment is configured.
+        services.AddSingleton<EnvironmentDiffService>();
+        services.AddSingleton<EnvironmentPromotionService>();
+        services.AddSingleton<IEnvironmentReloader, EnvironmentReloader>();
+        services.AddSingleton<IPromotionAudit, PromotionAudit>();
+
         services.AddSingleton<ConfigSnapshotScheduler>();
         services.AddSingleton<IConfigSnapshotScheduler>(sp => sp.GetRequiredService<ConfigSnapshotScheduler>());
         services.AddHostedService(sp => sp.GetRequiredService<ConfigSnapshotScheduler>());

@@ -530,4 +530,68 @@
         });
     };
 
+    /**
+     * Highlights the row named by ?focus=<id> and scrolls it into view.
+     *
+     * The configuration health check links here with the id it reported as broken. The
+     * list is rendered asynchronously (and, for large configs, in batches), so the row
+     * usually does not exist yet when the page boots. A short-lived MutationObserver
+     * waits for it to land and disconnects itself — a fixed timeout would either fire
+     * before the row exists or keep a pointless timer alive.
+     *
+     * @param {Object} options
+     * @param {string} [options.rowSelector='tr'] - element type of the target row
+     * @param {string} [options.attr='data-id'] - attribute holding the id
+     * @param {string} [options.className='row-focus'] - class toggled on the match
+     * @param {number} [options.timeoutMs=8000] - how long to keep waiting
+     * @returns {boolean} true only when the row was already present and highlighted
+     */
+    window.DashboardUtils.focusFromQuery = function(options) {
+        const opts = options || {};
+        const rowSelector = opts.rowSelector || 'tr';
+        const attr = opts.attr || 'data-id';
+        const className = opts.className || 'row-focus';
+        const timeoutMs = opts.timeoutMs || 8000;
+
+        let id = null;
+        try {
+            id = new URLSearchParams(window.location.search).get('focus');
+        } catch (e) {
+            return false;
+        }
+        if (!id) return false;
+
+        const escaped = (window.CSS && window.CSS.escape)
+            ? window.CSS.escape(id)
+            : String(id).replace(/["\\]/g, '\\$&');
+        const selector = rowSelector + '[' + attr + '="' + escaped + '"]';
+
+        let done = false;
+        const highlight = function(row) {
+            if (!row || done) return false;
+            done = true;
+            row.classList.add(className);
+            if (row.scrollIntoView) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setTimeout(function() { row.classList.remove(className); }, 4000);
+            // Drop the parameter so reloading the page does not highlight a stale id.
+            try {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('focus');
+                window.history.replaceState({}, '', url.toString());
+            } catch (e) { /* leaving it in the URL is harmless */ }
+            return true;
+        };
+
+        if (highlight(document.querySelector(selector))) return true;
+
+        const observer = new MutationObserver(function() {
+            if (highlight(document.querySelector(selector))) observer.disconnect();
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        setTimeout(function() { observer.disconnect(); }, timeoutMs);
+
+        // Asynchronous from here on: callers cannot rely on the return value.
+        return false;
+    };
+
 })();

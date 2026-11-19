@@ -1,41 +1,53 @@
-using System.Buffers;
-using System.Net;
-using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using Aneiang.Yarp.Infrastructure;
+using Aneiang.Yarp.Infrastructure.Middleware;
+using Aneiang.Yarp.Models;
+using Aneiang.Yarp.Plugins;
+using Aneiang.Yarp.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Aneiang.Yarp.Infrastructure.Middleware;
-using Aneiang.Yarp.Plugins;
-using Aneiang.Yarp.Services;
-using Aneiang.Yarp.Models;
-using Aneiang.Yarp.Infrastructure;
 using Yarp.ReverseProxy.Model;
 
 namespace Aneiang.Yarp.Plugin.Waf;
 
 /// <summary>
-/// Web Application Firewall middleware — orchestrator.
-/// Delegates detection to the <see cref="IWafRuleChecker"/> chain and records security events.
-/// Business settings come exclusively from the current route's enabled plugin binding snapshot.
+/// Web Application Firewall — a thin request-path shell around <see cref="WafPolicy"/>.
 /// </summary>
+/// <remarks>
+/// All decisions live in the compiled policy; this type only resolves the binding, feeds the
+/// request through, and writes the outcome. Keeping it thin is what makes the rules testable
+/// without an HTTP server.
+/// </remarks>
 public sealed class WafMiddleware : GatewayMiddlewareBase
 {
+    public const string PluginId = "waf";
+
+    /// <summary>Request header carrying the tags applied by <c>action: tag</c> rules.</summary>
+    public const string TagHeader = "X-Waf-Tag";
+
+    /// <summary>Response header naming the rule that blocked the request.</summary>
+    public const string RuleHeader = "X-Waf-Rule";
+
+    private const string DefaultMessage = "Blocked by security policy";
+
+    /// <summary>Response header telling a throttled client when to come back.</summary>
+    public const string RetryAfterHeader = "Retry-After";
+
+    private static readonly JsonSerializerOptions BlockBodyJson = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
     private readonly ILogger<WafMiddleware> _logger;
     private readonly GatewayPluginExecutionPlanProvider _executionPlans;
 
     /// <summary>
-    /// Stateless checker chain. Each checker is a singleton — thread-safe, no per-request state.
-    /// Order matters: IP → size/headers → path traversal → SQL injection → XSS.
+    /// Counters for <c>action: rate-limit</c>. Owned by the middleware rather than by a compiled
+    /// policy so that editing any rule does not reset an in-progress quota.
     /// </summary>
-    private static readonly IWafRuleChecker[] Checkers =
-    [
-        IpAccessRuleChecker.Instance,
-        RequestSizeRuleChecker.Instance,
-        PathTraversalRuleChecker.Instance,
-        SqlInjectionRuleChecker.Instance,
-        XssRuleChecker.Instance,
-    ];
+    private readonly WafThrottle _throttle = new();
 
     public WafMiddleware(
         RequestDelegate next,
@@ -52,137 +64,194 @@ public sealed class WafMiddleware : GatewayMiddlewareBase
 
     public async Task InvokeAsync(HttpContext context)
     {
-        var routeId = context.Features.Get<IReverseProxyFeature>()?.Route?.Config?.RouteId
-            ?? context.GetEndpoint()?.Metadata.GetMetadata<RouteModel>()?.Config.RouteId;
-        if (!TryResolveBindingOptions(routeId, out var opts))
-        {
-            await Next(context);
-            return;
-        }
-
-        // Skip dashboard static content and UI routes
+        // The control plane must not be able to lock itself out with its own rules.
         if (IsDashboardRequest(context))
         {
             await Next(context);
             return;
         }
 
-        // Build shared context with decoded inputs
-        var rawPath = GetRawRequestPath(context);
-        var decodedQuery = DecodeQuery(context.Request.QueryString.Value);
-
-        var wafContext = new WafCheckContext
+        if (!TryResolvePolicy(context, out var policy, out var routeId))
         {
-            HttpContext = context,
-            Options = opts,
-            DecodedQueryString = decodedQuery,
-            RawRequestPath = rawPath
-        };
-
-        // Decode body for POST/PUT/PATCH if injection checkers are active
-        if ((opts.EnableSqlInjectionDetection || opts.EnableXssDetection) &&
-            context.Request.ContentLength > 0 &&
-            (HttpMethods.IsPost(context.Request.Method) ||
-             HttpMethods.IsPut(context.Request.Method) ||
-             HttpMethods.IsPatch(context.Request.Method)))
-        {
-            wafContext.DecodedBodyText = await ReadAndDecodeBodyAsync(context);
+            await Next(context);
+            return;
         }
 
-        // Run checker chain
-        foreach (var checker in Checkers)
+        var view = WafRequestView.Create(context);
+
+        var preamble = policy.Preamble.Evaluate(view);
+        if (preamble.Blocked)
         {
-            var result = checker.Check(wafContext);
-            if (result.IsBlocked)
+            LogEvent(context, preamble.EventType, null, preamble.Details, policy.Enforce);
+            if (policy.Enforce)
             {
-                LogWafBlock(context, result.EventType!, result.Details);
-                await BlockRequest(context, result.EventType switch
-                {
-                    "IpBlocked" => "Access denied",
-                    "RequestSizeBlocked" => "Request entity too large",
-                    "MalformedHeadersBlocked" => "Too many headers",
-                    "UriTooLongBlocked" => "URI too long",
-                    _ => "Blocked by security policy"
-                });
+                await WriteBlockAsync(context, policy, null, MessageFor(preamble.EventType));
                 return;
+            }
+        }
+
+        if (policy.RequiresBody && WafBodyInspector.IsScannable(view.ContentType, policy.Body))
+            view.BodyText = await WafBodyInspector.TryReadAsync(context, policy.Body, _logger);
+
+        foreach (var rule in policy.Rules)
+        {
+            if (!rule.Matches(view, out var eventType, out var details)) continue;
+
+            switch (rule.Action)
+            {
+                case WafAction.Allow:
+                    // Stop evaluating: the operator said this request is out of scope.
+                    await Next(context);
+                    return;
+
+                case WafAction.Tag:
+                    AppendTag(context, rule.Tag!);
+                    break;
+
+                case WafAction.Log:
+                    LogEvent(context, eventType, rule, details, enforced: false);
+                    break;
+
+                case WafAction.RateLimit:
+                    var quota = rule.RateLimit!.Value;
+                    var key = ThrottleKey(routeId, rule.Id, quota.Partition, view);
+                    if (_throttle.TryAcquire(key, quota, out var retryAfter))
+                        break; // within quota — the request is entirely ordinary
+
+                    // One event name for every throttle, whatever detector scoped it: an operator
+                    // grepping for abuse wants one term, and the rule id already says which rule.
+                    LogEvent(context, "RateLimitBlocked", rule, details, policy.Enforce);
+                    if (!policy.Enforce) break; // monitor: record the would-be 429 and move on
+
+                    context.Response.Headers[RetryAfterHeader] =
+                        Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
+                    await WriteBlockAsync(context, policy, rule, MessageFor("RateLimitBlocked"),
+                        rule.StatusCode ?? StatusCodes.Status429TooManyRequests);
+                    return;
+
+                case WafAction.Block:
+                    LogEvent(context, eventType, rule, details, policy.Enforce);
+                    if (policy.Enforce)
+                    {
+                        await WriteBlockAsync(context, policy, rule, MessageFor(eventType));
+                        return;
+                    }
+                    // Monitor mode: the hit is recorded, the request continues untouched.
+                    break;
             }
         }
 
         await Next(context);
     }
 
-    #region Private helpers
+    #region Policy resolution
 
-    private bool TryResolveBindingOptions(string? routeId, out WafBindingOptions options)
+    private bool TryResolvePolicy(HttpContext context, out WafPolicy policy, out string routeId)
     {
-        options = null!;
-        if (string.IsNullOrWhiteSpace(routeId)) return false;
+        policy = null!;
+        routeId = string.Empty;
 
-        if (!_executionPlans.Current.WafByRoute.TryGetValue(routeId, out var configured) || !configured.Enabled)
-            return false;
+        var resolvedId = context.Features.Get<IReverseProxyFeature>()?.Route?.Config?.RouteId
+            ?? context.GetEndpoint()?.Metadata.GetMetadata<RouteModel>()?.Config.RouteId;
 
-        options = configured;
+        if (string.IsNullOrWhiteSpace(resolvedId)) return false;
+        if (!_executionPlans.Current.WafByRoute.TryGetValue(resolvedId, out var options) || !options.Enabled) return false;
+
+        policy = WafPolicyCache.For(options, _logger);
+        if (policy.IsNoOp) return false;
+
+        routeId = resolvedId;
         return true;
     }
 
-    private static string GetRawRequestPath(HttpContext context)
+    #endregion
+
+    #region Actions
+
+    private static void AppendTag(HttpContext context, string tag)
     {
-        var raw = context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpRequestFeature>()?.RawTarget;
-        if (string.IsNullOrEmpty(raw)) return context.Request.Path.Value ?? "";
-        var qIdx = raw.IndexOf('?');
-        return qIdx >= 0 ? raw[..qIdx] : raw;
+        var existing = context.Request.Headers[TagHeader].ToString();
+        context.Request.Headers[TagHeader] = string.IsNullOrEmpty(existing) ? tag : $"{existing},{tag}";
     }
 
-    private static string DecodeQuery(string? rawQuery)
+    /// <summary>
+    /// Route id is part of the key so two routes sharing a rule id never share a quota — the same
+    /// rule on a public and an internal route are two separate judgements.
+    /// </summary>
+    private static string ThrottleKey(string routeId, string ruleId, WafPartition partition, WafRequestView view)
     {
-        if (string.IsNullOrEmpty(rawQuery)) return "";
-        var trimmed = rawQuery.TrimStart('?');
-        return string.IsNullOrEmpty(trimmed) ? "" : WebUtility.UrlDecode(trimmed);
-    }
+        var ip = string.IsNullOrEmpty(view.ClientIp) ? "-" : view.ClientIp;
 
-    private static async Task<string?> ReadAndDecodeBodyAsync(HttpContext context)
-    {
-        context.Request.EnableBuffering();
-        try
+        var scope = partition switch
         {
-            using var reader = new StreamReader(
-                context.Request.Body, Encoding.UTF8,
-                detectEncodingFromByteOrderMarks: false, bufferSize: 4096, leaveOpen: true);
+            WafPartition.Path => view.DecodedPath,
+            WafPartition.IpPath => ip + "|" + view.DecodedPath,
+            WafPartition.Global => "*",
+            _ => ip
+        };
 
-            var maxScanBytes = (int)Math.Min(context.Request.ContentLength ?? 0, 100 * 1024);
-            if (maxScanBytes <= 0) maxScanBytes = 4096;
-            var buffer = ArrayPool<char>.Shared.Rent(maxScanBytes);
-            try
-            {
-                var read = await reader.ReadAsync(buffer, 0, maxScanBytes);
-                context.Request.Body.Position = 0;
-                var text = new string(buffer, 0, read);
-                // URL-decode form-urlencoded bodies
-                if (context.Request.ContentType?.IndexOf("urlencoded", StringComparison.OrdinalIgnoreCase) >= 0)
-                    text = WebUtility.UrlDecode(text);
-                return text;
-            }
-            finally { ArrayPool<char>.Shared.Return(buffer); }
-        }
-        catch { context.Request.Body.Position = 0; return null; }
+        return string.Concat(routeId, "\u001f", ruleId, "\u001f", scope);
     }
 
-    private void LogWafBlock(HttpContext context, string eventType, string? details)
+    private void LogEvent(HttpContext context, string eventType, WafCompiledRule? rule, string? details, bool enforced)
     {
         var clientIp = ClientIpResolver.GetClientIp(context);
         var requestUri = context.Request.Path.Value + context.Request.QueryString.Value;
 
-        _logger.LogWarning("WAF [{EventType}] from IP: {Ip}, Path: {Path}, Details: {Details}",
-            eventType, clientIp, requestUri, details ?? "(hidden)");
-
+        _logger.LogWarning(
+            "WAF [{EventType}] rule={Rule} from IP: {Ip}, Path: {Path}, Enforced: {Enforced}, Details: {Details}",
+            eventType, rule?.Id ?? "-", clientIp, requestUri, enforced, details ?? "(hidden)");
     }
 
-    private static async Task BlockRequest(HttpContext context, string message)
+    private static async Task WriteBlockAsync(
+        HttpContext context,
+        WafPolicy policy,
+        WafCompiledRule? rule,
+        string message,
+        int? statusOverride = null)
     {
-        context.Response.StatusCode = StatusCodes.Status403Forbidden;
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsJsonAsync(new { error = "Forbidden", message, waf = true });
+        if (context.Response.HasStarted) return;
+
+        var options = policy.Response;
+
+        context.Response.StatusCode = statusOverride ?? rule?.StatusCode ?? options.StatusCode;
+        context.Response.ContentType = options.ContentType;
+
+        if (options.Headers is { Count: > 0 })
+        {
+            foreach (var header in options.Headers)
+                context.Response.Headers[header.Key] = header.Value;
+        }
+
+        if (options.IncludeRuleHeader && rule is not null)
+            context.Response.Headers[RuleHeader] = rule.Id;
+
+        var body = options.Body ?? JsonSerializer.Serialize(
+            new BlockBody("Forbidden", message, rule?.Id),
+            BlockBodyJson);
+
+        await context.Response.WriteAsync(body, context.RequestAborted);
     }
+
+    /// <summary>
+    /// Kept deliberately close to the previous wording: operators and log queries already key on
+    /// these event names, and renaming them would silently break existing alerting.
+    /// </summary>
+    private static string MessageFor(string eventType) => eventType switch
+    {
+        "IpBlocked" => "Access denied",
+        "RequestSizeBlocked" => "Request entity too large",
+        "MalformedHeadersBlocked" => "Too many headers",
+        "UriTooLongBlocked" => "URI too long",
+        "RateLimitBlocked" => "Too many requests",
+        _ => DefaultMessage
+    };
 
     #endregion
+
+    /// <summary>Lowercase members on purpose: this is the wire shape clients already receive.</summary>
+    private sealed record BlockBody(string error, string message, string? rule)
+    {
+        public bool waf => true;
+    }
 }

@@ -32,9 +32,17 @@
 
     function summarizeConfig(binding) {
         var config = parseConfig(binding);
+        var pid = binding && binding.pluginId;
+        /* A plugin that ships its own editor also knows what is worth showing in
+           a one-line summary. Falling back to "rules: [3]" for WAF would hide the
+           two facts that decide whether a binding does anything. */
+        var custom = window.PluginConfigEditors && window.PluginConfigEditors.summarize;
+        if (custom) {
+            var text = custom(pid, config);
+            if (text) return text;
+        }
         var keys = Object.keys(config);
         if (!keys.length) return '{}';
-        var pid = binding && binding.pluginId;
         return keys.slice(0, 3).map(function(key) {
             var value = config[key];
             if (value && typeof value === 'object') value = Array.isArray(value) ? '[' + value.length + ']' : '{...}';
@@ -237,9 +245,11 @@
     }
 
     // Plugin metadata: icon, accent color and common (frequently used) fields for form grouping.
+    // `common` only matters to the generic renderer; plugins with a custom editor
+    // (waf) do not list one, because their form is not built from this schema.
     var PLUGIN_META = {
         'rate-limit': { icon: 'bi-speedometer2', color: '#0dcaf0', common: ['algorithm', 'permitLimit', 'window'] },
-        'waf': { icon: 'bi-shield-lock', color: '#dc3545', common: ['enableSqlInjectionDetection', 'enableXssDetection', 'enablePathTraversalDetection', 'enableRequestSizeValidation', 'maxRequestBodySize'] },
+        'waf': { icon: 'bi-shield-lock', color: '#dc3545' },
         'circuit-breaker': { icon: 'bi-electrical-socket', color: '#fd7e14', common: ['failureThreshold', 'recoveryTimeoutSeconds'] },
         'request-retry': { icon: 'bi-arrow-repeat', color: '#20c997', common: ['maxRetries', 'backoffBaseMs'] },
         'response-cache': { icon: 'bi-hdd-stack', color: '#0d6efd', common: ['ttlSeconds'] },
@@ -502,7 +512,19 @@
 
     // Renders a schema form with common fields first and the rest folded into an "Advanced" collapse.
     // Shared by the capability modal and the plugin page binding editor.
+    //
+    // A plugin may replace this entirely: the generic renderer emits one control
+    // per property, which turns `rules[] -> conditions[]` into two levels of
+    // "Item 1" and fourteen undifferentiated fields. PluginConfigEditors holds
+    // those opt-in replacements (see plugin-config-editors.js).
     function renderGroupedFields(formEl, schema, config, pluginId) {
+        var custom = window.PluginConfigEditors && window.PluginConfigEditors.get(pluginId);
+        if (custom) {
+            formEl.replaceChildren();
+            formEl.__schemaFields = [];
+            custom(formEl, schema, config, pluginId);
+            return true;
+        }
         var properties = (schema && schema.properties) || {};
         // 'enabled' is owned by the binding-level toggle; hide it from the form (still editable in JSON mode).
         var names = Object.keys(properties).filter(function(name) { return name !== 'enabled'; });
@@ -557,6 +579,9 @@
     }
 
     function readSchemaForm(form, schema, original) {
+        /* A custom editor owns its whole config object, including the fields it
+           chose not to show, so it returns the finished object or null. */
+        if (typeof form.__readConfig === 'function') return form.__readConfig();
         var result = Object.assign({}, original || {});
         var valid = true;
         (form.__schemaFields || []).forEach(function(entry) {
@@ -597,7 +622,12 @@
                 '<div class="row g-2" data-role="plugin-cards"></div>' +
                 '<div class="small mt-2" data-role="plugin-info"></div></div>' +
                 '<div class="mb-3 d-flex align-items-end gap-2"><div class="flex-grow-1"><label class="form-label">' + __('capability.modal.preset') + '</label><select class="form-select form-select-sm" data-role="preset"><option value="">' + __('capability.modal.noPreset') + '</option></select></div>' +
-                '<button type="button" class="btn btn-outline-secondary btn-sm" data-role="save-preset" title="' + __('capability.modal.savePresetTitle') + '"><i class="bi bi-bookmark-plus me-1"></i>' + __('capability.modal.savePreset') + '</button></div>' +
+                '<button type="button" class="btn btn-outline-secondary btn-sm" data-role="save-preset" title="' + __('capability.modal.savePresetTitle') + '"><i class="bi bi-bookmark-plus me-1"></i>' + __('capability.modal.savePreset') + '</button>' +
+                /* Applying writes the preset straight into this binding — the select above only
+                   fills the form, which leaves two ways to get the same result and one of them
+                   ("pick, then Save") is easy to mistake for "already applied". */
+                (binding ? '<button type="button" class="btn btn-outline-primary btn-sm" data-role="apply-preset" data-requires-write disabled title="' + __('capability.modal.applyPresetTitle') + '"><i class="bi bi-lightning-charge me-1"></i>' + __('capability.modal.applyPreset') + '</button>' : '') +
+                '<button type="button" class="btn btn-outline-danger btn-sm" data-role="delete-preset" data-requires-write disabled title="' + __('capability.modal.deletePresetTitle') + '"><i class="bi bi-trash3"></i></button></div>' +
                 '<div class="form-check mb-3"><input class="form-check-input" type="checkbox" data-role="enabled" id="' + modalId + '-enabled"><label class="form-check-label" for="' + modalId + '-enabled">' + __('capability.modal.enableBinding') + '</label></div>' +
                 '<div data-role="schema-form"></div><div class="d-none" data-role="json-panel"><label class="form-label">' + __('capability.modal.jsonConfig') + '</label><textarea class="form-control font-monospace" rows="14" data-role="json"></textarea></div></div>' +
                 '<div class="modal-footer justify-content-between"><button type="button" class="btn btn-outline-secondary btn-sm" data-role="mode"><i class="bi bi-braces me-1"></i>' + __('capability.modal.jsonMode') + '</button>' +
@@ -615,6 +645,8 @@
             var saveButton = modal.querySelector('[data-role="save"]');
             var presetSelect = modal.querySelector('[data-role="preset"]');
             var savePresetButton = modal.querySelector('[data-role="save-preset"]');
+            var applyPresetButton = modal.querySelector('[data-role="apply-preset"]');
+            var deletePresetButton = modal.querySelector('[data-role="delete-preset"]');
             var advanced = false;
             var config = binding ? parseConfig(binding) : {};
             var schema = null;
@@ -699,8 +731,16 @@
                 } catch (_) { currentPresets = []; }
             }
 
+            /* Both actions act on "the preset chosen in the select"; neither means anything
+               while it is empty, so they start disabled and follow the selection. */
+            function syncPresetActions(presetId) {
+                if (deletePresetButton) deletePresetButton.disabled = !presetId;
+                if (applyPresetButton) applyPresetButton.disabled = !presetId;
+            }
+
             presetSelect.addEventListener('change', function() {
                 var presetId = presetSelect.value;
+                syncPresetActions(presetId);
                 if (!presetId) return;
                 var preset = currentPresets.find(function(p) { return p.id === presetId; });
                 if (!preset) return;
@@ -736,6 +776,53 @@
                     loadPresetsForPlugin();
                 }).catch(function(error) { showError(error); });
             });
+
+            /* Delete the selected preset. A preset is a shared definition, never a live
+               binding, so removing it cannot change traffic — the confirmation only has to
+               say which one, not what will break. */
+            if (deletePresetButton) {
+                deletePresetButton.addEventListener('click', function() {
+                    var presetId = presetSelect.value;
+                    if (!presetId) return;
+                    var preset = currentPresets.find(function(p) { return p.id === presetId; });
+                    window.DashboardModals.showConfirm(
+                        __('capability.presetDeleteConfirm', { name: preset ? preset.name : presetId }),
+                        async function() {
+                            try {
+                                await window.DashboardApi.deletePreset(presetId);
+                                window.DashboardModals.showSuccess(__('capability.presetDeleteSuccess'));
+                                await loadPresetsForPlugin();
+                                syncPresetActions(presetSelect.value);
+                            } catch (error) { showError(error); }
+                        },
+                        null,
+                        { danger: true });
+                });
+            }
+
+            /* Apply writes the preset into this binding immediately, without a trip through
+               the form. Only meaningful when editing an existing binding — for a new one
+               there is nothing to apply to yet, which is why the button is not rendered. */
+            if (applyPresetButton) {
+                applyPresetButton.addEventListener('click', async function() {
+                    var presetId = presetSelect.value;
+                    if (!presetId || !binding) return;
+                    var preset = currentPresets.find(function(p) { return p.id === presetId; });
+                    var restore = applyPresetButton.innerHTML;
+                    applyPresetButton.disabled = true;
+                    applyPresetButton.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>' + __('common.saving');
+                    try {
+                        await window.DashboardApi.applyPreset(presetId, binding.id);
+                        window.DashboardModals.showSuccess(__('capability.presetApplySuccess', { name: preset ? preset.name : presetId }));
+                        await refresh(container, scope, scopeId);
+                        bootstrap.Modal.getInstance(modal).hide();
+                    } catch (error) {
+                        applyPresetButton.disabled = false;
+                        applyPresetButton.innerHTML = restore;
+                        showError(error);
+                    }
+                });
+            }
 
             modeButton.addEventListener('click', function() {
                 if (!advanced && schema) {

@@ -1,0 +1,316 @@
+@{
+    var isEn = (ViewBag.Locale as string) == "en-US";
+    ViewData["Title"] = isEn ? "Plugin Market" : "插件市场";
+    Layout = "~/Views/Shared/_DashboardLayout.cshtml";
+}
+@await Html.PartialAsync("~/Views/Dashboard/Partials/_PluginSubNav.cshtml")
+
+<style>
+    /* ── Market: overview strip ──
+       Four numbers, one row. They answer "what is installed" before the grid
+       answers "which one" - so they are plain figures, not tiles with icons. */
+    .mk-overview {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 16px; flex-wrap: wrap;
+        padding: 12px 16px; margin-bottom: 14px;
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: var(--radius-md, 10px);
+        background: var(--card-bg, #fff);
+    }
+    .mk-stats { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+    .mk-stat { display: flex; align-items: baseline; gap: 6px; }
+    .mk-stat__num {
+        font-size: 19px; font-weight: 700; line-height: 1;
+        color: var(--text-primary, #0f172a); font-variant-numeric: tabular-nums;
+    }
+    .mk-stat__label { font-size: 12px; color: var(--text-muted, #94a3b8); }
+    .mk-stat--warn .mk-stat__num { color: #b45309; }
+    .mk-stat--live .mk-stat__num { color: #15803d; }
+
+    /* ── Toolbar: search + source filter + enabled-only ── */
+    .mk-toolbar {
+        display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        margin-bottom: 14px;
+    }
+    .mk-search {
+        position: relative; flex: 1 1 220px; max-width: 320px;
+    }
+    .mk-search i {
+        position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+        font-size: 12.5px; color: var(--text-muted, #94a3b8); pointer-events: none;
+    }
+    .mk-search input {
+        width: 100%; padding: 6px 10px 6px 27px;
+        font-size: 13px;
+        border: 1px solid var(--border-color, #e2e8f0); border-radius: 7px;
+        background: var(--card-bg, #fff); color: var(--text-primary, #0f172a);
+    }
+    .mk-search input:focus { outline: 2px solid #c7d2fe; outline-offset: -1px; }
+
+    .mk-seg {
+        display: inline-flex; padding: 2px; border-radius: 8px;
+        background: #f1f5f9; border: 1px solid var(--border-color, #e2e8f0);
+    }
+    .mk-seg button {
+        border: none; background: transparent; cursor: pointer;
+        padding: 4px 11px; border-radius: 6px;
+        font-size: 12.5px; font-weight: 500; color: var(--text-secondary, #475569);
+        white-space: nowrap; transition: background .12s, color .12s;
+    }
+    .mk-seg button:hover { color: var(--text-primary, #0f172a); }
+    .mk-seg button.is-on {
+        background: #fff; color: var(--primary-color, #4f46e5);
+        box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
+    }
+    .mk-seg .mk-seg__n { color: var(--text-muted, #94a3b8); font-weight: 400; margin-left: 3px; }
+    .mk-seg button.is-on .mk-seg__n { color: #a5b4fc; }
+
+    .mk-toggle {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 12.5px; color: var(--text-secondary, #475569); cursor: pointer;
+        user-select: none;
+    }
+    .mk-toggle input { margin: 0; cursor: pointer; }
+
+    /* ── Grid of plugin cards ──
+       Cards, not a table: the market's job is comparing "what each thing does",
+       and a 2-line sentence does not fit in a column. Compact on purpose - the
+       editable surfaces live one click away in Plugin Configuration. */
+    .mk-grid {
+        display: grid; gap: 12px;
+        grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
+        margin-bottom: 16px;
+    }
+    .mk-card {
+        display: flex; flex-direction: column;
+        padding: 12px 13px 10px;
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: var(--radius-md, 10px);
+        background: var(--card-bg, #fff);
+        transition: border-color .15s, box-shadow .15s;
+    }
+    .mk-card:hover { border-color: #c7d2fe; box-shadow: 0 2px 10px rgba(79, 70, 229, .07); }
+    .mk-card.is-off { background: #fcfcfd; }
+    .mk-card.is-off .mk-card__name { color: var(--text-secondary, #475569); }
+
+    .mk-card__head { display: flex; align-items: flex-start; gap: 9px; }
+    .mk-card__icon {
+        flex: 0 0 auto;
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 30px; height: 30px; border-radius: 8px;
+        background: #f1f5f9; font-size: 14px; color: var(--text-secondary, #475569);
+    }
+    .mk-card__title { flex: 1 1 auto; min-width: 0; }
+    .mk-card__name {
+        display: flex; align-items: center; gap: 6px;
+        font-size: 13.5px; font-weight: 600; color: var(--text-primary, #0f172a);
+        line-height: 1.3;
+    }
+    .mk-card__name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mk-card__sub {
+        display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+        margin-top: 3px; font-size: 11px; color: var(--text-muted, #94a3b8);
+    }
+    .mk-card__sub code {
+        font-size: 10.5px; color: var(--text-muted, #94a3b8);
+        background: #f8fafc; border: 1px solid var(--border-light, #eef2f6);
+        border-radius: 3px; padding: 0 4px;
+    }
+    .mk-src {
+        font-size: 10px; font-weight: 700; line-height: 1;
+        padding: 2.5px 5px; border-radius: 3px;
+        border: 1px solid transparent;
+    }
+    .mk-src--builtin { background: #eef2ff; color: #4338ca; border-color: #e0e7ff; }
+    .mk-src--external { background: #ecfdf5; color: #047857; border-color: #d1fae5; }
+
+    .mk-card__about {
+        margin: 8px 0 10px;
+        font-size: 12px; line-height: 1.55; color: var(--text-secondary, #475569);
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        overflow: hidden; min-height: 37px;
+    }
+
+    .mk-card__foot {
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        margin-top: auto; padding-top: 9px;
+        border-top: 1px solid var(--border-light, #eef2f6);
+        font-size: 11.5px;
+    }
+    .mk-chip {
+        padding: 1px 6px; border-radius: 4px; font-size: 10.5px;
+        background: #eff6ff; color: #2563eb; white-space: nowrap;
+    }
+    .mk-chip--cluster { background: #f0fdf4; color: #15803d; }
+    .mk-bind { color: var(--text-muted, #94a3b8); white-space: nowrap; }
+    .mk-bind--live { color: #b45309; font-weight: 600; }
+    .mk-card__act { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+    .mk-card__act a, .mk-card__act button {
+        display: inline-flex; align-items: center; justify-content: center;
+        height: 24px; padding: 0 7px;
+        border: 1px solid var(--border-color, #e2e8f0); border-radius: 5px;
+        background: transparent; color: var(--text-secondary, #475569);
+        font-size: 11.5px; text-decoration: none; cursor: pointer;
+        transition: all .12s; white-space: nowrap;
+    }
+    .mk-card__act a:hover, .mk-card__act button:hover {
+        color: var(--primary-color, #4f46e5); border-color: #c7d2fe; background: #eef2ff;
+    }
+    .mk-card__act button.mk-danger:hover {
+        color: #b91c1c; border-color: #fecaca; background: #fef2f2;
+    }
+    .mk-card__act button:disabled { opacity: .45; cursor: not-allowed; }
+    .mk-card__warn {
+        display: flex; align-items: flex-start; gap: 5px;
+        margin-top: 8px; padding: 5px 7px;
+        background: #fffbeb; border: 1px solid #fde68a; border-radius: 5px;
+        font-size: 11px; line-height: 1.45; color: #92400e;
+    }
+    .mk-card__warn i { flex: 0 0 auto; margin-top: 1px; }
+
+    /* Switch is smaller than a form-switch: this is a 24px card row, not a form. */
+    .mk-psw { flex: 0 0 auto; position: relative; width: 30px; height: 17px; }
+    .mk-psw input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+    .mk-psw span {
+        position: absolute; inset: 0; border-radius: 999px;
+        background: #cbd5e1; transition: background .15s; pointer-events: none;
+    }
+    .mk-psw span::after {
+        content: ''; position: absolute; top: 2px; left: 2px;
+        width: 13px; height: 13px; border-radius: 50%; background: #fff;
+        transition: transform .15s;
+    }
+    .mk-psw input:checked + span { background: #4f46e5; }
+    .mk-psw input:checked + span::after { transform: translateX(13px); }
+    .mk-psw input:disabled + span { opacity: .45; }
+
+    /* ── Empty states ── */
+    .mk-empty {
+        display: flex; flex-direction: column; align-items: center;
+        padding: 34px 20px; margin-bottom: 16px;
+        border: 1px dashed var(--border-color, #e2e8f0);
+        border-radius: var(--radius-md, 10px);
+        background: #fcfcfd; text-align: center;
+    }
+    .mk-empty > i { font-size: 1.6rem; color: #cbd5e1; }
+    .mk-empty__title { margin: 9px 0 3px; font-size: 13.5px; font-weight: 600; color: var(--text-primary, #0f172a); }
+    .mk-empty__hint { font-size: 12px; color: var(--text-muted, #94a3b8); max-width: 520px; line-height: 1.6; }
+    .mk-empty pre {
+        margin: 12px 0 0; padding: 10px 12px; text-align: left;
+        background: #0f172a; color: #e2e8f0; border-radius: 7px;
+        font-size: 11.5px; line-height: 1.7; overflow-x: auto; max-width: 100%;
+    }
+
+    /* ── Compatibility notes: collapsed by default, it is reference material ── */
+    .mk-compat {
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: var(--radius-md, 10px);
+        background: var(--card-bg, #fff);
+    }
+    .mk-compat > summary {
+        display: flex; align-items: center; gap: 7px;
+        padding: 10px 14px; cursor: pointer;
+        font-size: 12.5px; font-weight: 600; color: var(--text-secondary, #475569);
+        list-style: none;
+    }
+    .mk-compat > summary::-webkit-details-marker { display: none; }
+    .mk-compat > summary i:last-child { margin-left: auto; font-size: 11px; color: var(--text-muted, #94a3b8); }
+    .mk-compat[open] > summary i:last-child { transform: rotate(180deg); }
+    .mk-compat__body {
+        padding: 0 14px 14px; font-size: 12px; line-height: 1.75;
+        color: var(--text-secondary, #475569);
+    }
+    .mk-compat__body dl { display: grid; grid-template-columns: 132px 1fr; gap: 6px 14px; margin: 0; }
+    .mk-compat__body dt { color: var(--text-muted, #94a3b8); font-weight: 500; }
+    .mk-compat__body dd { margin: 0; }
+    .mk-compat__body code {
+        font-size: 11px; background: #f1f5f9; border-radius: 3px; padding: 0 4px;
+    }
+
+    @@media (max-width: 640px) {
+        .mk-overview { align-items: flex-start; }
+        .mk-stats { gap: 14px; }
+        .mk-search { max-width: none; }
+        .mk-compat__body dl { grid-template-columns: 1fr; gap: 2px; }
+        .mk-compat__body dd { margin-bottom: 6px; }
+    }
+</style>
+
+<!-- Overview strip: counts on the left, the install action on the right -->
+<div class="mk-overview">
+    <div class="mk-stats" id="mk-stats">
+        <div class="mk-stat"><span class="mk-stat__num">–</span><span class="mk-stat__label" data-i18n="pm.stat.builtin">内置</span></div>
+    </div>
+    <button type="button" class="btn btn-sm btn-primary" id="mk-install-btn" data-requires-admin>
+        <i class="bi bi-box-arrow-in-down me-1"></i><span data-i18n="pm.install">安装外部插件</span>
+    </button>
+</div>
+
+<div class="mk-toolbar">
+    <div class="mk-search">
+        <i class="bi bi-search"></i>
+        <input type="search" id="mk-search" data-i18n-placeholder="pm.search" placeholder="按名称、ID 或作用搜索" />
+    </div>
+    <div class="mk-seg" id="mk-source">
+        <button type="button" data-source="all" class="is-on"><span data-i18n="pm.filter.all">全部</span><span class="mk-seg__n" data-n="all"></span></button>
+        <button type="button" data-source="builtin"><span data-i18n="pm.filter.builtin">内置</span><span class="mk-seg__n" data-n="builtin"></span></button>
+        <button type="button" data-source="external"><span data-i18n="pm.filter.external">外部</span><span class="mk-seg__n" data-n="external"></span></button>
+    </div>
+    <label class="mk-toggle">
+        <input type="checkbox" id="mk-enabled-only" />
+        <span data-i18n="pm.enabledOnly">只看已启用</span>
+    </label>
+</div>
+
+<div id="mk-grid" class="mk-grid">
+    <div class="loading-state" style="grid-column:1/-1;">
+        <div class="loading-spinner"></div>
+        <div class="loading-text" data-i18n="plugin.loading">加载中...</div>
+    </div>
+</div>
+
+<div id="mk-empty"></div>
+
+<details class="mk-compat">
+    <summary>
+        <i class="bi bi-info-circle"></i>
+        <span data-i18n="pm.compat.title">外部插件要满足什么</span>
+        <i class="bi bi-chevron-down"></i>
+    </summary>
+    <div class="mk-compat__body">
+        <dl>
+            <dt data-i18n="pm.compat.host">宿主程序集</dt>
+            <dd>@(isEn ? "Built against the same Aneiang.Yarp line; a plugin compiled against a different major version will not load." : "与当前宿主同一条 Aneiang.Yarp 版本线；跨大版本编译的插件不会加载。")</dd>
+            <dt data-i18n="pm.compat.tfm">目标框架</dt>
+            <dd><code>net8.0</code> @(isEn ? "or later, no higher than the host runtime." : "或更高，但不得高于宿主运行时。")</dd>
+            <dt data-i18n="pm.compat.manifest">清单</dt>
+            <dd><code>plugin.json</code> @(isEn ? "next to the dll, carrying id / name / version / entryAssembly / entryType." : "与 dll 同目录，含 id / name / version / entryAssembly / entryType。")</dd>
+            <dt data-i18n="pm.compat.assemblies">共享程序集</dt>
+            <dd>@(isEn ? "Do not publish Aneiang.Yarp.Plugin.Abstractions.dll — the host loads it once, and a second copy breaks every type identity at runtime." : "不要把 Aneiang.Yarp.Plugin.Abstractions.dll 打进发布目录 —— 宿主已加载一份，重复副本会让运行时类型身份对不上。")</dd>
+            <dt data-i18n="pm.compat.restart">生效方式</dt>
+            <dd>@(isEn ? "Install copies files and registers the manifest; the plugin becomes bindable immediately. Enabling it still requires a restart only when the plugin declares new services." : "安装只做复制与登记，装完即可绑定；只有当插件声明了新的服务注册时才需要重启生效。")</dd>
+        </dl>
+    </div>
+</details>
+
+@section Scripts {
+<script src="/_content/Aneiang.Yarp.Dashboard/js/modules/dashboard-plugin-market.js"></script>
+
+@await Html.PartialAsync("_DashboardPageInit")
+
+<script>
+    (async function () {
+        if (window.DashboardUtils) DashboardUtils.init();
+        if (window.DashboardApi) DashboardApi.init();
+        if (window.DashboardState) DashboardState.init();
+        if (window.DashboardI18n) DashboardI18n.init();
+        if (window.DashboardStorage) DashboardStorage.init();
+        if (window.DashboardModals) DashboardModals.init();
+        if (window.DashboardEvents) DashboardEvents.setup();
+
+        if (window.PluginMarket) await PluginMarket.init();
+
+        document.dispatchEvent(new CustomEvent('dashboard:ready'));
+    })();
+</script>
+}

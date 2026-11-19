@@ -15,7 +15,12 @@ public static class DashboardJwtHelper
     /// <summary>Generate a signed JWT token.</summary>
     /// <param name="username">Subject claim.</param>
     /// <param name="secret">HMAC-SHA256 signing key.</param>
-    public static string GenerateToken(string username, string secret)
+    /// <param name="role">
+    /// Role claim. Carried in the token so the authorization filter does not have to look the
+    /// account up again on every request — and so a role change requires a new login, which is the
+    /// behaviour you want for a privilege reduction.
+    /// </param>
+    public static string GenerateToken(string username, string secret, DashboardRole? role = null)
     {
         var header = JsonSerializer.Serialize(new { alg = "HS256", typ = "JWT" }, _jsonOptions);
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -23,6 +28,7 @@ public static class DashboardJwtHelper
         {
             sub = username,
             iss = "Aneiang.Yarp.Dashboard",
+            role = role?.ToClaimValue(),
             iat = now,
             exp = now + 28800  // 8 hours
         }, _jsonOptions);
@@ -44,8 +50,21 @@ public static class DashboardJwtHelper
     /// <returns>(valid, username) tuple.</returns>
     public static (bool Valid, string? Username) ValidateToken(string token, string secret)
     {
+        var details = ValidateTokenDetails(token, secret);
+        return (details.Valid, details.Username);
+    }
+
+    /// <summary>
+    /// Validate a token and read its role claim.
+    /// </summary>
+    /// <returns>
+    /// <c>Role</c> is null for tokens issued before roles existed; callers must decide what an
+    /// unlabelled token means rather than defaulting it to admin here.
+    /// </returns>
+    public static (bool Valid, string? Username, DashboardRole? Role) ValidateTokenDetails(string token, string secret)
+    {
         var parts = token.Split('.');
-        if (parts.Length != 3) return (false, null);
+        if (parts.Length != 3) return (false, null, null);
 
         var signingInput = $"{parts[0]}.{parts[1]}";
         var expectedSig = ComputeSignature(signingInput, secret);
@@ -60,11 +79,11 @@ public static class DashboardJwtHelper
         catch (FormatException)
         {
             // Malformed base64url payload/signature — treat as invalid, never throw.
-            return (false, null);
+            return (false, null, null);
         }
 
         if (!ConstantTimeEquals(actualSig, expectedSig))
-            return (false, null);
+            return (false, null, null);
 
         try
         {
@@ -75,16 +94,21 @@ public static class DashboardJwtHelper
             if (root.TryGetProperty("exp", out var expEl))
             {
                 var expTime = DateTimeOffset.FromUnixTimeSeconds(expEl.GetInt64());
-                if (expTime < DateTimeOffset.UtcNow) return (false, null);
+                if (expTime < DateTimeOffset.UtcNow) return (false, null, null);
             }
 
             var username = root.TryGetProperty("sub", out var subEl) ? subEl.GetString() : null;
-            return (true, username);
+
+            DashboardRole? role = null;
+            if (root.TryGetProperty("role", out var roleEl) && roleEl.ValueKind == JsonValueKind.String)
+                role = DashboardRoles.Parse(roleEl.GetString(), DashboardRole.Admin, out _);
+
+            return (true, username, role);
         }
         catch (Exception ex) when (ex is JsonException or FormatException or OverflowException or KeyNotFoundException)
         {
             // Invalid or unexpected payload structure — treat as invalid, never throw.
-            return (false, null);
+            return (false, null, null);
         }
     }
 

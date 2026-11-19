@@ -15,11 +15,11 @@
                 <span class="batch-count"><i class="bi bi-check2-square"></i><strong id="route-batch-count">0</strong><span data-i18n="batch.selected"> 项已选</span></span>
                 <span class="batch-bar-divider" aria-hidden="true"></span>
                 <div class="batch-bar-actions">
-                    <button class="btn btn-sm batch-action" onclick="RoutesModule.batchSetEnabled(true)"><i class="bi bi-toggle-on"></i><span data-i18n="batch.enable">批量启用</span></button>
-                    <button class="btn btn-sm batch-action" onclick="RoutesModule.batchSetEnabled(false)"><i class="bi bi-toggle-off"></i><span data-i18n="batch.disable">批量禁用</span></button>
-                    <button class="btn btn-sm batch-action" onclick="RoutesModule.batchBindPlugin()"><i class="bi bi-plug"></i><span data-i18n="batch.bindPlugin">批量绑插件</span></button>
+                    <button class="btn btn-sm batch-action" onclick="RoutesModule.batchSetEnabled(true)" data-requires-write><i class="bi bi-toggle-on"></i><span data-i18n="batch.enable">批量启用</span></button>
+                    <button class="btn btn-sm batch-action" onclick="RoutesModule.batchSetEnabled(false)" data-requires-write><i class="bi bi-toggle-off"></i><span data-i18n="batch.disable">批量禁用</span></button>
+                    <button class="btn btn-sm batch-action" onclick="RoutesModule.batchBindPlugin()" data-requires-write><i class="bi bi-plug"></i><span data-i18n="batch.bindPlugin">批量绑插件</span></button>
                     <button class="btn btn-sm batch-action" onclick="RoutesModule.exportSelected()"><i class="bi bi-download"></i><span data-i18n="batch.export">导出选中</span></button>
-                    <button class="btn btn-sm batch-action batch-action-danger" onclick="RoutesModule.batchDelete()"><i class="bi bi-trash"></i><span data-i18n="batch.delete">批量删除</span></button>
+                    <button class="btn btn-sm batch-action batch-action-danger" onclick="RoutesModule.batchDelete()" data-requires-write><i class="bi bi-trash"></i><span data-i18n="batch.delete">批量删除</span></button>
                 </div>
                 <button class="btn btn-sm batch-dismiss" onclick="RoutesModule.clearBatch()" title="清除选择" aria-label="清除选择"><i class="bi bi-x-lg"></i></button>
             </div>

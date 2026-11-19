@@ -1,14 +1,15 @@
 @*
-    Shared header for the three plugin pages.
+    Shared header for the plugin pages.
 
-    The three pages are one workflow, not three isolated screens:
-        1 总览   what the plugin does, whether it is on, whether it is healthy
-        2 配置   the activation rule and the targets it is bound to
-        3 资源   whether it actually runs, and what it costs
+    The four pages are one workflow, not four isolated screens:
+        1 市场   what can be installed, where it came from, what is already here
+        2 总览   what it does, whether it is on, whether it is healthy
+        3 配置   the activation rule and the targets it is bound to
+        4 资源   whether it actually runs, and what it costs
 
     So this bar carries a step number (where am I in the flow) and a live
     "what is left to do" summary on the right. The summary is computed from the
-    plugin list, which all three pages already load, so it costs no extra request.
+    plugin list, which all four pages already load, so it costs no extra request.
 *@
 @{
     var navPrefix = ViewBag.DashboardRoutePrefix as string ?? "apigateway";
@@ -16,6 +17,7 @@
     var navEn = (ViewBag.Locale as string) == "en-US";
     var navItems = new[]
     {
+        ("plugin-market", "menu.pluginMarket", navEn ? "Market" : "市场", "bi-shop"),
         ("plugins", "menu.plugins", navEn ? "Overview" : "总览", "bi-puzzle"),
         ("plugin-center", "menu.pluginCenter", navEn ? "Configure" : "配置", "bi-sliders"),
         ("plugin-resources", "menu.pluginResources", navEn ? "Resources" : "资源", "bi-cpu")

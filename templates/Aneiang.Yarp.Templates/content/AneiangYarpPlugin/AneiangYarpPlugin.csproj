@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>AneiangYarpPlugin</RootNamespace>
+
+    <!--
+      Everything plugin.json cannot safely guess comes from here. The manifest is rendered from this
+      file at build time, so these three values and the shipped manifest can never disagree.
+
+      entryType must be the full type name of the class implementing IGatewayPlugin. A wrong value
+      is caught when the plugin is enabled, not when it is built — which is exactly why it is
+      derived from RootNamespace rather than typed twice.
+    -->
+    <PluginId>aneiang-yarp-plugin</PluginId>
+    <PluginDisplayName>AneiangYarpPlugin</PluginDisplayName>
+    <PluginEntryType>$(RootNamespace).AneiangYarpPluginEntry</PluginEntryType>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      ExcludeAssets="runtime" is deliberate. The host keeps its own copy of the contract assembly
+      and resolves the plugin's reference to it; shipping a second copy inside the plugin folder is
+      how you end up with two IGatewayPlugin types that are not the same type, and a cast that fails
+      in a way nobody can read.
+    -->
+    <PackageReference Include="Aneiang.Yarp.Plugin.Abstractions" Version="2.3.0.40" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Rendered into plugin.json; never copied as-is, or the tokens would ship. -->
+    <None Include="plugin.manifest.json" CopyToOutputDirectory="Never" Pack="false" />
+  </ItemGroup>
+
+  <!--
+    plugin.json is generated, not authored. The only fields worth hand-editing (scopes, capabilities,
+    order, schema) live in plugin.manifest.json; the identity fields are rendered from the
+    properties above so a rename cannot leave a stale entryAssembly behind.
+  -->
+  <Target Name="RenderPluginManifest">
+    <PropertyGroup>
+      <_PluginManifestText>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)$([System.IO.Path]::DirectorySeparatorChar)plugin.manifest.json'))</_PluginManifestText>
+      <_PluginManifestText>$(_PluginManifestText.Replace('$PluginId$', '$(PluginId)'))</_PluginManifestText>
+      <_PluginManifestText>$(_PluginManifestText.Replace('$PluginName$', '$(PluginDisplayName)'))</_PluginManifestText>
+      <_PluginManifestText>$(_PluginManifestText.Replace('$PluginVersion$', '$(Version)'))</_PluginManifestText>
+      <_PluginManifestText>$(_PluginManifestText.Replace('$EntryAssembly$', '$(AssemblyName).dll'))</_PluginManifestText>
+      <_PluginManifestText>$(_PluginManifestText.Replace('$EntryType$', '$(PluginEntryType)'))</_PluginManifestText>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="GeneratePluginManifest" AfterTargets="Build" DependsOnTargets="RenderPluginManifest">
+    <WriteLinesToFile File="$(TargetDir)plugin.json" Lines="$(_PluginManifestText)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
+
+  <!-- After publish the folder is what gets copied into the host's plugins directory. -->
+  <Target Name="GeneratePluginManifestOnPublish" AfterTargets="Publish" DependsOnTargets="RenderPluginManifest">
+    <WriteLinesToFile File="$(PublishDir)plugin.json" Lines="$(_PluginManifestText)" Overwrite="true" />
+  </Target>
+
+</Project>

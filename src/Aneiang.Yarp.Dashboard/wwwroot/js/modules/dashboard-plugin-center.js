@@ -72,7 +72,7 @@
           config: { pluginId: 'compression', scope: 'Route', containerId: 'pc-compression-content', refreshTimeId: 'pc-compression-refresh-time', moduleName: 'CompressionModule', icon: 'bi-file-zip', color: 'text-success' } },
 
         { id: 'waf', group: 'security', scope: 'Route', icon: 'bi-shield-lock', color: 'text-danger',
-          about: '在请求到达后端之前按规则拦截恶意流量，命中即拒绝。',
+          about: '按条件（路径 / 方法 / 请求头 / IP…）决定拦截、放行、打标签或仅记录，可先用 monitor 观察命中。',
           config: { pluginId: 'waf', scope: 'Route', containerId: 'pc-waf-content', refreshTimeId: 'pc-waf-refresh-time', moduleName: 'WafModule', icon: 'bi-shield-lock', color: 'text-danger' } },
 
         { id: 'response-cache', group: 'security', scope: 'Route', icon: 'bi-hdd-network', color: 'text-success',
@@ -297,20 +297,44 @@
     }
 
     /* ── Panel scaffolding ── */
-    function renderConfigPanel(entry) {
+    /* Panels are materialised from REGISTRY rather than authored in the view. The view
+       used to carry one div per plugin; when `fault-injection` was added to this registry
+       the div was not, and the only symptom was a tab that opened onto a blank page -
+       a silent failure with no error anywhere. Now the registry is the single source. */
+    function ensurePanel(entry) {
         var panel = document.querySelector('.pc-tab-panel[data-plugin="' + entry.id + '"]');
-        if (!panel) return;
+        if (panel) return panel;
+
+        var host = document.getElementById('pc-panels');
+        if (!host) return null;
+
+        panel = document.createElement('div');
+        panel.className = 'pc-tab-panel';
+        panel.setAttribute('data-plugin', entry.id);
+        panel.style.display = 'none';
+        host.appendChild(panel);
+        return panel;
+    }
+
+    function renderConfigPanel(entry) {
+        var panel = ensurePanel(entry);
+        if (!panel) return false;
         panel.innerHTML = headerShell(entry) +
             '<div id="' + entry.config.containerId + '">' +
                 '<div class="loading-state"><div class="loading-spinner"></div>' +
                 '<div class="loading-text">' + esc(t('common.loading', '加载中...')) + '</div></div>' +
             '</div>';
+        return true;
     }
 
     /* ── Activate a tab ── */
     async function activate(id) {
         var entry = findEntry(id);
         if (!entry) return;
+
+        /* The panel has to exist before visibility is toggled below, otherwise the tab
+           would be selected while every panel - including this one - stays hidden. */
+        ensurePanel(entry);
 
         document.querySelectorAll('.pc-tab-btn').forEach(function (btn) {
             btn.classList.toggle('active', btn.getAttribute('data-plugin') === id);
@@ -330,7 +354,16 @@
     /* ── Initialize (lazy create + load) ── */
     async function initConfigTab(entry) {
         if (!configModules[entry.id]) {
-            renderConfigPanel(entry);
+            if (!renderConfigPanel(entry)) {
+                /* Nowhere to render: say so instead of leaving an empty tab. */
+                var tab = document.querySelector('.pc-tab-btn[data-plugin="' + entry.id + '"]');
+                if (tab && tab.parentElement) {
+                    tab.parentElement.insertAdjacentHTML('beforeend',
+                        '<span class="pc-tab-error" title="' +
+                        esc(t('pc.panelMissing', '面板容器缺失，无法渲染该插件的配置')) + '">!</span>');
+                }
+                return;
+            }
             if (window.PluginBindingManager) {
                 var cfg = Object.assign({}, entry.config);
                 /* The header already states the purpose and the activation rule;

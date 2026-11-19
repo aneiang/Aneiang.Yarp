@@ -1,0 +1,275 @@
+@{
+    Layout = null;
+    var isEn = (ViewBag.Locale as string) == "en-US";
+    var prefix = ViewBag.DashboardRoutePrefix as string ?? "apigateway";
+}
+<!DOCTYPE html>
+<html lang="@(isEn ? "en" : "zh-CN")">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@(isEn ? "Management API" : "管理 API") · Aneiang.Yarp</title>
+    <style>
+        :root {
+            --ink: #0f172a; --ink-2: #334155; --ink-3: #64748b; --line: #e2e8f0;
+            --bg: #f8fafc; --card: #fff; --accent: #4f46e5;
+            --get: #059669; --post: #2563eb; --put: #d97706; --delete: #dc2626; --patch: #7c3aed;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; background: var(--bg); color: var(--ink);
+            font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+        }
+        header {
+            position: sticky; top: 0; z-index: 5; background: rgba(255,255,255,.92);
+            backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+            padding: 14px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+        }
+        header h1 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -.01em; }
+        header .badge {
+            font-size: 11px; font-weight: 600; color: var(--accent);
+            background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 999px; padding: 2px 9px;
+        }
+        header .spacer { flex: 1; }
+        header input[type=search] {
+            width: 260px; max-width: 100%; padding: 7px 12px; font-size: 13px;
+            border: 1px solid var(--line); border-radius: 8px; outline: none; background: #fff;
+        }
+        header input[type=search]:focus { border-color: #a5b4fc; box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
+        .btn {
+            font-size: 12.5px; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+            border: 1px solid var(--line); background: #fff; color: var(--ink-2); text-decoration: none;
+        }
+        .btn:hover { border-color: #cbd5e1; background: #f1f5f9; }
+        main { max-width: 1080px; margin: 0 auto; padding: 22px 24px 80px; }
+        .notice {
+            display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: #92400e;
+            background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 11px 14px; margin-bottom: 20px;
+        }
+        .tag { margin: 26px 0 10px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+        .tag small { font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--ink-3); margin-left: 8px; }
+        .op {
+            background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+            margin-bottom: 8px; overflow: hidden;
+        }
+        .op summary {
+            display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+            cursor: pointer; list-style: none; font-size: 13.5px;
+        }
+        .op summary::-webkit-details-marker { display: none; }
+        .op summary:hover { background: #f8fafc; }
+        .method {
+            flex: 0 0 62px; text-align: center; font-size: 10.5px; font-weight: 700; letter-spacing: .04em;
+            padding: 3px 0; border-radius: 5px; color: #fff;
+        }
+        .m-get { background: var(--get); } .m-post { background: var(--post); }
+        .m-put { background: var(--put); } .m-delete { background: var(--delete); }
+        .m-patch { background: var(--patch); } .m-head, .m-options { background: #64748b; }
+        .op .path { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12.5px; color: var(--ink); }
+        .op .sum { color: var(--ink-3); font-size: 12.5px; margin-left: auto; text-align: right; }
+        .op[open] summary { border-bottom: 1px solid var(--line); background: #fbfcfe; }
+        .body { padding: 12px 16px 16px; }
+        .body h4 { margin: 14px 0 6px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); }
+        .body h4:first-child { margin-top: 0; }
+        table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+        th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+        th { color: var(--ink-3); font-weight: 600; font-size: 11.5px; }
+        code, .mono { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; }
+        .req { color: #dc2626; font-size: 11px; margin-left: 4px; }
+        pre {
+            margin: 0; padding: 10px 12px; background: #0f172a; color: #e2e8f0;
+            border-radius: 8px; overflow: auto; font-size: 12px; line-height: 1.55; max-height: 320px;
+        }
+        .muted { color: var(--ink-3); font-size: 12.5px; }
+        .empty { text-align: center; color: var(--ink-3); padding: 60px 0; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+<header>
+    <h1>@(isEn ? "Management API" : "管理 API")</h1>
+    <span class="badge">OpenAPI 3.1</span>
+    <span class="spacer"></span>
+    <input type="search" id="q" placeholder="@(isEn ? "Filter by path, method or summary" : "按路径、方法或说明过滤")" />
+    <a class="btn" href="@($"/{prefix}/api-docs")" id="reload">@(isEn ? "Reload" : "重新加载")</a>
+    <a class="btn" href="@($"/{prefix}/api/openapi.json")" download="aneiang-yarp-openapi.json">@(isEn ? "Download JSON" : "下载 JSON")</a>
+    <a class="btn" href="@($"/{prefix}/settings")">@(isEn ? "← Back to dashboard" : "← 返回控制台")</a>
+</header>
+
+<main>
+    <div class="notice">
+        <span>ℹ️</span>
+        <div>
+            @(isEn
+                ? $"Generated from the routes this gateway actually serves — add an endpoint and this page changes with it. Authentication is required for every endpoint: send the token from POST /{prefix}/login as a Bearer header. Endpoints marked admin are refused for operator and viewer accounts."
+                : $"本页由网关当前实际映射的路由生成 —— 加一个接口，它就跟着变。所有接口都需要认证：把 POST /{prefix}/login 返回的 token 放进 Bearer 头。标注 admin 的接口对运维与只读账号会被拒绝。")
+        </div>
+    </div>
+    <div id="content"><div class="empty">@(isEn ? "Loading…" : "加载中…")</div></div>
+</main>
+
+<script>
+(function () {
+    'use strict';
+
+    var content = document.getElementById('content');
+    var filter = document.getElementById('q');
+    var groups = [];
+    var doc = null;
+
+    function esc(value) {
+        return String(value === undefined || value === null ? '' : value)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function token() {
+        try { return localStorage.getItem('dashboard_token'); } catch (_) { return null; }
+    }
+
+    /* The page is served behind the same auth filter as the API, so the cookie is normally enough.
+       The explicit header matters when the deployment uses a JWT stored in localStorage only. */
+    function load() {
+        var headers = { 'Accept': 'application/json' };
+        var t = token();
+        if (t) headers['Authorization'] = 'Bearer ' + t;
+
+        return fetch('@($"/{prefix}/api/openapi.json")', { headers: headers, credentials: 'same-origin' })
+            .then(function (response) {
+                if (response.status === 401) throw new Error('@(isEn ? "Not signed in. Open the dashboard and log in first." : "未登录，请先打开管理面板登录。")');
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return response.json();
+            })
+            .then(function (data) {
+                doc = data;
+                render();
+            });
+    }
+
+    function tagDescription(name) {
+        if (!doc || !Array.isArray(doc.tags)) return '';
+        var tag = doc.tags.find(function (item) { return item.name === name; });
+        return tag && tag.description ? tag.description : '';
+    }
+
+    function collect() {
+        var byTag = {};
+        var paths = (doc && doc.paths) || {};
+        Object.keys(paths).sort().forEach(function (path) {
+            var item = paths[path] || {};
+            Object.keys(item).forEach(function (method) {
+                var op = item[method];
+                if (!op || typeof op !== 'object') return;
+                var tag = (op.tags && op.tags[0]) || 'Other';
+                (byTag[tag] = byTag[tag] || []).push({
+                    method: method.toUpperCase(),
+                    path: path,
+                    summary: op.summary || '',
+                    params: op.parameters || [],
+                    body: op.requestBody || null,
+                    responses: op.responses || {},
+                    search: (method + ' ' + path + ' ' + (op.summary || '') + ' ' + (op.operationId || '')).toLowerCase()
+                });
+            });
+        });
+        return Object.keys(byTag).sort().map(function (tag) {
+            return { tag: tag, description: tagDescription(tag), ops: byTag[tag] };
+        });
+    }
+
+    function schemaText(schema) {
+        if (!schema) return '@(isEn ? "any" : "任意")';
+        var type = schema.type;
+        if (Array.isArray(type)) type = type.filter(function (t) { return t !== 'null'; })[0];
+        if (schema.enum) return 'enum(' + schema.enum.join(' | ') + ')';
+        if (type === 'array') return 'array&lt;' + schemaText(schema.items) + '&gt;';
+        if (type === 'object' && schema.properties) {
+            var names = Object.keys(schema.properties);
+            if (names.length > 12) return 'object(' + names.slice(0, 12).join(', ') + ', …)';
+            return 'object(' + names.join(', ') + ')';
+        }
+        if (type === 'object' && schema.additionalProperties) return 'map&lt;string, ' + schemaText(schema.additionalProperties) + '&gt;';
+        return esc(type || 'any') + (schema.format ? ':' + esc(schema.format) : '');
+    }
+
+    function paramTable(params) {
+        if (!params.length) return '';
+        var rows = params.map(function (p) {
+            return '<tr><td><code>' + esc(p.name) + '</code>' + (p.required ? '<span class="req">*</span>' : '') +
+                '</td><td>' + esc(p['in']) + '</td><td class="mono">' + schemaText(p.schema) + '</td></tr>';
+        }).join('');
+        return '<h4>@(isEn ? "Parameters" : "参数")</h4><table><thead><tr><th>@(isEn ? "Name" : "名称")</th><th>@(isEn ? "In" : "位置")</th><th>@(isEn ? "Type" : "类型")</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+
+    function bodyBlock(body) {
+        if (!body) return '';
+        var content = body.content || {};
+        var media = Object.keys(content)[0];
+        if (!media) return '';
+        return '<h4>@(isEn ? "Request body" : "请求体") <span class="muted">' + esc(media) + '</span></h4>' +
+            '<pre>' + schemaText(content[media].schema) + '</pre>';
+    }
+
+    function responseTable(responses) {
+        var codes = Object.keys(responses).sort();
+        if (!codes.length) return '';
+        var rows = codes.map(function (code) {
+            var description = (responses[code] && responses[code].description) || '';
+            return '<tr><td><code>' + esc(code) + '</code></td><td>' + esc(description) + '</td></tr>';
+        }).join('');
+        return '<h4>@(isEn ? "Responses" : "响应")</h4><table><tbody>' + rows + '</tbody></table>';
+    }
+
+    function render() {
+        groups = collect();
+        paint();
+    }
+
+    function paint() {
+        var query = (filter.value || '').trim().toLowerCase();
+        var html = '';
+        var shown = 0;
+
+        groups.forEach(function (group) {
+            var ops = group.ops.filter(function (op) { return !query || op.search.indexOf(query) >= 0; });
+            if (!ops.length) return;
+
+            html += '<div class="tag">' + esc(group.tag) + (group.description ? '<small>' + esc(group.description) + '</small>' : '') + '</div>';
+            ops.forEach(function (op) {
+                shown++;
+                html += '<details class="op">' +
+                    '<summary>' +
+                    '<span class="method m-' + op.method.toLowerCase() + '">' + op.method + '</span>' +
+                    '<span class="path">' + esc(op.path) + '</span>' +
+                    '<span class="sum">' + esc(op.summary) + '</span>' +
+                    '</summary>' +
+                    '<div class="body">' +
+                    paramTable(op.params) + bodyBlock(op.body) + responseTable(op.responses) +
+                    '</div></details>';
+            });
+        });
+
+        if (!shown) {
+            html = '<div class="empty">' + (query
+                ? '@(isEn ? "Nothing matches “”." : "没有匹配 “” 的接口。")'.replace('“”', '“' + esc(query) + '”')
+                : '@(isEn ? "The document contains no endpoints." : "文档里没有任何接口。")') + '</div>';
+        }
+
+        content.innerHTML = html;
+    }
+
+    filter.addEventListener('input', function () { if (groups.length) paint(); });
+    document.getElementById('reload').addEventListener('click', function (event) {
+        event.preventDefault();
+        content.innerHTML = '<div class="empty">@(isEn ? "Loading…" : "加载中…")</div>';
+        load().catch(fail);
+    });
+
+    function fail(error) {
+        content.innerHTML = '<div class="empty">' + esc(error && error.message ? error.message : error) + '</div>';
+    }
+
+    load().catch(fail);
+})();
+</script>
+</body>
+</html>

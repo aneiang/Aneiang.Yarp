@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "aneiang-yarp.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "aneiang-yarp.labels" . | nindent 4 }}
+data:
+  # The whole gateway configuration as one file. Environment variables override it — that is how the
+  # credentials below are injected without ever appearing here.
+  #
+  # Rendered with toPrettyJson so the file stays diffable in `kubectl describe`. A one-line blob
+  # would make "who changed the timeout" unanswerable.
+  appsettings.json: |
+    {{- .Values.config | toPrettyJson | nindent 4 }}

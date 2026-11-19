@@ -30,6 +30,29 @@
     .history-empty-state { background: #fff; border: 1px dashed var(--border-color); border-radius: 8px; padding: 36px 20px; text-align: center; }
     .history-action-bar { display: flex; gap: 6px; flex-wrap: wrap; }
     .history-meta .btn { padding: 2px 8px; font-size: 11.5px; }
+    /* ── Integrity report ── */
+    .integ-summary { display: flex; gap: 10px; flex-wrap: wrap; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 14px; }
+    .integ-summary.ok { background: #f0fdf4; border-color: #bbf7d0; }
+    .integ-summary.bad { background: #fef2f2; border-color: #fecaca; }
+    .integ-summary.warn { background: #fffbeb; border-color: #fde68a; }
+    .integ-summary-num { font-size: 22px; font-weight: 700; line-height: 1; }
+    .integ-group-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin: 14px 0 8px; }
+    .integ-item { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 8px; background: #fff; }
+    .integ-item.error { border-left: 3px solid #ef4444; }
+    .integ-item.warning { border-left: 3px solid #f59e0b; }
+    .integ-item-msg { font-size: 13px; line-height: 1.5; }
+    .integ-item-field { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; color: #94a3b8; word-break: break-all; margin-top: 3px; }
+    .integ-item-hint { font-size: 12px; color: #0f766e; margin-top: 4px; }
+    .integ-item-actions { display: flex; gap: 4px; }
+    .integ-item-actions .btn { padding: 2px 8px; font-size: 11.5px; white-space: nowrap; }
+    .integ-empty { text-align: center; padding: 34px 16px; color: var(--text-muted); }
+    /* ── Snapshot queue bar ── */
+    .history-queue-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 8px 12px; margin-bottom: 14px; border-radius: 8px; border: 1px solid var(--border-light, #f1f5f9); background: #f8fafc; font-size: 12px; color: var(--text-muted); }
+    .history-queue-bar.degraded { border-color: #fde68a; background: #fffbeb; color: #92400e; }
+    .history-queue-bar i { font-size: 12.5px; opacity: .75; }
+    .history-queue-bar .hq-item { display: inline-flex; align-items: center; gap: 5px; }
+    .history-queue-bar .hq-num { font-weight: 650; font-variant-numeric: tabular-nums; }
+    .history-queue-bar .hq-num.bad { color: #b91c1c; }
     @@media (max-width: 1100px) { .history-shell { grid-template-columns: 1fr; } .history-side { position: static; } }
 </style>
 
@@ -39,16 +62,19 @@
         <button class="btn btn-sm btn-success" id="history-export-btn">
             <i class="bi bi-download me-1"></i><span data-i18n="history.export">导出配置</span>
         </button>
-        <button class="btn btn-sm btn-outline-success" id="history-import-btn">
+        <button class="btn btn-sm btn-outline-success" id="history-import-btn" data-requires-write>
             <i class="bi bi-upload me-1"></i><span data-i18n="history.import">导入配置</span>
         </button>
-        <button class="btn btn-sm btn-primary" id="history-create-snapshot">
+        <button class="btn btn-sm btn-primary" id="history-create-snapshot" data-requires-write>
             <i class="bi bi-plus-circle me-1"></i><span data-i18n="history.createSnapshot">创建快照</span>
+        </button>
+        <button class="btn btn-sm btn-outline-info" id="history-integrity-btn">
+            <i class="bi bi-clipboard2-pulse me-1"></i><span data-i18n="history.integrity.btn">全量体检</span>
         </button>
         <button class="btn btn-sm btn-outline-primary" id="history-refresh">
             <i class="bi bi-arrow-clockwise me-1"></i><span data-i18n="history.refresh">刷新</span>
         </button>
-        <button class="btn btn-sm btn-outline-danger" id="history-clear-all">
+        <button class="btn btn-sm btn-outline-danger" id="history-clear-all" data-requires-write>
             <i class="bi bi-trash3 me-1"></i><span data-i18n="history.clearAll">清空历史</span>
         </button>
     </div>
@@ -60,6 +86,10 @@
     <span class="pc-meta-item"><i class="bi bi-signpost-split"></i><span class="pc-meta-num" id="history-stat-routes">--</span><span class="pc-meta-label" data-i18n="history.stat.routes">当前路由</span></span>
     <span class="pc-meta-item"><i class="bi bi-diagram-3"></i><span class="pc-meta-num" id="history-stat-clusters">--</span><span class="pc-meta-label" data-i18n="history.stat.clusters">当前集群</span></span>
 </div>
+
+@* Snapshot queue health. Snapshots are written asynchronously, so a full queue or a
+   dropped item is invisible in the timeline — this is the only place it can surface. *@
+<div id="history-queue" class="history-queue-bar d-none"></div>
 
 <div class="history-filter-card mb-4">
     <div class="row g-3 align-items-end">
@@ -130,6 +160,30 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
         <button type="button" class="btn btn-success" id="import-confirm-btn"><i class="bi bi-check-lg me-1"></i><span data-i18n="history.importConfirm">确认导入</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Whole-config integrity check -->
+<div class="modal fade" id="integrity-modal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-clipboard2-pulse me-2"></i><span data-i18n="history.integrity.title">配置全量体检</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="integrity-body">
+        <div class="loading-state">
+          <div class="loading-spinner"></div>
+          <div class="loading-text" data-i18n="history.integrity.running">正在检查全部路由与集群...</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" id="integrity-rerun">
+          <i class="bi bi-arrow-clockwise me-1"></i><span data-i18n="history.integrity.rerun">重新体检</span>
+        </button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">关闭</button>
       </div>
     </div>
   </div>

@@ -93,6 +93,9 @@ public class DashboardPagesController : Controller
     [HttpGet("plugins")]
     public IActionResult Plugins() { SetCommonViewBag("plugins"); return View(); }
 
+    [HttpGet("plugin-market")]
+    public IActionResult PluginMarket() { SetCommonViewBag("plugin-market"); return View(); }
+
     [HttpGet("audit")]
     public IActionResult Audit() { SetCommonViewBag("audit"); return View(); }
 

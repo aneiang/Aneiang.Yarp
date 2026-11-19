@@ -1,3 +1,4 @@
+using Aneiang.Yarp.Dashboard.Modules.Environments;
 using Aneiang.Yarp.GatewayEnvironments;
 using Aneiang.Yarp.Services;
 using Aneiang.Yarp.Storage;
@@ -17,19 +18,22 @@ namespace Aneiang.Yarp.Dashboard.Modules.Dashboard.Controllers;
 /// </remarks>
 [ApiController]
 [Route("api/environments")]
-public sealed class EnvironmentsController : ControllerBase
+public sealed partial class EnvironmentsController : ControllerBase
 {
     private readonly GatewayEnvironmentRegistry _registry;
     private readonly IDynamicYarpConfigService _dynamicConfig;
+    private readonly EnvironmentPromotionService _promotion;
     private readonly ILogger<EnvironmentsController> _logger;
 
     public EnvironmentsController(
         GatewayEnvironmentRegistry registry,
         IDynamicYarpConfigService dynamicConfig,
+        EnvironmentPromotionService promotion,
         ILogger<EnvironmentsController> logger)
     {
         _registry = registry;
         _dynamicConfig = dynamicConfig;
+        _promotion = promotion;
         _logger = logger;
     }
 
@@ -108,4 +112,103 @@ public sealed class SwitchEnvironmentRequest
 {
     /// <summary>Name of the environment to edit. Must be one of the configured environments.</summary>
     public string? Environment { get; set; }
+}
+
+/// <summary>
+/// Comparing and promoting between environments.
+/// </summary>
+/// <remarks>
+/// Both operations read and write stores directly instead of switching the editing view first:
+/// switching reloads the working set and publishes when the target is the runtime environment, so
+/// merely rendering a diff would deploy the configuration it was describing.
+/// </remarks>
+public sealed partial class EnvironmentsController
+{
+    /// <summary>
+    /// The change a promotion would make, source → target. Read-only, no token, safe to call as often as the UI likes.
+    /// </summary>
+    [HttpGet("diff")]
+    public async Task<IActionResult> Diff([FromQuery] string? source, [FromQuery] string? target, CancellationToken ct)
+    {
+        if (_registry.Environments.Count < 2)
+            return BadRequest(new { code = 400, message = "Only one environment is configured; there is nothing to compare." });
+
+        try
+        {
+            var diff = await _promotion.DiffAsync(source, target, ct);
+            return Ok(new { code = 200, data = diff });
+        }
+        catch (PromotionException ex)
+        {
+            return StatusCode(ex.StatusCode, new { code = ex.StatusCode, message = ex.Message });
+        }
+        catch (IOException ex)
+        {
+            return StatusCode(500, new { code = 500, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Validates the change and returns a single-use token. Nothing is written.
+    /// </summary>
+    [HttpPost("promote/prepare")]
+    public async Task<IActionResult> PreparePromotion([FromBody] PreparePromotionRequest request, CancellationToken ct)
+    {
+        if (_registry.Environments.Count < 2)
+            return BadRequest(new { code = 400, message = "Only one environment is configured; there is nothing to promote." });
+
+        try
+        {
+            var prepared = await _promotion.PrepareAsync(request ?? new PreparePromotionRequest(), ct);
+            return Ok(new { code = 200, data = prepared });
+        }
+        catch (PromotionException ex)
+        {
+            return StatusCode(ex.StatusCode, new { code = ex.StatusCode, message = ex.Message });
+        }
+        catch (IOException ex)
+        {
+            return StatusCode(500, new { code = 500, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Applies a prepared promotion. Writes the target store and, when the target is the runtime
+    /// environment, publishes the result.
+    /// </summary>
+    [HttpPost("promote/apply")]
+    public async Task<IActionResult> ApplyPromotion([FromBody] ApplyPromotionRequest request, CancellationToken ct)
+    {
+        try
+        {
+            var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+            var result = await _promotion.ApplyAsync(request?.Token ?? string.Empty, clientIp, ct);
+
+            return Ok(new
+            {
+                code = 200,
+                data = new
+                {
+                    source = result.Source,
+                    target = result.Target,
+                    routes = result.Routes,
+                    clusters = result.Clusters,
+                    published = result.Published
+                }
+            });
+        }
+        catch (PromotionException ex)
+        {
+            return StatusCode(ex.StatusCode, new { code = ex.StatusCode, message = ex.Message });
+        }
+        catch (IOException ex)
+        {
+            return StatusCode(500, new { code = 500, message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Environment promotion failed");
+            return StatusCode(500, new { code = 500, message = "Promotion failed: " + ex.Message });
+        }
+    }
 }

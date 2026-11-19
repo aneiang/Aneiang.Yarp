@@ -28,6 +28,8 @@
     <link href="/_content/Aneiang.Yarp.Dashboard/lib/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
     <link href="/_content/Aneiang.Yarp.Dashboard/lib/bootstrap-icons/bootstrap-icons.min.css" rel="stylesheet" />
     <link href="/_content/Aneiang.Yarp.Dashboard/styles/dashboard-editor.css" rel="stylesheet" />
+    <link href="/_content/Aneiang.Yarp.Dashboard/styles/plugin-config.css" rel="stylesheet" />
+    <link href="/_content/Aneiang.Yarp.Dashboard/styles/env-promote.css" rel="stylesheet" />
     <link href="/_content/Aneiang.Yarp.Dashboard/styles/inter-font.css" rel="stylesheet">
     <style>
         :root {
@@ -596,6 +598,13 @@
             background: rgba(16, 185, 129, 0.12); color: #059669;
             white-space: nowrap;
         }
+        .env-promote-btn {
+            border: none; background: transparent; cursor: pointer;
+            color: inherit; padding: 0 4px; line-height: 1; opacity: .7;
+            display: inline-flex; align-items: center;
+        }
+        .env-promote-btn:hover { opacity: 1; }
+        .env-promote-btn i { font-size: 13px; }
         .env-notice {
             display: none;
             align-items: center; gap: 6px;
@@ -606,6 +615,28 @@
         }
         .env-notice.show { display: inline-flex; }
         .env-notice i { font-size: 12px; opacity: 0.9; }
+
+        /* ── Role-gated affordances ──
+           Driven by one attribute on <html> that dashboard-permissions.js sets from
+           /api/auth/status. CSS (not a JS sweep) because pages render their toolbars after the
+           call returns; a selector keeps working for markup that did not exist yet.
+           The server refuses these requests anyway — this only avoids offering what will fail. */
+        html[data-dashboard-writes="deny"] [data-requires-write] { display: none !important; }
+        html:not([data-dashboard-role="admin"]) [data-requires-admin] { display: none !important; }
+        /* Switching environments republishes the working set, so it is a write, not a filter.
+           Hiding only the <select> would leave an empty pill, so the control goes as a whole. */
+        html[data-dashboard-writes="deny"] .env-switch { display: none !important; }
+
+        #role-notice {
+            display: flex; align-items: flex-start; gap: 10px;
+            margin: 0 0 16px; padding: 10px 14px;
+            border-radius: 10px; border: 1px solid #fde68a; background: #fffbeb;
+            color: #92400e; font-size: 13px; line-height: 1.5;
+        }
+        #role-notice[hidden] { display: none; }
+        #role-notice > i { font-size: 16px; line-height: 1.3; opacity: .85; }
+        #role-notice strong { display: block; font-weight: 600; margin-bottom: 1px; }
+        #role-notice span { color: #a16207; }
 
         /* ── Topbar User Dropdown ── */
         .topbar-user {
@@ -4455,6 +4486,15 @@
         }
 
         /* ─── Shared: flat meta line (replaces stat-mini-card rows) ─── */
+        /* Deep link target from the configuration health check (?focus=<id>).
+           A left rule plus a tinted background reads as "this one" without hiding
+           the surrounding rows, which is what a selected row would do. */
+        tr.row-focus > td {
+            background: rgba(99, 102, 241, .09) !important;
+        }
+        tr.row-focus > td:first-child {
+            box-shadow: inset 3px 0 0 #6366f1;
+        }
         .pc-meta-line {
             display: flex; align-items: center; gap: 10px;
             padding: 14px 0;
@@ -4988,69 +5028,13 @@
         .config-alert-bar .config-alert-close:hover { opacity: 1; }
         .config-error-marker { color: #f59e0b; font-size: 13px; cursor: help; flex-shrink: 0; }
 
-        /* ---- Distributed tracing page ---- */
-        .trace-meta { display: flex; flex-wrap: wrap; gap: 10px 28px; }
-        .trace-meta-item { min-width: 120px; }
-        .trace-meta-value { font-size: 13px; font-weight: 600; color: #0f172a; word-break: break-all; }
-        .trace-sampling .form-range { width: 140px; }
+        /* ---- Distributed tracing page ----
+           Only the two rules the page shares with the global alert/snippet styling
+           live here; the rest moved into Tracing.cshtml when the page was rebuilt,
+           so this 5k-line file stops carrying layout for a single screen. */
         .trace-snippet {
             margin: 6px 0 0; padding: 8px 10px; background: #0f172a; color: #e2e8f0;
             border-radius: 6px; font-size: 12px; line-height: 1.5; overflow-x: auto;
-        }
-        .trace-item { border-bottom: 1px solid #eef2f7; }
-        .trace-item:last-child { border-bottom: none; }
-        .trace-item.is-open { background: #f8fafc; }
-        .trace-row {
-            display: flex; align-items: center; gap: 8px;
-            padding: 9px 4px; cursor: pointer; font-size: 13px;
-        }
-        .trace-row:hover { background: #f1f5f9; }
-        .trace-caret { font-size: 12px; color: #94a3b8; transition: transform .15s; }
-        .trace-item.is-open > .trace-row .trace-caret { transform: rotate(90deg); }
-        .trace-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
-        .trace-code.is-ok { background: #dcfce7; color: #15803d; }
-        .trace-code.is-warn { background: #fef3c7; color: #b45309; }
-        .trace-code.is-error { background: #fee2e2; color: #b91c1c; }
-        .trace-code.is-idle { background: #e2e8f0; color: #475569; }
-        .trace-name { font-weight: 600; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
-        .trace-chip {
-            background: #eef2ff; color: #3730a3; border-radius: 4px;
-            padding: 1px 6px; font-size: 11px; white-space: nowrap;
-        }
-        .trace-chip-dest { background: #ecfdf5; color: #047857; }
-        .trace-duration { font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; }
-        .trace-time { font-variant-numeric: tabular-nums; }
-        .trace-body { padding: 8px 4px 14px 22px; }
-        .trace-detail-head { margin-bottom: 8px; }
-        .trace-id { font-size: 11px; color: #475569; }
-        .trace-waterfall { display: flex; flex-direction: column; gap: 2px; }
-        .trace-span-main {
-            display: flex; align-items: center; gap: 8px;
-            cursor: pointer; padding: 2px 0; font-size: 12px;
-        }
-        .trace-span-main:hover .trace-span-title { color: #1d4ed8; }
-        .trace-span-name { display: flex; align-items: center; gap: 5px; flex: 0 0 40%; min-width: 0; }
-        .trace-span-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .trace-span-source { color: #94a3b8; font-size: 11px; white-space: nowrap; }
-        .trace-span-caret { font-size: 10px; color: #cbd5e1; }
-        .trace-span-bar { position: relative; flex: 1 1 auto; height: 12px; background: #f1f5f9; border-radius: 3px; }
-        .trace-bar { position: absolute; top: 0; height: 12px; border-radius: 3px; min-width: 2px; }
-        .trace-bar.is-ok { background: #22c55e; }
-        .trace-bar.is-error { background: #ef4444; }
-        .trace-bar.is-warn { background: #f59e0b; }
-        .trace-bar.is-idle { background: #94a3b8; }
-        .trace-span-duration { flex: 0 0 72px; text-align: right; font-variant-numeric: tabular-nums; color: #475569; }
-        .trace-span-tags {
-            margin: 2px 0 8px 22px; padding: 6px 8px; background: #fff;
-            border: 1px solid #e2e8f0; border-radius: 6px; font-size: 11px;
-        }
-        .trace-tag { display: flex; gap: 10px; padding: 1px 0; }
-        .trace-tag-key { flex: 0 0 220px; color: #64748b; }
-        .trace-tag-val { color: #0f172a; word-break: break-all; }
-        @@media (max-width: 720px) {
-            .trace-name { max-width: 140px; }
-            .trace-span-name { flex-basis: 55%; }
-            .trace-span-bar { display: none; }
         }
     </style>
 </head>
@@ -5134,6 +5118,7 @@
                     "menu.group.plugins",
                     new[]
                     {
+                        ("plugin-market", isEn ? "Plugin Market" : "插件市场", "menu.pluginMarket", "bi-shop", $"/{prefix}/plugin-market", "", Array.Empty<object>()),
                         ("plugins", isEn ? "Plugin Overview" : "插件总览", "menu.plugins", "bi-puzzle", $"/{prefix}/plugins", "ratio", Array.Empty<object>()),
                         ("plugin-center", isEn ? "Plugin Configuration" : "插件配置", "menu.pluginCenter", "bi-sliders", $"/{prefix}/plugin-center", "", Array.Empty<object>()),
                         ("plugin-resources", isEn ? "Plugin Resources" : "插件资源", "menu.pluginResources", "bi-cpu", $"/{prefix}/plugin-resources", "", Array.Empty<object>())
@@ -5158,6 +5143,7 @@
                     {
                         ("audit", isEn ? "Audit Log" : "审计日志", "menu.audit", "bi-shield-check", $"/{prefix}/audit", "", Array.Empty<object>()),
                         ("notifications", isEn ? "Notifications" : "通知管理", "menu.notifications", "bi-bell", $"/{prefix}/notifications", "", Array.Empty<object>()),
+                        ("api-docs", isEn ? "API Reference" : "API 文档", "menu.apiDocs", "bi-file-earmark-code", $"/{prefix}/api-docs", "", Array.Empty<object>()),
                         ("settings", isEn ? "Settings" : "系统设置", "menu.settings", "bi-gear", $"/{prefix}/settings", "", Array.Empty<object>())
                     }
                 )
@@ -5321,12 +5307,14 @@
                 {"circuits", pgIsEn ? "Circuit Breaker" : "熔断状态"},
                 {"settings", pgIsEn ? "Settings" : "系统设置"},
                 {"plugins", pgIsEn ? "Plugin Overview" : "插件总览"},
+                {"plugin-market", pgIsEn ? "Plugin Market" : "插件市场"},
                 {"plugin-center", pgIsEn ? "Plugin Configuration" : "插件配置"},
                 {"plugin-resources", pgIsEn ? "Plugin Resources" : "插件资源"},
                 {"logs", pgIsEn ? "Real-time Logs" : "实时日志"},
                 {"history", pgIsEn ? "Configuration History" : "配置历史"},
                 {"audit", pgIsEn ? "Audit Log" : "审计日志"},
                 {"notifications", pgIsEn ? "Notifications" : "通知管理"},
+                {"api-docs", pgIsEn ? "API Reference" : "API 文档"},
                 {"traffic", pgIsEn ? "Traffic Monitor" : "流量监控"},
                 {"cluster-metrics", pgIsEn ? "Cluster Metrics" : "集群指标"},
                 {"tracing", pgIsEn ? "Distributed Tracing" : "链路追踪"},
@@ -5340,6 +5328,7 @@
                 {"routes", "bi-signpost-split"},
                 {"settings", "bi-gear"},
                 {"plugins", "bi-puzzle"},
+                {"plugin-market", "bi-shop"},
                 {"plugin-center", "bi-sliders"},
                 {"plugin-resources", "bi-cpu"},
                 {"logs", "bi-journal-text"},
@@ -5348,7 +5337,8 @@
                 {"circuits", "bi-lightning-charge"},
                 {"history", "bi-clock-history"},
                 {"audit", "bi-shield-check"},
-                {"notifications", "bi-bell"}
+                {"notifications", "bi-bell"},
+                {"api-docs", "bi-file-earmark-code"}
             };
             var pageTitle = pageTitles.ContainsKey(pgName) ? pageTitles[pgName] : pgName;
             var pageIcon = pageIcons.ContainsKey(pgName) ? pageIcons[pgName] : "bi-app-indicator";
@@ -5367,6 +5357,12 @@
                             <select id="env-select" aria-label="@(isEn ? "Environment being edited" : "当前编辑的环境")"></select>
                             <i class="bi bi-exclamation-triangle" id="env-warn" hidden></i>
                             <span class="env-serving" id="env-serving" hidden></span>
+                            @* Promotion entry point. Lives next to the switcher because that is where the
+                               operator already forms the question "how far apart are these two?". *@
+                            <button type="button" class="env-promote-btn" id="env-promote-btn"
+                                    title="@(isEn ? "Compare with another environment and promote" : "与其他环境对比并提升")">
+                                <i class="bi bi-arrow-left-right"></i>
+                            </button>
                         </div>
                         <div class="header-search-trigger" onclick="document.dispatchEvent(new KeyboardEvent('keydown',{key:'k',ctrlKey:true}))" title="Ctrl+K">
                             <i class="bi bi-search"></i>
@@ -5408,6 +5404,9 @@
             </div>
         }
         <div class="main-content-inner">
+            @* Filled in by dashboard-permissions.js once the role is known; hidden until then so a
+               full-rights account never sees it flash. *@
+            <div id="role-notice" hidden></div>
             @RenderBody()
         </div>
         @if (ViewBag.CurrentPage as string != "login")
@@ -5674,6 +5673,7 @@
     <!-- 1. Core Infrastructure -->
     <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-utils.js?v=@v"></script>
     <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-api.js?v=@v"></script>
+    <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-permissions.js?v=@v"></script>
     <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-datasource.js?v=@v"></script>
     <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-loading.js?v=@v"></script>
     <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-command-palette.js?v=@v"></script>
@@ -5685,6 +5685,7 @@
     <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-core.js?v=@v"></script>
     <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-modals.js?v=@v"></script>
     <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-capabilities.js?v=@v"></script>
+    <script src="/_content/Aneiang.Yarp.Dashboard/js/core/plugin-config-editors.js?v=@v"></script>
     <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-proxy-config-alert.js?v=@v"></script>
     <!-- 2. Performance Optimizations -->
     <script src="/_content/Aneiang.Yarp.Dashboard/js/core/dashboard-performance.js?v=@v"></script>
@@ -5732,6 +5733,7 @@
     </script>
     <script src="/_content/Aneiang.Yarp.Dashboard/js/modules/dashboard-ai.js?v=@v"></script>
     <script src="/_content/Aneiang.Yarp.Dashboard/js/modules/dashboard-environments.js?v=@v"></script>
+    <script src="/_content/Aneiang.Yarp.Dashboard/js/modules/dashboard-env-promote.js?v=@v"></script>
     <script>
         if (window.DashboardAI && window.DashboardAI.init) {
             window.DashboardAI.init();

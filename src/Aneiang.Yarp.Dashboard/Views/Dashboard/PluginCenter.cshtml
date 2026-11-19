@@ -43,6 +43,13 @@
         border-color: #c7d2fe;
     }
     .pc-tab-btn i { font-size: 13px; }
+    /* Only appears if a plugin has no panel host - a loud marker beats a blank tab. */
+    .pc-tab-error {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 15px; height: 15px; margin-left: 2px;
+        border-radius: 50%; background: #fee2e2; color: #b91c1c;
+        font-size: 10px; font-weight: 700;
+    }
 
     /* Scope badge: 路由 = bindable to routes, 集群 = bindable to clusters */
     .pc-scope {
@@ -146,17 +153,10 @@
 <!-- Tab bar (rendered by JS) -->
 <div id="pc-tab-bar"></div>
 
-<!-- Tab panels: one per plugin, all 11 registered plugins are configurable here -->
-<div class="pc-tab-panel" data-plugin="rate-limit" style="display:none"></div>
-<div class="pc-tab-panel" data-plugin="request-retry" style="display:none"></div>
-<div class="pc-tab-panel" data-plugin="compression" style="display:none"></div>
-<div class="pc-tab-panel" data-plugin="waf" style="display:none"></div>
-<div class="pc-tab-panel" data-plugin="response-cache" style="display:none"></div>
-<div class="pc-tab-panel" data-plugin="circuit-breaker" style="display:none"></div>
-<div class="pc-tab-panel" data-plugin="service-discovery" style="display:none"></div>
-<div class="pc-tab-panel" data-plugin="proxy-log" style="display:none"></div>
-<div class="pc-tab-panel" data-plugin="traffic-metrics" style="display:none"></div>
-<div class="pc-tab-panel" data-plugin="cluster-metrics" style="display:none"></div>
+<!-- Panel mount point. Panels are created from the plugin registry, not listed here:
+     the list used to be hand-maintained and silently lost `fault-injection`, which
+     produced a tab that opened onto nothing. One registry, one set of panels. -->
+<div id="pc-panels"></div>
 
 @section Scripts {
 <script src="/_content/Aneiang.Yarp.Dashboard/js/modules/plugin-binding-manager.js"></script>

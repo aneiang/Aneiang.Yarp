@@ -1,3 +1,4 @@
+using Aneiang.Yarp.Dashboard.Infrastructure.Auth;
 using Microsoft.AspNetCore.Http;
 
 namespace Aneiang.Yarp.Dashboard.Infrastructure;
@@ -47,4 +48,14 @@ public class DashboardAuthOptions
 
     /// <summary>Custom auth delegate. If set, takes precedence over all other auth modes.</summary>
     public Func<HttpContext, Task<bool>>? AuthorizeRequest { get; set; }
+
+    /// <summary>
+    /// Accounts and their roles. When empty, the single <see cref="JwtUsername"/>/<see cref="JwtPassword"/>
+    /// pair is used and it is treated as an admin — the behaviour every existing deployment has.
+    /// </summary>
+    /// <remarks>
+    /// Roles are enforced server-side by HTTP method and path, not by hiding buttons: a viewer's
+    /// every non-GET request is refused whether or not the page they used still offered the button.
+    /// </remarks>
+    public List<DashboardUserOptions> Users { get; set; } = [];
 }

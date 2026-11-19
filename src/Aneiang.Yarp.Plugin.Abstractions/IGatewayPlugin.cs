@@ -59,9 +59,23 @@ public interface IGatewayPlugin
     void ConfigureServices(IServiceCollection services, object? pluginOptions = null);
 
     /// <summary>
-    /// Configure plugin middleware in the ASP.NET Core pipeline.
-    /// Called after UseRouting() but before MapReverseProxy().
+    /// Configure plugin middleware in the ASP.NET Core pipeline, after <c>UseRouting()</c> and
+    /// before <c>MapReverseProxy()</c>.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <strong>This is currently only invoked for the built-in <c>waf</c> plugin.</strong> The host
+    /// builds its middleware pipeline from a fixed list rather than by asking every plugin, because
+    /// the pipeline is assembled once at startup while plugins are enabled, disabled and reloaded at
+    /// runtime — an app-level middleware cannot be added to a pipeline that is already built.
+    /// </para>
+    /// <para>
+    /// Put plugin middleware in <see cref="ConfigureProxyPipeline"/> instead. It is called for every
+    /// enabled plugin, in manifest <c>order</c>, and runs inside the proxy branch — i.e. exactly for
+    /// the requests a gateway plugin cares about. Implementing this method and expecting it to run
+    /// is a silent no-op, which is the worst kind of failure to debug.
+    /// </para>
+    /// </remarks>
     /// <param name="app">IApplicationBuilder to register middleware.</param>
     void ConfigureMiddleware(IApplicationBuilder app);
 

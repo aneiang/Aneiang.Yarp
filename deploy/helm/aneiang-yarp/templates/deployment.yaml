@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "aneiang-yarp.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "aneiang-yarp.labels" . | nindent 4 }}
+spec:
+  # Deliberately no explicit strategy: with a ReadWriteOnce claim a surge pod cannot mount the same
+  # volume, so RollingUpdate with maxSurge>0 would hang on a Multi-Attach error. Recreate is the only
+  # strategy that is correct for a single-writer control plane.
+  strategy:
+    type: Recreate
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "aneiang-yarp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        # Roll the pods when the configuration changes. Without this, editing values.yaml and running
+        # `helm upgrade` updates the ConfigMap and leaves the running pods on the old routes — the
+        # most confusing possible outcome of a deploy.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "aneiang-yarp.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "aneiang-yarp.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: gateway
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 5200
+              protocol: TCP
+            {{- if .Values.grpc.enabled }}
+            - name: grpc
+              containerPort: 5201
+              protocol: TCP
+            {{- end }}
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: Production
+            - name: Gateway__Dashboard__Auth__AuthMode
+              value: {{ .Values.auth.mode | quote }}
+            {{- if ne .Values.auth.mode "None" }}
+            - name: Gateway__Dashboard__Auth__JwtUsername
+              value: {{ .Values.auth.username | quote }}
+            - name: Gateway__Dashboard__Auth__JwtPassword
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "aneiang-yarp.secretName" . }}
+                  key: jwt-password
+            - name: Gateway__Dashboard__Auth__JwtSecret
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "aneiang-yarp.secretName" . }}
+                  key: jwt-secret
+            {{- end }}
+            {{- /*
+              Accounts are injected one element per index because configuration binding has no
+              array syntax in environment variables. Indexes must stay contiguous from 0; a gap
+              truncates the list silently, which would drop an account rather than fail.
+            */}}
+            {{- range $index, $user := .Values.auth.users }}
+            - name: Gateway__Dashboard__Auth__Users__{{ $index }}__Username
+              value: {{ $user.username | quote }}
+            - name: Gateway__Dashboard__Auth__Users__{{ $index }}__Role
+              value: {{ $user.role | default "operator" | quote }}
+            - name: Gateway__Dashboard__Auth__Users__{{ $index }}__Password
+              value: {{ $user.password | quote }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            # The configuration is a single file, mounted over the one baked into the image. subPath
+            # is required: mounting the volume at /app would hide the published binaries.
+            - name: config
+              mountPath: /app/appsettings.json
+              subPath: appsettings.json
+              readOnly: true
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: /app/data
+            {{- end }}
+            # readOnlyRootFilesystem is on, so .NET still needs somewhere to write temp files.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "aneiang-yarp.fullname" . }}
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "aneiang-yarp.pvcName" . }}
+        {{- end }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

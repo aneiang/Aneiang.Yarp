@@ -212,16 +212,11 @@ public sealed class PluginRuntimeDomainManager : IPluginRuntimeDomainManager, IA
 {
     private static readonly object PipelineContinuationKey = new();
 
-    // Pipeline order, outermost first. Fault injection is last on purpose: it has to sit next to
-    // the forwarder so an injected failure looks like an upstream failure to everything outside it
-    // — retries retry it, the circuit breaker counts it, metrics and alerts see a 5xx. Put it at
-    // the edge instead and the components a drill is meant to exercise would never observe it.
-    private static readonly string[] ProxyPluginOrder =
-    [
-        "rate-limit", "circuit-breaker", "request-retry", "response-cache", "proxy-log",
-        "traffic-metrics", "cluster-metrics", "fault-injection"
-    ];
-
+    // Pipeline order used to live here as a hardcoded array. It now comes from each manifest's
+    // "order" field (see OrderProxyPlugins). The current built-in values keep the arrangement that
+    // comment used to describe — fault injection last, closest to the forwarder, so an injected
+    // failure is indistinguishable from a real upstream failure to everything outside it: retries
+    // retry it, the circuit breaker counts it, metrics and alerts see a 5xx.
     private readonly IServiceProvider _rootServices;
     private readonly IReadOnlyDictionary<string, IGatewayPlugin> _firstPartyPlugins;
     private readonly ExternalGatewayPluginHost _externalHost;
@@ -549,12 +544,32 @@ public sealed class PluginRuntimeDomainManager : IPluginRuntimeDomainManager, IA
 
         // Each plugin's middleware is wrapped so it gets a span named after the plugin. Doing it
         // here rather than inside the plugins means third-party plugins are traced for free.
-        foreach (var pluginId in ProxyPluginOrder)
-            if (plugins.TryGetValue(pluginId, out var plugin))
-                plugin.ConfigureProxyPipeline(new TracedProxyPipelineBuilder(builder, pluginId));
+        //
+        // The order comes from the manifest, not from a list kept in this file. A hardcoded array of
+        // built-in ids used to decide who participates, which meant a plugin that was not in it was
+        // configured, bound, visible in the dashboard and never actually invoked — compression sat
+        // in exactly that hole, and every external plugin would have landed in it. Manifest "order"
+        // is the documented contract; this is where it is honoured.
+        foreach (var pluginId in OrderProxyPlugins(plugins))
+            plugins[pluginId].ConfigureProxyPipeline(new TracedProxyPipelineBuilder(builder, pluginId));
+
         builder.Run(ContinueHostPipelineAsync);
         return builder.Build();
     }
+
+    /// <summary>
+    /// Plugin ids in proxy-pipeline order: ascending manifest <c>order</c>, ties broken by id.
+    /// </summary>
+    /// <remarks>
+    /// Plugins are not filtered by <see cref="PluginCapability.ProxyPipeline"/>. Calling a no-op
+    /// implementation costs nothing, while skipping a plugin that forgot to declare the capability
+    /// would look exactly like a plugin that does not work.
+    /// </remarks>
+    private static IEnumerable<string> OrderProxyPlugins(IReadOnlyDictionary<string, IGatewayPlugin> plugins) =>
+        plugins
+            .OrderBy(plugin => plugin.Value.Manifest.Order)
+            .ThenBy(plugin => plugin.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(plugin => plugin.Key);
 
     private static RequestDelegate BuildMiddlewarePipeline(
         IServiceProvider services,

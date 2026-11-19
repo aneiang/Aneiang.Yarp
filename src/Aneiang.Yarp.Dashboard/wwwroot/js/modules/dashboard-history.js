@@ -28,16 +28,59 @@
                 if (!container) return;
                 container.innerHTML = this.renderLoading();
 
-                const data = await window.DashboardApi.endpoints.getHistory();
+                const [data, queueMetrics] = await Promise.all([
+                    window.DashboardApi.endpoints.getHistory(),
+                    /* Supporting diagnostic only: a failure here must never blank the timeline. */
+                    window.DashboardApi.get('/api/config/snapshot/metrics', null, { silent: true })
+                        .catch(() => null)
+                ]);
                 this.entries = Array.isArray(data) ? data.map((entry, index) => this.normalizeEntry(entry, index)) : [];
                 this.applyFilters();
                 this.renderStats();
+                this.renderQueueMetrics(queueMetrics);
                 this.renderHistory();
                 this.selectInitialEntry();
             } catch (error) {
                 console.error('[History] Load failed:', error);
                 if (container) container.innerHTML = this.renderError(error);
             }
+        },
+
+        /* Snapshots are enqueued and written in the background. When that queue backs up or
+         * drops an item, the only symptom in the timeline is a version that never appears —
+         * indistinguishable from "nobody changed anything". This bar is where the queue
+         * reports itself, and it is deliberately always visible: zero failures is also an
+         * answer worth having after a busy day. */
+        renderQueueMetrics: function(metrics) {
+            const host = this.el('history-queue');
+            if (!host) return;
+            if (!metrics) { host.classList.add('d-none'); return; }
+
+            const queued = Number(metrics.queueLength || 0);
+            const processed = Number(metrics.processedCount || 0);
+            const failed = Number(metrics.failedCount || 0);
+            const dropped = Number(metrics.droppedCount || 0);
+            const capacity = Number(metrics.snapshotQueueCapacity || 0);
+            const saturated = capacity > 0 && queued >= capacity;
+            const degraded = failed > 0 || dropped > 0 || saturated;
+
+            const item = (icon, label, value, bad) =>
+                '<span class="hq-item"><i class="bi ' + icon + '"></i>' + this.escape(label) +
+                ' <span class="hq-num' + (bad ? ' bad' : '') + '">' + value + '</span></span>';
+
+            host.innerHTML =
+                item('bi-list-ol', __('history.queue.queued'), queued, saturated) +
+                item('bi-check2-circle', __('history.queue.processed'), processed, false) +
+                item('bi-exclamation-triangle', __('history.queue.failed'), failed, failed > 0) +
+                item('bi-slash-circle', __('history.queue.dropped'), dropped, dropped > 0) +
+                item('bi-inboxes', __('history.queue.capacity'), capacity || '-', false) +
+                (degraded
+                    ? '<span class="hq-item ms-auto"><i class="bi bi-info-circle"></i>' +
+                      this.escape(__('history.queue.degraded')) + '</span>'
+                    : '');
+
+            host.classList.remove('d-none');
+            host.classList.toggle('degraded', degraded);
         },
 
         normalizeEntry: function(entry, index) {
@@ -273,8 +316,145 @@
             }
         },
 
+        /* Whole-config integrity check — GET /api/config/integrity.
+         *
+         * The endpoint landed with the pre-flight work, but no screen ever called it: the
+         * report was reachable only with curl. It answers a different question than the
+         * timeline does — not "what changed" but "is what is live right now internally
+         * consistent". Dangling cluster references, clusters with no targets and duplicate
+         * match paths are exactly the states that accumulate over many single edits, and
+         * each of them fails only at request time. */
+        checkIntegrity: async function() {
+            const body = this.el('integrity-body');
+            const modalEl = this.el('integrity-modal');
+            if (!body || !modalEl) return;
+
+            /* bootstrap is optional on this page; fall back to an inline panel so the
+               report never becomes unreachable just because the modal plugin is missing. */
+            if (window.bootstrap?.Modal) {
+                if (!this._integrityModal) this._integrityModal = new window.bootstrap.Modal(modalEl);
+                this._integrityModal.show();
+            } else {
+                modalEl.classList.add('show');
+                modalEl.style.display = 'block';
+            }
+
+            await this._runIntegrity(body);
+        },
+
+        _runIntegrity: async function(body) {
+            body.innerHTML = '<div class="loading-state"><div class="loading-spinner"></div>' +
+                '<div class="loading-text">' + this.escape(__('history.integrity.running')) + '</div></div>';
+            try {
+                /* silent: the modal has its own progress state; the global bar would keep
+                   flashing behind an already-open dialog. */
+                const report = await window.DashboardApi.get('/api/config/integrity', null, { silent: true });
+                this.renderIntegrity(report, body);
+            } catch (error) {
+                console.error('[History] Integrity check failed:', error);
+                body.innerHTML = '<div class="alert alert-danger mb-0">' +
+                    '<i class="bi bi-exclamation-triangle me-1"></i>' +
+                    this.escape(__('history.integrity.failed')) + ': ' + this.escape(error.message || '') +
+                    '</div>';
+            }
+        },
+
+        /* Field paths are prefixed with the owning entity by the validator
+           (Routes.<id>.ClusterId, Clusters.<id>.Destinations...). Extracting the owner is
+           what turns "some route is broken" into a link the operator can click. */
+        _integrityOwner: function(field) {
+            const match = /^(Routes|Clusters)\.([^.]+)/.exec(field || '');
+            if (!match) return null;
+            return {
+                kind: match[1] === 'Routes' ? 'route' : 'cluster',
+                id: match[2]
+            };
+        },
+
+        renderIntegrity: function(report, body) {
+            const errors = (report && report.errors) || [];
+            const warnings = (report && report.warnings) || [];
+            const ok = Boolean(report && report.ok);
+            const total = errors.length + warnings.length;
+
+            let html = '';
+
+            if (total === 0) {
+                html += '<div class="integ-summary ok">' +
+                    '<i class="bi bi-check-circle-fill" style="color:#10b981;font-size:22px;"></i>' +
+                    '<div><div class="integ-summary-num" style="color:#047857;">0</div>' +
+                    '<div class="small text-muted">' + this.escape(__('history.integrity.clean')) + '</div></div>' +
+                    '</div>' +
+                    '<div class="integ-empty"><i class="bi bi-shield-check" style="font-size:34px;opacity:.35;"></i>' +
+                    '<p class="mt-2 mb-0">' + this.escape(__('history.integrity.cleanHelp')) + '</p></div>';
+                body.innerHTML = html;
+                return;
+            }
+
+            const tone = ok ? 'warn' : 'bad';
+            html += '<div class="integ-summary ' + tone + '">' +
+                '<i class="bi ' + (ok ? 'bi-exclamation-triangle-fill' : 'bi-x-octagon-fill') + '" ' +
+                'style="color:' + (ok ? '#f59e0b' : '#ef4444') + ';font-size:22px;"></i>' +
+                '<div><div class="integ-summary-num" style="color:' + (ok ? '#b45309' : '#b91c1c') + ';">' + total + '</div>' +
+                '<div class="small text-muted">' + this.escape(ok
+                    ? __('history.integrity.warnOnly')
+                    : __('history.integrity.hasErrors')) + '</div></div>' +
+                '<div class="ms-auto align-self-center small text-muted">' +
+                this.escape(__('history.integrity.scale')
+                    .replace('{errors}', errors.length)
+                    .replace('{warnings}', warnings.length)) +
+                '</div>' +
+                '</div>';
+
+            if (errors.length) {
+                html += '<div class="integ-group-title"><i class="bi bi-x-circle me-1" style="color:#ef4444;"></i>' +
+                    this.escape(__('history.integrity.errors')) + ' · ' + errors.length + '</div>';
+                html += errors.map(item => this._integrityRow(item, 'error')).join('');
+            }
+
+            if (warnings.length) {
+                html += '<div class="integ-group-title"><i class="bi bi-exclamation-triangle me-1" style="color:#f59e0b;"></i>' +
+                    this.escape(__('history.integrity.warnings')) + ' · ' + warnings.length + '</div>';
+                html += warnings.map(item => this._integrityRow(item, 'warning')).join('');
+            }
+
+            body.innerHTML = html;
+        },
+
+        _integrityRow: function(item, tone) {
+            const owner = this._integrityOwner(item && item.field);
+            const base = (window.__dashboard && window.__dashboard.basePath) || '';
+            const icon = tone === 'error' ? 'bi-x-circle-fill' : 'bi-exclamation-triangle-fill';
+            const color = tone === 'error' ? '#ef4444' : '#f59e0b';
+            let action = '';
+            if (owner) {
+                const href = base + '/' + (owner.kind === 'route' ? 'routes' : 'clusters') +
+                    '?focus=' + encodeURIComponent(owner.id);
+                action = '<a class="btn btn-outline-secondary" href="' + this.escape(href) + '">' +
+                    '<i class="bi bi-box-arrow-up-right me-1"></i>' +
+                    this.escape(__('history.integrity.open')) + '</a>';
+            }
+            return '<div class="integ-item ' + tone + '">' +
+                '<i class="bi ' + icon + '" style="color:' + color + ';"></i>' +
+                '<div>' +
+                    '<div class="integ-item-msg">' + this.escape(item && item.message) + '</div>' +
+                    (item && item.field ? '<div class="integ-item-field">' + this.escape(item.field) + '</div>' : '') +
+                    (item && item.hint ? '<div class="integ-item-hint"><i class="bi bi-lightbulb me-1"></i>' + this.escape(item.hint) + '</div>' : '') +
+                '</div>' +
+                '<div class="integ-item-actions">' + action + '</div>' +
+            '</div>';
+        },
+
         setupEvents: function() {
             document.addEventListener('dashboard:shortcut:refresh', () => this.loadHistory());
+
+            const integrityBtn = this.el('history-integrity-btn');
+            if (integrityBtn) integrityBtn.addEventListener('click', () => this.checkIntegrity());
+            const integrityRerun = this.el('integrity-rerun');
+            if (integrityRerun) integrityRerun.addEventListener('click', () => {
+                const body = this.el('integrity-body');
+                if (body) this._runIntegrity(body);
+            });
 
             document.addEventListener('click', (event) => {
                 const target = event.target.closest('[data-action]');

@@ -1,0 +1,29 @@
+{{- if .Values.grpc.enabled }}
+{{- /*
+  A separate Service for gRPC, not an extra port on the gateway Service.
+
+  HTTP/2 has to survive all the way to the pod for client self-registration to work. Many ingress
+  controllers and most L4 load balancers decide the backend protocol per Service; adding an h2c port
+  next to an HTTP/1.1 port either gets ignored or downgrades both. Two Services keep the decision
+  local, and `appProtocol: kubernetes.io/h2c` is what tells the controller (and the Gateway API) which
+  one is which.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aneiang-yarp.fullname" . }}-grpc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "aneiang-yarp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grpc
+spec:
+  type: {{ .Values.grpc.type }}
+  ports:
+    - name: grpc
+      port: {{ .Values.grpc.port }}
+      targetPort: grpc
+      protocol: TCP
+      appProtocol: kubernetes.io/h2c
+  selector:
+    {{- include "aneiang-yarp.selectorLabels" . | nindent 4 }}
+{{- end }}

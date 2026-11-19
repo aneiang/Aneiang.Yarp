@@ -20,4 +20,10 @@ public interface IDashboardAuthorizationService
     /// </summary>
     /// <returns>Human-readable auth mode description.</returns>
     string GetAuthModeDescription();
+
+    /// <summary>
+    /// Who this request is, and with what role. Only meaningful after
+    /// <see cref="IsAuthorizedAsync"/> returned true.
+    /// </summary>
+    DashboardPrincipal ResolvePrincipal(HttpContext context);
 }

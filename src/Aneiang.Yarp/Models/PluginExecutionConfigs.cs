@@ -5,20 +5,50 @@ namespace Aneiang.Yarp.Models;
 // ──────────────── Route-scoped plugin binding configs ────────────────
 
 /// <summary>Route-scoped WAF configuration stored in a plugin binding.</summary>
-[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+/// <remarks>
+/// The flat <c>enable*</c> switches predate the rule pipeline and are kept so existing
+/// bindings keep working unchanged: when <see cref="Rules"/> is empty they synthesise the
+/// classic pipeline. Once <see cref="Rules"/> is populated it becomes the authoritative
+/// content-inspection pipeline and the switches are not consulted — but
+/// <see cref="EnableIpCheck"/> and <see cref="EnableRequestSizeValidation"/> still gate the
+/// preamble, because an IP ban must not be overridable by a content rule.
+/// </remarks>
 public sealed class WafBindingOptions
 {
     public bool Enabled { get; set; } = true;
+
+    // ── IP access ──
+    public bool EnableIpCheck { get; set; } = true;
     public List<string> IpWhitelist { get; set; } = [];
     public List<string> IpBlacklist { get; set; } = [];
+
+    // ── Size and shape limits ──
+    public bool EnableRequestSizeValidation { get; set; } = true;
     public long MaxRequestBodySize { get; set; } = 10 * 1024 * 1024;
     public int MaxHeaderCount { get; set; } = 64;
     public int MaxHeaderSize { get; set; } = 8192;
+    public int MaxUrlLength { get; set; } = 4096;
+
+    // ── Legacy content-inspection switches (synthesise the pipeline when Rules is empty) ──
     public bool EnableSqlInjectionDetection { get; set; } = true;
     public bool EnableXssDetection { get; set; } = true;
     public bool EnablePathTraversalDetection { get; set; } = true;
-    public bool EnableIpCheck { get; set; } = true;
-    public bool EnableRequestSizeValidation { get; set; } = true;
+
+    /// <summary>
+    /// <c>enforce</c> (default) or <c>monitor</c>. In monitor mode every rule still runs and logs,
+    /// but nothing is blocked — the way to try a rule set against production traffic before it
+    /// starts rejecting requests.
+    /// </summary>
+    public string? Mode { get; set; }
+
+    /// <summary>Custom pipeline. Empty means "use the legacy switches".</summary>
+    public List<WafRuleOptions>? Rules { get; set; }
+
+    /// <summary>Which bodies the detectors may read.</summary>
+    public WafBodyInspectionOptions BodyInspection { get; set; } = new();
+
+    /// <summary>Shape of a blocked response.</summary>
+    public WafBlockResponseOptions Response { get; set; } = new();
 }
 
 /// <summary>Route-scoped request retry configuration stored in a plugin binding.</summary>

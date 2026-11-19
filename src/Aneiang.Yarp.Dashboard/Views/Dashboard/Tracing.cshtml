@@ -4,18 +4,274 @@
     Layout = "~/Views/Shared/_DashboardLayout.cshtml";
 }
 
-<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+@* The page owns its styles: everything below is used by this screen only, and the
+   shared layout had grown a 60-line block for it. Prefix `tr-` keeps it out of the
+   way of the global classes. *@
+<style>
+    /* ── Header ── */
+    .tr-head {
+        display: flex; align-items: flex-start; justify-content: space-between;
+        gap: 14px; flex-wrap: wrap; margin-bottom: 14px;
+    }
+    .tr-head__title { margin: 0; font-size: 17px; font-weight: 600; color: var(--text-primary, #0f172a); }
+    .tr-head__sub { margin: 3px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--text-muted, #94a3b8); max-width: 640px; }
+    .tr-head__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .tr-auto {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 12px; color: var(--text-secondary, #475569); cursor: pointer; user-select: none;
+    }
+    .tr-auto input { margin: 0; cursor: pointer; }
+
+    /* ── Status band: three answers, one per column ──
+       Running? / where does the data go? / how much is sampled? Those are the three
+       questions in front of an empty list, and they used to be five equal-weight
+       values plus a slider whose explanation sat two rows away. */
+    .tr-band {
+        display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.35fr) minmax(0, 1.5fr);
+        margin-bottom: 14px;
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: var(--radius-md, 10px);
+        background: var(--card-bg, #fff);
+        overflow: hidden;
+    }
+    .tr-band__seg { padding: 12px 16px; min-width: 0; }
+    .tr-band__seg + .tr-band__seg { border-left: 1px solid var(--border-light, #eef2f6); }
+    .tr-band__label {
+        display: flex; align-items: center; gap: 6px;
+        font-size: 11px; font-weight: 600; letter-spacing: .04em;
+        color: var(--text-muted, #94a3b8); text-transform: uppercase;
+    }
+    .tr-band__value {
+        display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+        margin-top: 7px; font-size: 13px; color: var(--text-primary, #0f172a);
+        min-height: 22px;
+    }
+    .tr-band__value strong { font-weight: 600; }
+    .tr-band__note {
+        margin-top: 6px; font-size: 11.5px; line-height: 1.55;
+        color: var(--text-muted, #94a3b8);
+    }
+    .tr-band__note code { font-size: 11px; color: #64748b; }
+    .tr-svc { font-weight: 600; }
+    .tr-endpoint {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px; word-break: break-all;
+    }
+    .tr-badge {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 2px 8px; border-radius: 999px;
+        font-size: 11.5px; font-weight: 600;
+    }
+    .tr-badge--on { background: #ecfdf5; color: #15803d; }
+    .tr-badge--off { background: #f1f5f9; color: #64748b; }
+    .tr-badge--fail { background: #fef2f2; color: #b91c1c; }
+    .tr-badge--muted { background: #fffbeb; color: #b45309; }
+    .tr-band__sampling input[type="range"] { width: 118px; }
+    .tr-band__sampling .tr-pct {
+        font-variant-numeric: tabular-nums; font-weight: 600;
+        min-width: 34px; display: inline-block;
+    }
+
+    /* ── Trace list ── */
+    .tr-list {
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: var(--radius-md, 10px);
+        background: var(--card-bg, #fff);
+        overflow: hidden;
+    }
+    .tr-list__head {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 12px; padding: 12px 16px;
+        border-bottom: 1px solid var(--border-light, #eef2f6);
+    }
+    .tr-list__title { font-size: 13.5px; font-weight: 600; color: var(--text-primary, #0f172a); }
+    .tr-list__title b { font-weight: 600; }
+    .tr-list__title span {
+        margin-left: 7px; font-size: 11.5px; font-weight: 400; color: var(--text-muted, #94a3b8);
+    }
+    .tr-list__count { font-size: 11.5px; color: var(--text-muted, #94a3b8); font-variant-numeric: tabular-nums; }
+
+    /* One grid template for the column header and every row, so the durations line
+       up down the page and can be compared without reading them. */
+    .tr-cols, .tr-row {
+        display: grid;
+        grid-template-columns: 16px 62px minmax(0, 1fr) 118px 46px 66px;
+        align-items: center; gap: 10px;
+    }
+    .tr-cols {
+        padding: 6px 16px;
+        border-bottom: 1px solid var(--border-light, #eef2f6);
+        background: #fbfcfe;
+        font-size: 10.5px; font-weight: 600; letter-spacing: .05em;
+        color: var(--text-muted, #94a3b8); text-transform: uppercase;
+    }
+    .tr-cols > :nth-child(4), .tr-cols > :nth-child(5) { text-align: right; }
+    .tr-cols > :nth-child(6) { text-align: right; }
+
+    .tr-item { border-bottom: 1px solid var(--border-light, #eef2f6); }
+    .tr-item:last-child { border-bottom: none; }
+    .tr-item.is-open { background: #f8fafc; }
+    .tr-row { padding: 9px 16px; cursor: pointer; font-size: 13px; }
+    .tr-row:hover { background: #f8fafc; }
+    .tr-row:focus-visible { outline: 2px solid #c7d2fe; outline-offset: -2px; }
+    .tr-row__caret { font-size: 11px; color: #cbd5e1; transition: transform .15s; }
+    .tr-item.is-open > .tr-row .tr-row__caret { transform: rotate(90deg); }
+
+    .tr-code {
+        display: inline-flex; align-items: center; justify-content: center;
+        min-width: 44px; padding: 1px 6px; border-radius: 4px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11.5px; font-weight: 700;
+    }
+    .tr-code.is-ok { background: #dcfce7; color: #15803d; }
+    .tr-code.is-warn { background: #fef3c7; color: #b45309; }
+    .tr-code.is-error { background: #fee2e2; color: #b91c1c; }
+    .tr-code.is-idle { background: #e2e8f0; color: #475569; }
+
+    .tr-row__main { min-width: 0; }
+    .tr-row__name {
+        display: flex; align-items: center; gap: 6px;
+        font-size: 12.5px; font-weight: 600; color: var(--text-primary, #0f172a);
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tr-row__name em {
+        font-style: normal; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11.5px;
+    }
+    /* Second line carries the hop chain: the thing you actually correlate with
+       routes and clusters. It had been five chips fighting for the same row. */
+    .tr-row__path {
+        display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+        margin-top: 3px; font-size: 11px; color: var(--text-muted, #94a3b8);
+    }
+    .tr-hop { white-space: nowrap; }
+    .tr-hop--route { color: #4338ca; }
+    .tr-hop--cluster { color: #0f766e; }
+    .tr-hop--dest { color: #b45309; }
+    .tr-arrow { color: #cbd5e1; font-size: 9px; }
+    .tr-flag {
+        padding: 1px 5px; border-radius: 3px; font-size: 10px; font-weight: 600;
+        white-space: nowrap;
+    }
+    .tr-flag--short { background: #fef3c7; color: #b45309; }
+    .tr-flag--trunc { background: #f1f5f9; color: #64748b; }
+
+    .tr-row__dur { text-align: right; font-variant-numeric: tabular-nums; }
+    .tr-row__dur b { font-size: 12.5px; font-weight: 600; color: var(--text-primary, #0f172a); }
+    /* Relative duration bar: makes a 900 ms request visible next to 30 ms ones
+       without the reader comparing digits. */
+    .tr-durbar { margin-top: 3px; height: 3px; border-radius: 2px; background: #f1f5f9; overflow: hidden; }
+    .tr-durbar i { display: block; height: 100%; border-radius: 2px; background: #a5b4fc; }
+    .tr-durbar i.is-slow { background: #f59e0b; }
+    .tr-durbar i.is-err { background: #ef4444; }
+    .tr-row__spans { text-align: right; font-size: 12px; color: var(--text-secondary, #475569); font-variant-numeric: tabular-nums; }
+    .tr-row__time { text-align: right; font-size: 11.5px; color: var(--text-muted, #94a3b8); font-variant-numeric: tabular-nums; }
+
+    /* ── Detail: waterfall with a time axis ── */
+    .tr-body { padding: 4px 16px 16px 42px; }
+    .tr-detail__meta {
+        display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+        margin-bottom: 8px; font-size: 11.5px; color: var(--text-muted, #94a3b8);
+    }
+    .tr-id {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px; color: #475569;
+        background: #fff; border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 4px; padding: 1px 6px; cursor: pointer;
+    }
+    .tr-id:hover { border-color: #c7d2fe; color: #4338ca; }
+
+    .tr-wf { --wf-name: 200px; --wf-dur: 66px; }
+    .tr-wf__ruler, .tr-wf__row {
+        display: grid;
+        grid-template-columns: var(--wf-name) minmax(0, 1fr) var(--wf-dur);
+        align-items: center; gap: 10px;
+    }
+    .tr-wf__ruler {
+        padding-bottom: 3px; margin-bottom: 2px;
+        border-bottom: 1px solid var(--border-light, #eef2f6);
+        font-size: 10px; color: #b0bac7;
+    }
+    .tr-wf__scale { position: relative; height: 13px; }
+    .tr-wf__scale span { position: absolute; top: 0; white-space: nowrap; }
+    .tr-wf__ruler > :last-child { text-align: right; }
+
+    .tr-wf__row { padding: 1px 0; font-size: 12px; cursor: pointer; }
+    .tr-wf__row:hover { background: #eef2ff; }
+    .tr-wf__label {
+        display: flex; align-items: center; gap: 5px;
+        min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tr-wf__label i { font-size: 9px; color: #cbd5e1; flex: 0 0 auto; }
+    .tr-wf__label span { overflow: hidden; text-overflow: ellipsis; }
+    .tr-wf__src {
+        flex: 0 0 auto; font-size: 10px; color: #a5b4fc;
+        max-width: 78px; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tr-wf__track {
+        position: relative; height: 14px; border-radius: 3px;
+        background:
+            repeating-linear-gradient(to right,
+                transparent 0, transparent calc(25% - 1px),
+                #eef2f7 calc(25% - 1px), #eef2f7 25%);
+    }
+    .tr-wf__bar { position: absolute; top: 2px; height: 10px; border-radius: 3px; min-width: 2px; }
+    .tr-wf__bar.is-ok { background: #34d399; }
+    .tr-wf__bar.is-error { background: #f87171; }
+    .tr-wf__bar.is-idle { background: #94a3b8; }
+    .tr-wf__dur { text-align: right; color: var(--text-secondary, #475569); font-variant-numeric: tabular-nums; }
+
+    .tr-wf__tags {
+        grid-column: 1 / -1;
+        margin: 2px 0 6px 12px; padding: 6px 9px;
+        background: #fff; border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 6px; font-size: 11px;
+    }
+    .tr-tag { display: flex; gap: 12px; padding: 1px 0; }
+    .tr-tag k { flex: 0 0 210px; color: #64748b; font-weight: 400; }
+    .tr-tag v { color: #0f172a; word-break: break-all; }
+
+    .tr-legend {
+        display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+        margin-top: 10px; padding-top: 8px;
+        border-top: 1px solid var(--border-light, #eef2f6);
+        font-size: 11px; color: var(--text-muted, #94a3b8);
+    }
+    .tr-legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .tr-legend i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+
+    .tr-empty {
+        display: flex; flex-direction: column; align-items: center;
+        padding: 38px 20px; text-align: center;
+    }
+    .tr-empty > i { font-size: 1.5rem; color: #cbd5e1; }
+    .tr-empty__title { margin: 9px 0 3px; font-size: 13px; font-weight: 600; color: var(--text-secondary, #475569); }
+    .tr-empty__hint { font-size: 12px; line-height: 1.6; color: var(--text-muted, #94a3b8); max-width: 480px; }
+
+    @@media (max-width: 900px) {
+        .tr-band { grid-template-columns: 1fr; }
+        .tr-band__seg + .tr-band__seg { border-left: none; border-top: 1px solid var(--border-light, #eef2f6); }
+        .tr-cols, .tr-row { grid-template-columns: 16px 56px minmax(0, 1fr) 92px 0 0; }
+        .tr-cols > :nth-child(5), .tr-cols > :nth-child(6),
+        .tr-row__spans, .tr-row__time { display: none; }
+        .tr-wf { --wf-name: 132px; --wf-dur: 52px; }
+        .tr-wf__src { display: none; }
+        .tr-body { padding-left: 16px; }
+    }
+</style>
+
+<div class="tr-head">
     <div>
-        <h4 class="mb-1" data-i18n="trace.title">链路追踪</h4>
-        <p class="text-muted mb-0 small" data-i18n="trace.subtitle">
+        <h4 class="tr-head__title" data-i18n="trace.title">链路追踪</h4>
+        <p class="tr-head__sub" data-i18n="trace.subtitle">
             一次请求经过网关各跳的耗时分解。数据来自 OpenTelemetry，可同时导出到 Jaeger / Tempo。
         </p>
     </div>
-    <div class="d-flex align-items-center gap-2">
-        <div class="form-check form-switch mb-0">
-            <input class="form-check-input" type="checkbox" id="trace-auto" checked>
-            <label class="form-check-label small" for="trace-auto" data-i18n="trace.autoRefresh">自动刷新</label>
-        </div>
+    <div class="tr-head__actions">
+        <label class="tr-auto">
+            <input type="checkbox" id="trace-auto" checked>
+            <span data-i18n="trace.autoRefresh">自动刷新</span>
+        </label>
         <button class="btn btn-sm btn-outline-secondary" id="trace-refresh">
             <i class="bi bi-arrow-clockwise"></i> <span data-i18n="trace.refresh">刷新</span>
         </button>
@@ -28,20 +284,35 @@
 @* Rendered by dashboard-tracing.js: disabled / start-failure / in-memory-only notices. *@
 <div id="trace-notice"></div>
 
-<div class="card-panel mb-4" id="trace-status">
-    <div class="text-muted small"><i class="bi bi-hourglass-split"></i> <span data-i18n="trace.loading">加载中...</span></div>
+@* Status band. Skeleton here, values from the status payload. *@
+<div class="tr-band" id="trace-status">
+    <div class="tr-band__seg">
+        <div class="tr-band__label" data-i18n="trace.band.state">运行状态</div>
+        <div class="tr-band__value"><span class="text-muted small" data-i18n="trace.loading">加载中...</span></div>
+    </div>
 </div>
 
-<div class="card-panel mb-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <h6 class="mb-0" data-i18n="trace.list.title">最近链路</h6>
-            <div class="text-muted small" data-i18n="trace.list.hint">只包含被采样的请求。点一行展开瀑布图。</div>
+<div class="tr-list">
+    <div class="tr-list__head">
+        <div class="tr-list__title">
+            <b data-i18n="trace.list.title">最近链路</b>
+            <span data-i18n="trace.list.hint">只包含被采样的请求。点一行展开瀑布图。</span>
         </div>
-        <span class="text-muted small" id="trace-count"></span>
+        <div class="tr-list__count" id="trace-count"></div>
+    </div>
+    <div class="tr-cols">
+        <span></span>
+        <span data-i18n="trace.col.status">状态</span>
+        <span data-i18n="trace.col.request">请求</span>
+        <span data-i18n="trace.col.duration">耗时</span>
+        <span data-i18n="trace.col.spans">Span</span>
+        <span data-i18n="trace.col.time">时间</span>
     </div>
     <div id="trace-list">
-        <div class="text-muted small"><i class="bi bi-hourglass-split"></i> <span data-i18n="trace.loading">加载中...</span></div>
+        <div class="tr-empty">
+            <div class="loading-spinner"></div>
+            <div class="tr-empty__title" data-i18n="trace.loading">加载中...</div>
+        </div>
     </div>
 </div>
 

@@ -6,7 +6,9 @@
 
 ### 📌 本版概览
 
-**多环境配置隔离（原 v2.6 第 1 项，前两批）** —— v2.6 的第一项「多环境配置隔离」拆成三批，本次交付前两批 —— 环境隔离与切换。核心是一条边界：**网关转发哪个环境是启动时定死的，切环境只切"你在编辑哪个"**。这条边界不是设计洁癖 —— 如果切面板会改转发，那"打开 staging 看一眼"就等于把生产流量切走了。批三（环境间 diff + 一键提升 + 审批）未做，见文末进度表。
+**多环境配置隔离（原 v2.6 第 1 项，三批全交付）** —— v2.6 的第一项「多环境配置隔离」拆成三批，现在三批都在本版里 —— 环境隔离与切换、环境间 diff、两步提升与审批。核心是一条边界：**网关转发哪个环境是启动时定死的，切环境只切"你在编辑哪个"**。这条边界不是设计洁癖 —— 如果切面板会改转发，那"打开 staging 看一眼"就等于把生产流量切走了。
+
+**平台化收尾（原 v2.6 其余五项）** —— RBAC 三角色、Docker/Helm/`dotnet new` 三件套、管理 API 的 OpenAPI 文档、插件市场（模板 + 兼容矩阵 + 契约测试 + 面板页）、WAF 规则引擎的五种动作。这一批的共同点不是"又加了几个功能"，而是把前面几年堆起来的东西**补上对外承诺**：谁能改、怎么装、怎么对接、怎么写插件。顺带挖出两个"配置好了但从不执行"的坑（压缩插件的中间件、外部插件的代理管线）和三个界面缺陷（空白面板、英文兜底串、读不懂的追踪页），见下方对应条目。
 
 **灰度与可观测（原 v2.5 六项）** —— v2.5 六项全部交付 —— 插件扩展点、权重灰度、灰度应用与自动回滚、指标告警阈值、OpenTelemetry 追踪、故障注入。核心是一条新策略 `Weighted`：按节点权重**精确**分流，配合 `X-Gateway-Canary` 头可以先把一个真实用户钉到新版本验证，再动权重；在此之上是一台靠指标说话的灰度状态机，观察窗口内错误率超阈值就自己退回去；再往外一层是阈值告警，负责在**没有人盯着灰度**的时候把 5xx 率、P99、熔断开闸叫出来。最外层是链路追踪 —— 告警说"错了多少"，span 说"错在哪一跳"。最后是故障注入：前面这些能力都是"等真故障发生时才验证"，而它可以主动把故障造出来，把重试、熔断、告警、自动回滚一次性演练一遍。
 
@@ -16,6 +18,25 @@
 
 ### 🚀 新增
 
+- **WAF 重写为声明式规则引擎**（`Aneiang.Yarp.Plugin.Waf` 2.0）
+  - **5 个硬编码检查器 → 一条有序规则管线**。每个规则 = 可选的**内置检测器**（`sql-injection` / `xss` / `path-traversal`）+ 可选的**条件集合**（用来限定检测范围）+ 一个**动作**。条件与检测器同时存在时是"在这个范围内跑这个检测"，只有条件时条件本身就是规则 —— 所以"只对 /api 开 SQL 检查""拦掉 UA 是扫描器的请求""给合作方打标签"都不需要改代码
+  - **条件用一个形状覆盖全部来源**：`source`（method / path / query / body / header / cookie / userAgent / ip / contentType / bodySize）× `op`（equals / contains / prefix / suffix / regex / cidr / greaterThan / lessThan），再用 `matchMode: all | any` 组合。没有"每个来源一个字段"那种爆炸式的配置面
+  - **五个动作**：`block`（拦截）、`allow`（停止求值并放行）、`log`（只记录）、`tag`（写 `X-Waf-Tag` 给上游）、`rate-limit`（同一个请求打太多次就限速）。`allow` 让白名单能表达成规则，而不是只能靠 IP 名单
+  - **`rate-limit` 是闸门，不是流量整形**。配额是"同一个规则命中太多次就别再来了"（`limit: 5, window: 1m, partition: ip`），**没有队列** —— 把攻击者的请求排队只会把他们的洪水变成我们的延迟。窗口用**固定**而不是滑动：滑动的目的是"只要长期均值没超就放突发过"，而闸门存在的意义就是拦住突发；固定窗口还让 `Retry-After` 是精确值（秒级取整，最小 1）
+  - **被拒绝的请求不延长窗口**，否则闸门会退化成永久封禁
+  - **配额桶与限流插件完全隔离**。路由配额是对客户的承诺（"1000/min"），WAF 配额是对行为的判断（"五次失败尝试"）；共用键空间意味着被拦的请求会悄悄吃掉客户的合法额度。共享的只有语法（`30s` / `1m` / `1h`）
+  - **裸数字在校验期就被拒**。`TimeSpan.Parse("300")` 是 300 **天** —— 把"写错的单位"放大成"三个月封禁"。`300` 在交给 `TimeSpan` 之前就被拦掉，规则丢弃并记 warning，不静默按毫秒或秒猜
+  - **`rate-limit` 允许没有检测器和条件**。其他动作的"空规则"会被丢弃（它什么都不会做），但一个无条件的全局限速是合法且安全的 —— 它自带一个明确的数字
+  - **`mode: monitor`**：同一套规则照常运行、照常记日志，但一条都不拦。上线一条新规则的正确顺序是先观察它命中了哪些真实请求，再决定要不要拦 —— 没有这个模式，第一次发现误报只能是在用户投诉之后
+  - **拦截响应可定制**：状态码、Content-Type、响应体、附加响应头，规则还能单独覆盖状态码。默认在 `X-Waf-Rule` 里写明是哪条规则命中 —— 拿到一个 403 时第一个问题永远是"哪条规则干的"
+  - **正文检查按内容和大小门控**：只扫 `text/*`、JSON、XML、表单、GraphQL（含 `+json` / `+xml` 后缀），`multipart/*` 与二进制类型直接跳过；超出 `maxBytes`（默认 64KB，上限 1MB）的请求体**不截断扫描**，直接跳过 —— 截断扫描对大上传只有成本没有覆盖
+  - **不再全量缓冲请求体**。原先 `EnableBuffering()` 不带任何上限，为了扫前 100KB 会把整个上传落到临时文件；现在按已声明的 `Content-Length` 精确分配，只在内存里缓冲，读完立即复位供后续管线读取
+  - **配置错误不会关掉整个防火墙**。未知字段忽略（不再是 `Disallow` 导致整条绑定反序列化失败），坏正则 / 未知动作 / 未知检测器只丢弃**那条规则**并记一条 warning，其余规则照常生效
+  - **零迁移**：旧的 `enableSqlInjectionDetection` / `ipWhitelist` / `maxRequestBodySize` 等字段全部保留，`rules` 为空时自动合成原来的三条内置规则。IP 与大小校验作为前导始终生效，`allow` 规则**不能**绕过 IP 封禁
+  - 内置检测器同时重写：关键词不再单独命中，只匹配有攻击形状的构造（`union select`、`; drop table`、`select … from` 的列清单形式、引号后的 `--`、`sleep()`、`information_schema` 等）
+  - **Dashboard 换成规则卡片式编辑器**。原来通用的 schema 表单把 `rules[] → conditions[]` 摊成两层「Item 1」，配一条规则要先面对 14 个字段。现在一条规则是一张卡片，标题直接读成一句话（`拦截 SQL 注入（路径 前缀 /api/）`）。首屏只有四处可改：检测什么、在哪里比、比什么、怎么处理；`tag` 只在打标签时出现，`statusCode` 只在拦截时出现，`matchMode` 只在两个以上条件时出现，`header` / `cookie` 名只在需要它的来源上出现。操作符按来源过滤（路径条件上没有 `cidr`，UA 条件上没有 `greaterThan`），值控件跟着变（方法带建议、大小带字节换算、CIDR 校验格式、正则用等宽字体）。`id` / `name` 折进「标识与名称」—— 规则能跑之前没人需要先给它起名。新增六个模板（SQL 注入 / XSS / 路径穿越 / IP 网段 / 频率限制 / 仅观察）、规则上下移与复制、拦截/放行/记录/打标签/限流五色左边线。限流卡片把「次数 / 窗口 / 按 / 状态码」排在一行，标题读成 `限流 5 次 / 1m（按 IP）`；切走动作时残留的 `rateLimit` 会被清掉，避免一个不生效的配置留在 JSON 里误导人
+  - **双轨制在界面上被讲清楚**。`rules` 非空时三个内置开关本来就不参与检测，但旧表单照样显示、照样可点，等于让人以为关掉 SQL 检测就安全了。现在规则非空时它们变灰并注明原因，另给一个「转成可编辑规则」把开关变成三条真实规则（顺序与编译器一致：路径穿越 → SQL 注入 → XSS），行为不变但从此可见可改
+  - **面板校验比后端严，因为后端的容错是静默的**。编译器对写错的条件是「丢弃那一条 + 记 warning」，所以空值的条件不会让保存失败 —— 它会悄悄消失，而一条本该只作用于 `/admin` 的规则就变成全站生效。面板因此在保存前拦住空值、非法正则、非法 CIDR、缺 Header 名的条件，并把问题逐条列在顶部
 - **多环境配置隔离**（`Gateway:Storage:Environments`）
   - **每环境一个 SQLite 文件，不是每表加一列**。`prod` 用原连接串（`gateway-store.db`），其余环境派生后缀（`gateway-store.dev.db`）。好处有三个：存量部署升级时**零迁移**，数据还在原处；dev 库损坏不影响 prod（爆炸半径隔离）；不需要动任何表结构、任何 SQL、任何仓储
   - **两个概念，显式拆开**：`RuntimeEnvironment`（启动即固定，决定转发）与 `CurrentEnvironment`（可切换，决定面板读写）。构造时二者相等，切换后不等，此时**发布快照会被拒绝**
@@ -26,6 +47,58 @@
   - Dashboard 顶部新增环境切换器：编辑运行环境时是灰色 + 绿色 `LIVE` 徽标；编辑非运行环境时变琥珀色并写明"仍在转发 prod"。单环境部署时**整个控件不显示**，行为与升级前完全一致
   - 切换确认框显式说明"页面数据会换成该环境的配置，正在转发的流量不受影响，未保存内容会丢失"
   - `<prefix>/api/environments`（读）与 `<prefix>/api/environments/switch`（写）
+- **环境间差异与一键提升**（v2.6 #1b/#1c）
+  - **`GET <prefix>/api/environments/diff`**：按字段渲染成 `Destinations: 2 → 5` 这样的可读文本，而不是 `-{...}+{...}`。只比较**会改变流量行为**的字段（路径/域名/方法/顺序/变换/策略/超时/请求体上限；LB 策略/会话保持/健康检查/目标列表），改个描述不算差异
+  - **跨环境读靠"借作用域"，不靠切视图**。`StorageEnvironmentScope`（`AsyncLocal<string?>`）让一次请求读写指定环境的库，而面板视图不动 —— 切换环境会重载工作集并触发发布，副作用远大于"看一眼"
+  - **两步提升**：`POST promote/prepare` 返回差异 + 问题清单 + **单次令牌**（5 分钟有效），`POST promote/apply` 必须带这个令牌。令牌用过即从字典移除，被拒绝的 apply 不能重放
+  - **指纹哈希的是配置输入，不是渲染后的差异**。第一版用差异做指纹，测试直接证明它会漏：一个"新增"的路由在差异里不带字段明细，于是批准之后偷偷改它的内容，差异完全相同，提升照常通过 —— 审的是一份东西，应用的是另一份。现在 `ConfigFingerprint.Of(source, target)` 哈希两侧配置本身
+  - **候选配置用自己的集群校验**。拿 staging 的路由去对 prod 的集群表校验，方向是随机的：既会拦下合法提升，也会放过非法提升。校验器只看"这一份配置自身是否成立"（空来源、重复路由 id、指向不存在集群的路由、永远匹配不到的路由、没有目标节点的集群、非 http(s) 的绝对地址）
+  - `EnvironmentPromotionService` 只依赖三个窄接口（`IEnvironmentConfigStore` / `IEnvironmentReloader` / `IPromotionAudit`），测试不需要伪造发布与版本号机制
+  - 面板顶部环境切换器旁新增对比入口，弹窗里选源/目标 → 看差异（新增/删除/修改分色，逐字段前→后）→ 确认（明写对线上流量的影响）→ 应用 → 重新加载
+- **RBAC 三角色**（v2.6 #2，见 `docs/adr/ADR-004-rbac-three-roles.md`）
+  - `viewer` / `operator` / `admin`，切分依据是**爆炸半径而不是资历**：只读者看得到一切、改不了任何东西；运维能改网关；管理员才能动"决定谁能改网关"的东西（装卸插件、通知目标）
+  - **viewer 按 HTTP 方法拒绝**（任何非 GET/HEAD/OPTIONS），不是按路径白名单 —— 后者会随页面增加而失效：新加一个页面就出现一个新的写入口，而没人记得回去更新那张表
+  - **operator 按路径拒绝**，且列表是默认允许：新增的运维端点自动可用。代价被显式接受 —— 反方向（运维被自己的面板挡住）每天都在发生
+  - **角色走 JWT 的 `role` claim**，不在每个请求里查账号表。副作用是降权需要重新登录，而这恰好是权限收紧时想要的语义：不靠"等他下次刷新"来撤销权限
+  - **`Users` 为空时退回原来的单账号行为**（按管理员处理），升级零配置改动。角色名打错按管理员处理并写日志 —— 不让面板起不来，也不静默降权
+  - **逐账号 2FA**：`TwoFactorSecret` 缺省继承面板级配置
+  - **403 带 `reason` 码**（`read-only` / `admin-required`），前端翻成本地语言。看到的是"当前账号为只读，不能修改任何配置"，不是一个裸 403 加一句英文
+  - **面板按角色隐藏写操作**：`data-requires-write` / `data-requires-admin` 两个属性 + 一条 CSS 规则（不是 JS 扫描，所以页面后来渲染出来的工具栏同样生效）；顶部显示角色，只读账号上方常驻一条说明。环境切换器整体隐藏 —— 切换环境会重新发布，它是写操作而不是筛选器
+  - **无法归属的身份一律视为隐式管理员**：认证关闭、API Key、自定义委托。没有账号可归属时假装有角色，只会锁死存量部署；`Implicit` 标记一路传到前端，只为了让只读横幅不在一台没开认证的机器上谎报
+- **部署物三件套**（v2.6 #3）
+  - **`dotnet new aneiang-yarp`**（`Aneiang.Yarp.Templates`）：一条命令生成能跑的网关 —— YARP、SQLite 存储、面板已经接好，自带多阶段 Dockerfile 与「哪些是自动的、哪些必须自己改」的 README。`--Framework` 选 `net8.0` / `net9.0`。模板引用的是**打包产物**而不是源码，所以它验证的正是用户拿到的东西
+  - **`deploy/docker/Dockerfile`**：官方参考镜像（跑本仓库的 `SampleGateway`）。非 root（uid 10001）、`HEALTHCHECK` 打 `/health`、连接串指到 `/app/data` + `VOLUME`、`curl` 只为探针而装（aspnet 基础镜像既无 curl 也无 wget，探针命令不存在时的"永远不健康"比没有探针更糟）。**它不是给人 `FROM` 继承的基底镜像** —— 网关是你自己的项目
+  - **`deploy/helm/aneiang-yarp`**：Deployment / Service / gRPC Service / ConfigMap / Secret / PVC / Ingress / ServiceAccount / NOTES，探针、资源、安全上下文都有默认值
+  - **chart 会拒绝渲染 `replicaCount > 1`**（除非显式 `allowMultipleReplicas: true`）。配置存储是一个 SQLite 文件，两个副本就是两份互不知道对方的路由表 —— 与其渲染出来再让运维在生产上发现"刚保存的路由不见了"，不如在 `helm install` 时就报错并说明原因
+  - **`strategy: Recreate`**，不是 RollingUpdate：ReadWriteOnce 的卷不能让新旧 pod 同时挂载，滚动更新会卡在 Multi-Attach
+  - **gRPC 单独一个 Service**（`appProtocol: kubernetes.io/h2c`）：很多 ingress controller 按 Service 决定后端协议，把 h2c 和 HTTP/1.1 放同一个 Service，要么被忽略，要么把整条链路降级
+  - **`checksum/config` 注解**：没有它，改 values 再 `helm upgrade` 只会更新 ConfigMap，跑着的 pod 还是旧路由
+  - **凭据随机生成并 `keep`**：`auth.jwtPassword` 留空时安装过程生成随机密码写进 NOTES 并可从 Secret 取回，Secret 与 PVC 都带 `helm.sh/resource-policy: keep` —— `helm uninstall` 不该顺手删掉所有路由、也不该让所有人掉线
+  - **`auth.users` 按下标注入环境变量**（配置绑定在环境变量里没有数组语法），注释写明下标必须从 0 连续，中间空一个会静默截断列表
+  - **CI 新增 `deployables` 作业**：把本 commit 打成包喂给模板并真的编译它、`helm lint` + 渲染 + 断言关键对象齐全 + 断言 `replicaCount: 2` 的守卫仍然生效、`docker build` 不推送。三个产物都是"装得上但用不了"的高发区，而这类问题只在用户那里暴露
+- **管理 API OpenAPI 文档**（v2.6 #5）
+  - **文档从 `EndpointDataSource` 生成，不是手写契约**。面板的控制器**就是**这个 API；手写的 spec 在有人加第一个接口的那天就开始漂移，而一份会撒谎的文档比没有文档更糟 —— 它会让第三方的集成在生产上失败
+  - **按路径前缀收口，不按命名空间**：插件自带控制器挂在同一个 `<prefix>/api/` 下。第一版按 `Aneiang.Yarp.Dashboard` 命名空间过滤，结果 `circuit-breaker` 的三个接口凭空消失；集成方按文档写完，调过去 404
+  - **schema 由 CLR 类型推导，推导不出来就给宽松 schema**。`JsonElement` / `JsonNode` 参数只标注「原生 YARP 配置对象，结构见文档『配置参考』」并留一个空 schema —— 编一个看起来精确的假 schema 是主动制造故障。类型图有深度上限与环检测：环上返回空 schema，宁可"任意"也不要栈溢出
+  - **`[FromBody]` 必须先于"注入服务"判定**。真实控制器里 48 个 `[FromBody]`，第一版只有 8 个出现了 `requestBody`：判定把 `Aneiang.Yarp.*` 命名空间一律当服务，而请求模型全在这个命名空间下。修好后 37 个 —— 剩下 11 个是 GET 上的可选模型或本身就是原始 JSON
+  - **`required` 按 MVC 的规则算，不是"引用类型即可选"**：`[FromBody] Model body` 是必填，`Model? body` 或带默认值才可选。契约写着"可选"的必填体，调用方会跳过它然后收到 400
+  - **路由模板兜底**：`AttributeRouteInfo` 缺失时取 endpoint 自己的 route pattern，约定路由的控制器因此也进文档，而不是被静默丢掉
+  - **`<prefix>/api/openapi.json`**：OpenAPI 3.1，95 条路径 / 110 个操作，`components.securitySchemes` 同时给出 bearer 与 api key，403 的说明里写明 `read-only` / `admin-required` 两个 reason 码
+  - **`<prefix>/api-docs` 是一个零依赖的独立页面**：不引 CDN、不引 Swagger UI —— 一个连自己都解释不了的控制面，恰好会在最需要它的时候（离线、内网、CDN 被墙）什么都解释不了。页面按 tag 分组、可过滤、逐操作展开参数/请求体/响应，并且自带「返回控制台」入口
+  - 侧栏「系统管理」新增 **API 文档** 入口；页面无 Layout 是刻意的：文档页要能单独发给对接方
+  - 不引 `Microsoft.OpenApi` / Swashbuckle：整份文档就是一个 JSON 对象，为此背上一个自带版本策略的模型库不划算
+- **插件市场三件套**（v2.6 #4）
+  - **`dotnet new aneiang-yarp-plugin`**：一条命令生成能装进宿主的外部插件。`dotnet publish` 出来的目录直接拷进 `plugins/` 就能被识别 —— `plugin.json` 与程序集、依赖一起躺在那里
+  - **`plugin.json` 是生成的，不是手写的**。构建时由 `plugin.manifest.json` 渲染，五个带 `$...$` 的字段来自 csproj 属性：`entryAssembly` ← `$(AssemblyName).dll`、`entryType` ← `$(RootNamespace).XxxEntry`、`version` ← `$(Version)`。理由是这三个字段错了**只有别人装上去才会暴露**，改成推导就不可能留下一个指向旧 dll 的清单
+  - **模板不把契约程序集打进插件目录**（`ExcludeAssets="runtime"`）。宿主始终用自己的那一份；否则就是两个 `IGatewayPlugin` 类型互相不认，报出来的错没人看得懂
+  - **`docs/plugins/plugin-compatibility.md`**：内置 11 个插件的作用域/能力/`order`/schema 版本/依赖矩阵，加上 `plugin.json` 运行时校验表、外部插件的"能做 / 不能做"对照表、版本演进记录
+  - **`PluginContractTests`（12 个）**：钉的是那些**坏了也不报错**的不变量 —— id 格式与唯一性、清单与实例的 id/名称/版本一致、版本是语义化版本、`order` 互不重复（重复会让管线顺序取决于字典遍历顺序）、schema 是合法 JSON 对象、声明了 `LoadBalancingPolicy`/`Transform` 的插件必须实现 `IGatewayPluginHostServices`、依赖能在已装插件里解析、以及兼容矩阵与代码里的插件集合**双向一致**（文档少一个或多一个都红）
+  - CI 的 `deployables` 作业新增一步：实例化插件模板 → `dotnet publish` → **断言渲染出来的 `plugin.json`**（id / entryAssembly / entryType / capabilities 四处）→ 断言契约程序集**不在**插件目录里。插件模板的失败方式和网关模板不同：它编译得过，然后宿主拒绝加载
+- **两处"配置好了但从不执行"的修复**（跟 #4 一起暴露出来的）
+  - **代理管线顺序改为读 manifest `order`，不再用宿主里写死的 8 个内置 id**。写死的列表决定谁能参与，意味着不在列表里的插件配好了、绑好了、面板上也亮着，但中间件永远不被调用。`compression` 正好在这个洞里：它的 `CompressionMiddleware`（按路由、可配 `minResponseSize`/`mimeTypes`/`level`）从来没跑过，实际生效的是面板层那个全局 `UseResponseCompression()` —— 也就是说压缩插件的绑定是纯装饰。外部插件更是全都进不去
+  - 修好后顺序仍是原来那个（rate-limit → circuit-breaker → compression → request-retry → response-cache → proxy-log → traffic-metrics → cluster-metrics → fault-injection），因为内置插件的 `order` 本来就是照这个排的；变化的只是 `compression` 归位、以及对第三方插件打开
+  - 不会双重压缩：ASP.NET Core 的响应压缩在 `Content-Encoding` 已存在时跳过，而插件的中间件在更内层先执行
+  - **`IGatewayPlugin.ConfigureMiddleware` 的注释改成实话**：它只对内置 `waf` 生效。应用级管线在启动时构建完成，插件是之后才启用/重载的，所以没法再往里加中间件；写在里面的中间件是静默空操作。模板样例原本就写在 `ConfigureMiddleware` 里 —— 幸好按"模板必须验证可用"的规矩跑了一遍真实网关才发现
 - **故障注入插件**（`Aneiang.Yarp.Plugin.FaultInjection`）
   - 按路由注入三件事：**延迟**（上下限随机）、**错误状态码**（400–599 + 自定义响应体）、**连接中断**（模拟传输层故障，而不是上游 5xx）
   - **位置是刻意的：它排在代理管线最内侧，紧挨 forwarder**。这样注入的故障对管线外层与真实上游故障无法区分 —— 重试会重试它、熔断会记它、指标记一次 5xx、告警会响、灰度会因此回滚。放到最外层就变成一场什么都没验证的演练，因为被演练的组件根本没看见故障
@@ -119,15 +192,47 @@
 - **变更差异预览**：保存前用自然语言列出变化（`删除目标节点 d1：http://…` / `匹配路径：/a → /b` / `策略 RateLimiterPolicy：不启用 → gw-rl-100pm`），含"删除"的变更额外二次确认；差异同时写入配置历史的 summary
 - **配置版本号 + 乐观并发**：`GET /api/config/state` 返回 `{ version, lastModified, routes, clusters }`；所有写操作读取 `X-Config-Version`（或 `expectedVersion` 查询参数），版本不一致返回 `409` 与 `currentVersion`；`dashboard-api.js` 自动注入并在写成功后回读
 
+### 🎨 界面
+
+- **插件市场页（`<prefix>/plugin-market`）** —— v2.6 #4 的后端（`POST api/plugins/install`、`DELETE api/plugins/{id}`、`{id}/upgrade`）上一批就有了，但**没有任何页面调用它们**，`install` 连 `DashboardApi` 里的封装都没写。这一批补上：
+  - 自托管网关没有远端商店，也不该有 —— 面板没法验证一份它下载不到的代码。所以"市场"在这里只做三件真事：**当前装了什么（含来源）**、**从本机目录安装/升级/卸载**、**外部插件必须满足的契约**
+  - 卡片而不是表格：这里要回答的是"这东西干什么"，一句话说明在表格列里活不下来。内置 11 个 + 外部插件同屏，来源用徽标区分（内置 / 外部），外部插件才出现升级与卸载
+  - 概览条四个数（内置 / 外部 / 已启用 / 待绑定）回答"装了什么"，之后再问"哪一个"；筛选段上直接挂计数，不必先切筛选才知道有没有外部插件
+  - **三种空状态给三条不同的下一步**：注册表为空（去看启动日志）、还没装外部插件（给出 `dotnet new` / `publish` 三步命令）、筛选无结果（清空筛选）。合并成一句"暂无数据"就是让人以为页面坏了
+  - 安装对话框**失败时不关闭**：目录里缺 `plugin.json`、TFM 不匹配这类原因只有服务端那句话说得清
+  - 安装/升级/卸载标 `data-requires-admin`、启用开关标 `data-requires-write`，与 ADR-004 的角色边界一致（这三条在 `DashboardRolePolicy` 里本来就是管理员专属）
+- **插件配置页的面板改为由注册表生成**。视图里原本手写了 10 个 `.pc-tab-panel`，而 JS 注册表里有 11 个插件 —— 漏掉的正好是 `fault-injection`。`renderConfigPanel` 找不到宿主就静默返回，于是点开是一整片空白，控制台没有任何报错。现在面板由 `REGISTRY` 逐个创建，注册表是唯一来源；万一容器仍不存在，标签上会出现一个红色 `!` 而不是一片安静
+- **链路追踪页重构**。原来一屏里三件事混在一起，读起来像仪表盘而不是链路：
+  - **状态带**分成三列，一列一个问题：**在跑吗**（状态徽标 + 服务名 + 配置节）、**数据去哪**（`grpc → http://…` 或「仅内存」+ 缓冲与捕获数）、**采样多少**（滑块 + 百分比 + 应用，说明就在控件下面）。原来是徽标、滑块和 5 个同级指标挤在一行，采样的解释离控件两行远
+  - 补上 **`等重启生效`** 这个状态：`enabled=true` 但 tracer 还没起来时，"开启"和"在工作"确实不是一回事
+  - **链路列表改成两行式并对齐**：第一行是请求，第二行是 `路由 → 集群 → 目标` 的跳链（这是要跟其它页面互相印证的东西；原来五个 chip 在同一行里抢位置）。列头与行共用一套 grid 模板，**耗时右对齐并配一条相对长度条**，慢的那一条一眼能看出来，不用逐行比数字
+  - **瀑布图有时间轴**：0 / ¼ / ½ / ¾ / 总量五档刻度与 25% 网格线，列头写明 Span / 时间分布 / 耗时，底部有颜色图例。原来是一堆没有参照的彩色条
+  - 追踪页的 60 行样式从 5k 行的布局文件搬进页面自己，类名统一加 `tr-` 前缀
+- **五个「后端有接口、面板没有入口」的功能补了前端**。起因是一次全量对账：把 28 个控制器的 142 个端点与 `wwwroot/js` + `Views` 的引用做双向差集，发现有一批能力**能用 curl 调、在面板里点不到**。对一个控制面产品来说，"接口存在"和"用户能完成这件事"是两回事 —— 前者只是后者的必要条件。
+  - **配置全量体检**（`GET api/config/integrity`）。路线图 §4.2 把它标成"已交付"，但它从来没有被任何页面调用过，唯一的使用方式是 curl。现在配置历史页有「全量体检」入口，报告按错误/警告分组，每条带**字段路径与修复建议**（`Routes.r1.ClusterId` → "这条路由会直接返回 503，请补建集群或改指向"），并给一个**直达出问题那条路由/集群**的按钮。没有这个按钮，报告只是一份"你有问题"的通知
+  - **深链定位**（`?focus=<id>`）。上面那个按钮要落到具体一行才闭环，所以路由页与集群页现在认 `?focus=`：等列表渲染出来（`MutationObserver`，不是固定 setTimeout），滚到那一行、加左侧高亮、4 秒后淡出，然后把参数从地址栏删掉。参数留着会让刷新重复高亮一个已经修好的条目
+  - **熔断阈值**（`GET api/circuit-breaker/config`）。熔断页原来只有状态表，而状态表只能显示**已经评估过**的集群 —— 配了阈值但还没流量的集群在 `/status` 里根本不存在，看起来像"没配置"。现在下方多一张「熔断阈值定义」表，逐集群列出启用状态、失败阈值、恢复时间、半开探测次数、触发条件（失败率 ≥ x% · 样本 ≥ n · 窗口 n 秒）与计入的响应码；有实时状态的集群在行内叠加状态徽标，没有的显示「未触发」并解释原因
+  - **策略预设的删除与应用**（`DELETE api/presets/{id}`、`POST api/presets/{id}/apply`）。预设原本只能"存"和"读"：建了删不掉，只能越积越多；选中预设只是把配置填进表单，还要再点一次保存 —— 于是"我选了预设"和"预设生效了"之间隔着一步，而那一步没人提醒。现在表单旁有「应用」（直接把预设写进当前绑定，跳过表单）和「删除」（预设是共享定义，删它不动任何在跑的绑定，所以确认框只说删哪一个，不说会坏什么）
+  - **批量绑定启停与删除**（`POST api/plugin-bindings/batch-enabled`、`batch-delete`）。之前只有批量**创建**，没有批量**关/删**。插件配置页的绑定表加了行复选框、全选（带 indeterminate 状态）和一个"有选中才出现"的操作条；单条 toggle 会触发重载，所以选择状态存在 render 之外，否则点一次单条开关就把勾选清空了
+  - **配置快照队列指标**（`GET api/config/snapshot/metrics`）。快照是后台异步写的，队列满了或丢弃了，时间线上唯一的症状是**某个版本不存在** —— 和"没人改过"长得一模一样。配置历史页因此常驻一条队列状态带（队列 / 已处理 / 失败 / 丢弃 / 容量），有失败、丢弃或队列打满时整条变琥珀色并明说"时间线中可能缺少版本"
+
 ### 🔧 架构改进
 
 - 新增 `Modules/GatewayConfig/Services/ConfigurationValidator.cs`（`IConfigurationValidator`），写路径统一为"校验通过才落盘"
 - 新增 `Infrastructure/Policies/GatewayPolicyCatalog.cs`，`AddGatewayPolicies()` 追加式注册（与宿主已有的 `AddAuthorization` / `AddCors` 共存），全部 `TryAdd`/`AddXxx(options)` 语义
 - 新增 `Infrastructure/Observability/`：`GatewayMetricsCollector`（无 DI 依赖、线程安全、有界基数）、`GatewayMetricsMiddleware`、`GatewayMetricsRenderer`
 - `ConfigControllerBase` 新增 `TryRejectStaleWrite()` 与 `HasDestinations()`（后者避免"首次建集群 + 建路由"时误报集群不存在）
+- 新增**插件配置编辑器扩展点** `PluginConfigEditors`（`js/core/plugin-config-editors.js`）。通用 schema 渲染器遇到嵌套的「对象数组」时就只能输出「Item 1」，而 WAF 的 `rules[] → conditions[]` 是两层。现在插件可以自带编辑器接管整个表单：`renderGroupedFields` 先查注册表，命中就把 host 交给插件；`readSchemaForm` 认 host 上的 `__readConfig()`（返回完整 config 或 null）。两个调用方（Route/Cluster 的能力弹窗、插件中心的绑定弹窗）**不改一行**就都切换到新界面，以后其它插件也能按同一契约接入
 
 ### 🐛 修复
 
+- **「故障注入」的插件配置页点开是空白**。视图里手写了 10 个 `.pc-tab-panel`，JS 注册表里有 11 个插件，缺的那个正是 `fault-injection`；`renderConfigPanel` 用 `document.querySelector` 找宿主，找不到就 `return`，于是标签在那儿、面板不存在、所有面板又被统一 `display:none` 掉 —— 页面上什么都没有，控制台也什么都没有。这类"静默返回"的失败比抛异常难查，因为没有任何一处报错。修法不是补一个 div，而是**把面板交给注册表生成**（`#pc-panels` 挂载点），顺手加了兜底标记
+- **「备份数据库」按钮在中文界面显示英文**。`dashboard-settings.js` 用 `t('settings.config.backupBtn', 'Backup Database')`，而 `core.json` 里这个键从来没加过 —— 键缺失时 `t()` 落到第二个参数，于是中文界面读到的是英文兜底。同一个键在 2.3.0.40 的中英文包里都不存在，所以英文界面反而正确。补上中英双语，并加了测试防止再出现（见「测试」）
+- **文件上传被 WAF 100% 拦成 403（Gitee #IKW95C，严重）**。SQL 检测的关键词正则里有 `\B--`，而 `\B` 是"非单词边界"、`-` 本身是非单词字符 —— 所以只要 `--` 前面是空格、`=` 或行首就会命中，而 multipart 的每一行 boundary 都是 `------WebKitFormBoundary…`，行首正好是换行。结果就是**任何走 WAF 路由的文件上传都返回 403**，`details` 里写的还是 boundary 本身。同一个正则也扫查询串，`?args=--verbose`、`?q=--help` 这类参数同样被拦
+  - 第二个原因在中间件：读 body 的开关只看"有没有 POST/PUT/PATCH 和 Content-Length"，**不看 Content-Type**，PDF、图片都被当 UTF-8 文本做正则匹配
+  - 第三个原因在缓冲策略：`EnableBuffering()` 不带上限，为了扫前 100KB 会把整个上传落到临时文件
+  - 三处都在 WAF 重写里一并解决（见「新增 / WAF 重写为声明式规则引擎」）。顺带把"关键词单独出现就算攻击"这一整类误报也去掉了：`select a size from the list` 这种正常文案不会再被当成注入
+- **启用 WAF 路由后的第一个请求可能被当成攻击拒掉（偶发 403）**。三个内置检测器用 `RegexOptions.Compiled`，首次匹配时才 JIT 编译，而这次编译的耗时**计入** 50ms 的匹配超时预算；超时按命中处理（安全边界），于是机器稍忙时第一个通过 WAF 的请求会返回 403，之后全部正常。表现出来的样子是全量测试并行跑时约 1/3 概率红一个用例、单独跑永远绿 —— 一开始容易被当成测试不稳定，实际是启动期的一个真实误拦。改为在类型初始化时预热三个正则，把一次性编译成本从"误拦一个请求"变成"启动慢一次"；预热失败也吞掉，否则静态构造函数抛异常会让整个类型永久不可用
 - **连接串为空时所有环境会共用同一个库文件**（写这个特性时被测试抓出来）。原本空串直接 `return "Data Source=gateway-store.db"`，于是 dev 与 prod 指向同一文件，隔离形同虚设 —— 而这种配置在实际部署里很常见（只写了 `Provider` 没写连接串）。改为先补默认串再走派生
 - **面板的路由 / 集群列表跨环境串味**（端到端撞出来）。两个查询服务把缓存键硬编码成 `dashboard:routes:query`，切环境后 5 秒内仍返回上一个环境的内容。现在键里带环境名，并且 `InvalidateQueryCaches()` 改成向服务要失效，不再按硬编码键名删
 - **重试耗尽后请求变成未处理异常，真实 5xx 被吞掉（严重，由故障注入演练暴露）**。`RequestRetryMiddleware` 在把缓冲响应拷回客户端**之后**才写 `X-Retry-Count`：
@@ -163,6 +268,16 @@
 
 ### 📝 文档
 
+- 新增 `deploy/README.md`：三种部署方式的区别、共用约束（单副本、存储必须在容器外、认证默认开启、探针用业务端口）、Docker/Helm 用法与常用覆盖、以及一份部署后按顺序执行的验证清单
+- 两个 README 各新增一节「部署（2.3.0.40）」/「Deployment (2.3.0.40)」，只讲三条命令和两条必读约束，细节指向 `deploy/README.md`
+- 新增 `templates/Aneiang.Yarp.Templates`（`dotnet new` 模板包），内容自带 README：路由/存储/面板各在哪、怎么用 API 建路由、认证怎么改、生产环境要改哪几项、插件包的实际情况
+- 新增 `docs/adr/ADR-004-rbac-three-roles.md`：三档角色的切分依据（爆炸半径而非资历）、为什么 viewer 按方法拒绝而 operator 按路径拒绝、为什么无法归属的身份按隐式管理员处理、`Gateway:Dashboard:Auth` 完整配置形态（含逐账号 `Role` 与 `TwoFactorSecret`）、以及三条明确写下的负面后果
+- `docs/adr/README.md` 索引补 ADR-004
+- 路线图 §0.1 / §6 v2.6 按实际状态更新（**v2.6 6/6**），并补「#1b/#1c 差异与提升、#2 RBAC、#6 rate-limit」复盘 8 条、「#3 部署物、#5 OpenAPI」复盘 10 条
+- 新增 `docs/plugins/plugin-compatibility.md`：11 个内置插件的作用域/能力/`order`/schema/依赖矩阵、`plugin.json` 运行时校验表、外部插件"能做 / 不能做"对照表（含 `ConfigureMiddleware` 不生效这条）、版本演进记录、自测命令
+- `templates/Aneiang.Yarp.Templates/content/AneiangYarpPlugin/README.md`：`plugin.json` 为什么是生成的、清单里三个容易填错的字段、怎么加配置、版本兼容
+- `README.md` / `README.zh-CN.md` 新增「Plugin development （2.3.0.40）」/「开发插件（2.3.0.40）」与「Management API reference」/「管理 API 文档（2.3.0.40）」两节
+- `README.md` / `README.zh-CN.md` 新增「WAF (2.3.0.40)」/「WAF 防火墙（2.3.0.40）」：规则模型、条件矩阵、五种动作（含 `rate-limit` 的固定窗口与独立桶语义）、monitor 上线流程、正文检查边界与完整配置示例
 - `README.md` / `README.zh-CN.md` 新增「Multi-Environment （2.3.0.40）」/「多环境（2.3.0.40）」：运行时与编辑视角的区别、文件布局、切换用法与代价、升级零迁移的保证
 - `samples/SampleGateway/appsettings.examples/appsettings.MultiEnvironment.json`：可直接用的三环境配置
 - 路线图 §6 v2.6 第 1 项标记为分批交付，写明已完成与未完成的部分
@@ -176,14 +291,50 @@
 - **README 增加「我们明确不做的事」**（中英同步，6 条非目标 + 理由 + 替代方案）：API 门户、自带 IdP、日志存储与检索、Service Mesh 控制面、K8s Ingress Controller、分布式限流
 - **三个 ADR 落地** `docs/adr/`：ADR-001 单控制面、ADR-002 开放 LB/Transform 扩展点、ADR-003 限流只留扩展位
 - 路线图 `docs/product/yarp-product-roadmap.md` 逐项标记交付状态
+- **路线图与代码对齐一次**：§4.2 灰度、§5 RICE 表五行（权重路由 / 指标告警阈值 / WAF / 多环境 / RBAC）仍标着 ⬜/🔵/🟡，实际早已交付；测试数在文档里同时写着 207 / 158 / 117 三个数，统一为当前真实值；「管理页面 14 个」补上插件市场与 API 文档页后是 16 个；`ProxyPluginOrder` 已被 manifest `order` 取代，两处引用改回现行机制（第三处保留，因为它正是记录这次替换的复盘）
+- **i18n 重复键清零**：中英各有 46 个键定义在两个域文件里，`DashboardI18n.LoadLocale` 按固定顺序合并、后者覆盖前者，于是「改哪一份生效」取决于顺序 —— zh 有 34 个、en 有 28 个键的两个副本值不同（`diff.title` 一份写「配置对比」一份写「配置差异对比」，屏幕上是后者）。按命名空间归属合并（`webhook.*` → `webhook.json`、`diff.*` / `history.*` → `config.json`、`common.*` / `settings.*` / `index.*` / `layout.*` → `core.json`），**每处都取当前实际生效的那份值**，所以清理前后屏幕上的字一个不变；顺带修正语言选择器：两个语言项一律用各自的语言书写（简体中文 / English），原先 en-US 包里 `settings.locale.zhCN` 曾被写成中文
 
 ### ✅ 测试
 
+- **`DashboardEndpointCoverageTests`（2 个）—— 这条测试是这次返修的直接产物**。起因是"后端有接口、面板没入口"被证实不是个别现象（一次差集就找出 5 类 6 个功能），所以除了补前端，更要把判据固化下来：扫描全部控制器里以 `/api/` 开头的端点，要求每一个在 `wwwroot/js` + `Views` 的源码里都有调用点。
+  - 匹配必须能被"人真正写出来的 URL"满足，否则它会用一堆假阳性把自己变成噪音。前端既写字面量，也写 `var API = '/api/canary'; API + '/rollouts/' + id + '/abort'`，还写模板字符串。做法是先把 `var X = '/api/...'` 的前缀内联进同文件，再抹掉引号与 `+`，让拼接读成一串字符；模板里的参数位是 `[^\n]{0,160}?`，**不跨行** —— 跨行通配会把相隔两行的两条 URL 接起来，那是最容易骗过这类测试的写法
+  - 第一次跑报了 15 个 canary / alerts / environments 端点，全是"前缀变量 + 拼接"写法，说明是匹配精度不足而不是功能缺失。这条用例有一半价值在于它**必须不误报**
+  - 白名单只放两类，且各有理由：`/api/gateway/*` 是被代理服务调用的客户端自注册 SDK（本仓库的 UI 不该调它），`/api/plugin-resources/{pluginId}`、`/totals`、`GET /api/presets/{id}` 是冗余读（集合端点已返回同样字段）。另有一条用例断言**白名单不腐烂**：条目对不上真实端点就红，否则它只会越长越大
+  - 还有一条下限断言（`>= 90` 个端点）：解析器写坏时得到一个空集合，会让"全部通过"成为最危险的假绿
+- 真实网关（SampleGateway，非单测）复核了这次补的每个入口：`GET api/config/integrity` 200 且返回 `{ok, errors[], warnings[{severity,field,message,hint}]}`（实测报出一条"集群未被任何路由引用"的警告，正是这个接口该说的话）；`GET api/circuit-breaker/config` 200，返回 `baidu` 集群的 8 个阈值字段；`GET api/config/snapshot/metrics` 200（队列 / 已处理 / 失败 / 丢弃 / 容量）；`GET /aneiang/history`、`/circuits`、`/plugin-center` 全 200，HTML 里能查到新按钮、报告模态，以及新增的中英键（`history.integrity.*` 13 个、`history.queue.*` 6 个、`circuit.thresholds.*` 12 个、`pluginPage.batch*` 9 个）
+- 部署物单独做了一次端到端验证（非单测，本机无 docker/helm，这部分由 CI 的 `deployables` 作业覆盖）：
+  - `dotnet pack` 模板包 → `dotnet new install` → `dotnet new aneiang-yarp -n MyGateway` → 用本 commit 打出的本地包源 `dotnet build`：**0 警告 0 错误**，`AneiangYarpGateway` → `MyGateway` 在文件内容与文件名上都被正确替换（`ENTRYPOINT ["dotnet", "MyGateway.dll"]`、`RootNamespace`）
+  - 真的把生成的网关跑起来（`dotnet MyGateway.dll`，Production）：`/health` `/ready` `/aneiang/login` 全 200；`POST /aneiang/login` 返回的 JWT 解出 `"role":"admin"`；`GET /aneiang/api/auth/status` 返回 `role=admin, isImplicitRole=false, canWrite=true, canAdminister=true` —— RBAC 的 claim 与状态接口在真实进程里跑通
+  - 顺手发现两处文档不能说的话，已改：① 登录端点是 `POST <prefix>/login`，不是 `api/auth/login`；② 集群的 `destinations` 是**以名字为键的对象**，不是数组（写成数组会得到 400 加一句 JSON 路径错误）。另外核实了 `Aneiang.Yarp.Dashboard` 依赖**全部**内置插件包（配置插件需要它的 schema），所以"插件是可选包、只有用到才装"这句话只对不带面板的纯数据面成立 —— 模板 README 与 csproj 注释都改成了准确表述
+  - **未验证**：`PUT api/config/routes/{id}` 之后立刻访问该路由仍返回 404（重启进程后同样），沙箱内无法核实是环境问题还是产品行为，已交由用户在面板里确认
+- 用量 **579** 个（上一批 489）：新增 `EnvironmentPromotionTests`（16 个）、`DashboardRoleTests`（52 个）、`OpenApiDocumentBuilderTests`（18 个）、`PluginContractTests`（12 个）、`DashboardI18nTests`（6 个）、`DashboardEndpointCoverageTests`（2 个），`WafEngineTests` 补 9 个、`WafMiddlewareTests` 补 3 个
+- `DashboardI18nTests`（6 个）是补界面时顺手加的，因为它当场抓到一个真缺陷：**中英两包键集合一致**（少一个键在运行时只会静默回落到另一种语言）、**占位符一致**（翻译漏掉 `{count}` 会渲染出一句缺数字的话）、**没有非预期的空白值**（`个` / `个生效中` 这类量词在英文里故意留空，白名单里只放这三个）、**视图与脚本引用的每个字面量键都存在**。最后一条会逐文件识别 `t(key) => __('malert.' + key)` 这种带命名空间前缀的包装、以及 `t('verdict' + record.verdict)` 这种拼接键，避免误报；它抓出了 `settings.config.backupBtn` 缺失
+- `No_key_is_defined_in_more_than_one_domain_file`（1 个）是这次 i18n 清理的判据，不只是"清完留个记录"。它按域文件统计键的出现次数，任何一个键落在两个文件里就红。这条能立住的前提是**清理时保留的是屏幕上的值**：如果顺手把"更通顺"的那份留下，等于在没人知道的情况下改了界面文案；如果留下的是没生效的那份，界面就会立刻回退成旧文案。两种都属于"删重复删出了新 bug"
+- `PluginContractTests`（12 个）里最值得留的一条是**矩阵与代码双向一致**：内置插件少写进文档是"集成方看不到"，文档多写一行是"集成方去装一个不存在的插件"。两边都钉，才能保证这份矩阵不是一份会过期的宣传材料
+- `Orders_are_unique_across_plugins` 钉住一个很容易被忽略的耦合：代理管线顺序是 `(order, id)`，两个插件 `order` 相同仍然能跑，但实际顺序变成了"id 排序靠前的先执行"—— 加插件的人不会想到去查这个
+- `OpenApiDocumentBuilderTests`（18 个）钉的是生成出来的契约本身：只有 `<prefix>/api/` 下的端点进文档（页面路由与外部前缀都不进）、`BasePath` 带尾斜杠也会被归一化（否则 `//api/` 让整份文档变空）、同路径多动词合成一个 path item、没有动词约束的端点被跳过（凭空写成 `get` 就是假契约）、无 XML 文档时摘要回落为 `Get Routes`、路由模板参数进 `path` 且必填、标量进 `query` 且可空即选填、`CancellationToken` 与无 `[FromBody]` 的复杂参数被丢弃、请求体由 CLR 类型推导（含枚举名、`array`/`additionalProperties`）、自引用类型不递归爆栈、原始 JSON 体留空 schema 并写明原因、403 描述里带两个 reason 码、整份文档能过一遍 JSON 解析器
+- 其中一条是**回归守卫**：`Build_KeepsPayloadTypesDeclaredInOwnNamespaces` —— `[FromBody]` 必须先于"注入服务"判定，否则声明在 `Aneiang.Yarp.*` 下的请求模型全被当成服务丢掉
+- OpenAPI 另跑了一遍真实网关（SampleGateway，非单测）：`GET /aneiang/api/openapi.json` 200 / 166 KB，**95 条路径 110 个操作**，`requestBody` 从修复前的 8 个涨到 37 个（48 个 `[FromBody]` 里剩下的是 GET 上的可选模型），插件控制器（`circuit-breaker` 等）在列；`GET /aneiang/api-docs` 200，按钮与提示文案完整（`POST /aneiang/login` 已正确插值），侧栏「系统管理 → API 文档」入口可点
+- 插件模板也走了一遍**完整链路**（非单测）：`dotnet pack` → `dotnet new install` → `dotnet new aneiang-yarp-plugin -n DemoPlugin --PluginId demo-plugin` → `dotnet publish`（0 警告 0 错误）→ 把 output 目录整个拷进宿主的 `plugins/demo-plugin/` → 重启网关
+  - 启动日志 `Plugin 'demo-plugin' state loaded from gateway_plugins: True` + `External plugin demo-plugin v1.0.0 loaded into a candidate runtime domain`
+  - `GET api/plugins` 返回 **12** 个（11 内置 + demo-plugin），字段与 `plugin.json` 一致
+  - 面板里启用后请求被代理的路由，响应头出现 `X-Plugin-Id: demo-plugin` —— 第一次跑**没有**这个头，正是这里挖出了上面那个"代理管线顺序写死"的 bug
+  - 发布目录里**没有** `Aneiang.Yarp.Plugin.Abstractions.dll`，确认 `ExcludeAssets="runtime"` 生效
+- `EnvironmentPromotionTests` 钉住的是"审的和应用的是同一份东西"：提升从**目标**的角度描述（`Destinations: 2 → 5` 而不是 `-{...}+{...}`）、新增/删除/修改分色归类、配置完全相同时 `Identical` 为真、指纹在两侧任一变化时必须改变（第一版用差异做指纹，正是这条用例把它打红的）、来源为空时拒绝、候选配置引用另一环境的集群时必须拦下、没有目标节点的集群必须拦下、相对地址必须拦下、prepare→apply 成功路径、来源在批准后被改动要 409、目标在批准后被改动要 409、未知令牌拒绝、同一环境提升到自己拒绝、被拒绝的 apply 不能重放
+- `WafEngineTests` 新增的 9 个钉 `rate-limit` 的编译语义：正常配额可编译、缺配额按丢弃处理（不默认成 60）、无条件的全局限速**保留**（其他动作会被丢弃，这里不能）、`300` 这种裸数字被拒、未知分区被拒、`limit` 为 0 或负数被拒
+- `WafMiddlewareTests` 新增的 3 个钉运行时行为：超配额返回 429 且 `Retry-After: 3600`（窗口剩余量，不是固定值）、不满足条件的路径不计数（否则一条只针对 `/login` 的限速会拦掉整站）、monitor 模式下记录事件但放行
+- `DashboardRoleTests`（52 个）分成三段：角色名解析（大小写不敏感、`read-only`/`ops` 别名、未知值回落并报错、空值静默回落）；拒绝规则（viewer 三种安全方法通过、四种写方法一律 `read-only`；operator 改路由/集群/绑定/环境通过，装卸插件与改通知目标一律 `admin-required`，但**仍可读**这两处；admin 全通；`api/plugin-bindings` 与 `api/plugins/*` 不能混为一谈）；身份解析（认证关闭 / API Key / 自定义委托 → 隐式管理员；token 里的角色如实生效；**没有 `role` claim 的老 token 取账号配置的角色而不是默认管理员**；未知账号的老 token 保持可用；JWT 模式但拿不到 token → viewer；伪造签名的 token 不会变成管理员）
+- 用量 461 个（上一批 387）：新增 `WafEngineTests`（57 个）、`WafMiddlewareTests`（17 个）。WAF 原先**一个测试都没有** —— 这也是那类误报能活到现在的原因
+- `WafEngineTests` 有一半是**误报回归**：multipart 信封、PDF 头、`q=--help`、`select a size from the list`、`well -- known`、`/* not an injection */`、`{"promo":"it's a deal"}` 必须放行；`' OR '1'='1`、`admin'--`、`UNION SELECT`、`; DROP TABLE users`、`INSERT INTO`、`WAITFOR DELAY`、`<script>`、`onerror=`、`javascript:`、`../../etc/passwd`、`%2e%2e%2f` 必须拦下。两侧都钉，是因为只钉"能拦住"的规则很容易顺手把正常流量一起拦掉
+- `WafEngineTests` 的另一半钉编译期语义：坏正则只丢那一条规则（其余照常）、既没检测器也没条件的规则**不能**匹配一切（否则一条 `action: block` 就把整条路由打死）、`tag` 没给值就丢弃、状态码越界只记 warning 并回落到 403、`requiresBody` 只在内置检测器或 body 条件存在时才为真、条件超时按不命中处理而内置检测器超时按命中处理
+- `WafMiddlewareTests`（17 个）钉请求侧的实际行为：multipart 上传被转发、PDF 被转发、`--help` 被转发、JSON body 注入返回 403 且带 `X-Waf-Rule: sql-injection`、**检查过 body 之后下一个管线仍能读到完整 body**、超过扫描预算的 body 不被截断、monitor 模式只记录不拦、`allow` 规则能在同一路径上豁免、`tag` 规则让上游看到 `X-Waf-Tag`、自定义响应体与状态码生效、控制面路径永不被检查
+- 另跑了一遍真实网关（SampleGateway + 本地 echo 上游，19 项断言全过）：multipart 上传 200 且**上游收到的字节数与发出的一致**（证明读完 body 复位没丢数据）、PDF 200、`?args=--verbose&cmd=--help` 200、`select … from` 文案 200、JSON body 注入 403 且 `X-Waf-Rule: sql-injection`、查询串注入 403、XSS 403、`..%2f..%2fetc%2fpasswd` 403、monitor 模式同一 payload 变 200、`allow` 规则只在指定前缀生效（同 payload 在前缀外仍 403）、tag 规则让上游看到 `partner`、自定义 429 + `slow down` 生效、全程 0 条未处理异常
 - 用量 387 个（2.5.0 为 358）：新增 `GatewayEnvironmentRegistryTests`（13 个）、`SqliteEnvironmentConnectionStringTests`（11 个）、`EnvironmentIsolationIntegrationTests`（4 个，真实容器 + 真实 SQLite 文件）
 - `SqliteEnvironmentConnectionStringTests` 钉的是几条会被想当然的地方：运行环境**原样返回**配置串（这是零迁移的根据）、后缀加在扩展名之前（`store.dev.sqlite` 而不是 `store.sqlite.dev`）、SQLCipher 的 `Password` 与其他参数在派生后仍然保留（丢了就只有切过去时才发现打不开）、`:memory:` 与不可解析串不做猜测
 - `GatewayEnvironmentRegistryTests` 钉住 `Runtime` 永远在列表里（否则切走就切不回来）、大小写不敏感去重、以及 7 种可能逃出库目录的名字必须被拒绝
 - `EnvironmentIsolationIntegrationTests` 是这批里最重要的一组：它不信任何单点，而是把容器、库、工作集、已发布快照串起来跑。其中 `Switching_to_a_non_runtime_environment_does_not_publish_or_forward_its_config` **在临时停用发布守卫后确实变红**（1 failed / 3 passed），确认它不是靠巧合绿着
 - 另跑了一遍真实网关（SampleGateway + 两个真实 SQLite 文件，11 项断言全过）：`api/environments` 报 `runtime=prod multi=true`；prod 建 `prod-only` → 切 dev（`published=false`，列表为空）→ dev 建 `dev-only` → `prod.db` 与 `prod.dev.db` 两个文件同时存在 → 切回 prod（`published=true`）→ 列表回到 `prod-only`，`dev-only` 未出现；`../prod`、`..`、`pr od`、`prod.db`、`nope` 五种非法名全部 400；全程无未处理异常
+- 面板的规则编辑器另外用无头 DOM 桩跑了 39 项**数据**断言（一次性验证，未加入测试项目 —— 视觉部分由人验收）。钉的是保存出来的 config 对不对：正常配置往返不丢字段；**monitor 不会被归一化改回 enforce**（实现时确实踩到过，`normalise()` 清默认值顺手把 `mode` 也删了）；编译器会静默丢弃的条件在面板里全部被拒绝（空值 / 非法正则 / 非法 CIDR / 缺 Header 名 / 空规则 / 状态码越界）；禁用的草稿规则不阻塞保存且 `enabled: false` 保留；旧绑定保存后不会凭空多出 `rules: []`（日志里会被读成"运维清空了规则"）；「转成可编辑规则」生成的三条与编译器合成顺序一致（路径穿越 → SQL 注入 → XSS）
 - `dotnet build Aneiang.Yarp.sln` 0 警告 0 错误
 - 用量 358 个（2.4.1 为 158）：新增 `WeightedLoadBalancingPolicyTests`（25 个，含 90/10、99/1、并发 400 次仍精确、表变更重置、**权重在同一个 `DestinationState` 上被就地替换后仍然生效**）、`PluginHostServiceTests`（12 个）、`CanaryRolloutEvaluatorTests`（9 个）、`CanaryWeightPlannerTests`（10 个）、`CanaryRolloutServiceTests`（11 个，`FakeClock` 驱动）、`MetricAlertEvaluatorTests` + `MetricAlertRuleValidatorTests` + `GatewayMetricsPercentileTests`（31 个）、`MetricAlertServiceTests`（16 个，`FakeClock` 驱动）、`GatewayTracingTests`（7 个）、`TraceRingBufferTests`（9 个）、`TracingSamplerAndServiceTests`（10 个）、`FaultInjectionPlannerTests`（20 个）、`FaultInjectionMiddlewareTests`（11 个）、`RequestRetryResponseTests`（2 个），`ConfigurationValidatorTests` 补 8 个权重用例
 - `MetricAlertServiceTests` 钉住的是语义而不只是数字：`Pending` 阶段恢复不发通知、静默期间数值继续更新、持续未恢复按间隔重复提醒、无流量时不判定恢复、重启后残留告警关闭
@@ -216,13 +367,16 @@
 | 5 | OpenTelemetry 追踪 | ✅ 分层 span + OTLP 导出 + 确定性采样 + 仅内存瀑布图 |
 | 6 | 故障注入插件 | ✅ 延迟 / 错误码 / 连接中断 + 请求头门 + 一键关绑定 |
 
-**v2.6 第 1 项「多环境」拆三批**
+**v2.6 六项（2.3.0.40 全部交付）**
 
-| 批次 | 内容 | 状态 |
+| # | 项 | 状态 |
 |:--:|:--|:--|
-| 1a | 环境模型 + 每环境独立存储 + 运行时/编辑视角分离 + 切换 | ✅ **2.3.0.40** |
-| 1b | 环境间 diff（路由/集群/绑定逐项差异） | ⬜ 未开始 |
-| 1c | 一键提升 + 审批（依赖 1b 与 RBAC） | ⬜ 未开始 |
+| 1 | 多环境配置隔离与一键提升 | ✅ 1a 环境隔离与切换 + 1b 环境间 diff + 1c 两步提升（prepare/apply + 单次令牌 + 配置指纹复核） |
+| 2 | RBAC（只读 / 运维 / 管理员） | ✅ 三角色 + 逐账号 2FA + 403 `reason` + 面板按角色隐藏写操作（ADR-004） |
+| 3 | 官方 Docker 镜像 + Helm Chart + `dotnet new` 模板 | ✅ 三件套 + CI `deployables` 作业（模板真的编译、chart 真的渲染、镜像真的构建） |
+| 4 | 插件市场（模板 + 版本兼容矩阵 + 契约测试） | ✅ `aneiang-yarp-plugin` 模板（`plugin.json` 由 MSBuild 渲染）+ 11 插件兼容矩阵 + 12 个契约测试 + 代理管线改按 `order` 排序 + **`<prefix>/plugin-market` 页面**（来源区分、按目录安装/升级/卸载、契约说明） |
+| 5 | 管理 API OpenAPI 文档 | ✅ `EndpointDataSource` 生成 + OpenAPI 3.1（95 路径 / 110 操作）+ 零依赖渲染页 + 侧栏入口 |
+| 6 | 自定义 WAF 规则（条件表达式 + 动作） | ✅ 十种来源 × 八种操作符 + 五种动作（含 `rate-limit`）+ monitor 预演 + 面板卡片式编辑器 |
 
 ---
 

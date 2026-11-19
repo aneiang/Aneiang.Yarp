@@ -188,14 +188,14 @@
                     </span>
                 </div>
                 <div class="notif-endpoint-list" data-list="${pd.key}">${listHtml}</div>
-                <div class="notif-add-row">
+                <div class="notif-add-row" data-requires-admin>
                     <input type="url" class="form-control form-control-sm notif-new-url" data-platform="${pd.key}" placeholder="${pd.placeholder}">
                     <input type="text" class="form-control form-control-sm notif-new-secret" data-platform="${pd.key}" placeholder="${esc(__('webhook.secret.placeholder.' + pd.key))}">
                     <button type="button" class="btn btn-sm btn-outline-primary notif-test-btn" data-platform="${pd.key}" title="${esc(__('notif.test'))}">
                         <i class="bi bi-send"></i>
                     </button>
                 </div>
-                <div class="notif-test-row">
+                <div class="notif-test-row" data-requires-admin>
                     <button type="button" class="btn btn-sm btn-success notif-save-btn" data-platform="${pd.key}"
                         ${state.testPassed[pd.key] ? '' : 'disabled'} title="${esc(state.testPassed[pd.key] ? __('notif.platform.save') : __('notif.platform.saveDisabled'))}">
                         <i class="bi bi-check-lg me-1"></i>${esc(__('notif.platform.save'))}
@@ -213,13 +213,13 @@
             <div class="notif-endpoint-url-row">
                 <i class="bi bi-robot" style="color:${pd.color};font-size:14px;"></i>
                 <span class="flex-grow-1 text-truncate" style="font-size:12px;font-family:monospace;color:#334155;" title="${esc(ep.url)}">${esc(displayUrl)}</span>
-                <button type="button" class="btn btn-sm btn-link text-danger p-0 notif-remove-btn" data-platform="${pd.key}" data-index="${idx}" title="${esc(__('webhook.removeEndpoint'))}">
+                <button type="button" class="btn btn-sm btn-link text-danger p-0 notif-remove-btn" data-platform="${pd.key}" data-index="${idx}" data-requires-admin title="${esc(__('webhook.removeEndpoint'))}">
                     <i class="bi bi-trash3" style="font-size:13px;"></i>
                 </button>
             </div>
             <div class="notif-endpoint-secret-row">
                 <i class="bi bi-key" style="color:#94a3b8;font-size:11px;"></i>
-                <input type="password" class="form-control form-control-sm notif-secret-input" data-platform="${pd.key}" data-index="${idx}"
+                <input type="password" class="form-control form-control-sm notif-secret-input" data-platform="${pd.key}" data-index="${idx}" data-requires-admin
                     value="${esc(ep.secret || '')}" placeholder="${esc(__('webhook.secret.placeholder.' + pd.key))}"
                     autocomplete="off" style="font-size:12px;font-family:monospace;padding:3px 8px;">
                 <button type="button" class="notif-secret-toggle" data-platform="${pd.key}" data-index="${idx}" title="${esc(__('webhook.secret.show'))}">

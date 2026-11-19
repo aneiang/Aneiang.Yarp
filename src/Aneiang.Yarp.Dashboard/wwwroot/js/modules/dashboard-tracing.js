@@ -1,13 +1,21 @@
 /**
  * Distributed tracing page.
  *
- * Renders two things from one endpoint: the tracing *configuration* (is it on, where does it
- * export, how much is sampled) and the *traces themselves*. Both belong on the same screen because
- * the only useful question in front of an empty list is "why is it empty" - and the answer is
- * always one of those two halves.
+ * Three areas, in the order a person actually needs them:
  *
- * The list deliberately shows sampled traces only. It is the same processor the exporter uses, so
- * "it is not here" really does mean "it was not traced", not "the UI lost it".
+ *   1. 状态带  - is it running, where does the data go, how much is sampled.
+ *                These are the only three answers that explain an empty list, so
+ *                each gets its own column instead of sharing one wrapped row with
+ *                five other numbers.
+ *   2. 链路列表 - one grid template for the header and every row, so durations
+ *                line up and can be compared without reading digits. Each row has
+ *                two lines: the request, then the route → cluster → destination hop
+ *                chain - the thing you correlate with the rest of the dashboard.
+ *   3. 瀑布图   - a time axis with quarter lines, labelled columns and a colour
+ *                legend. Before this, bars floated in an unlabelled box.
+ *
+ * The list shows sampled traces only, from the same processor the exporter uses, so
+ * "not here" really does mean "not traced" rather than "the UI lost it".
  */
 (function () {
     'use strict';
@@ -32,7 +40,7 @@
     }
 
     function fmtMs(ms) {
-        if (ms == null || isNaN(ms)) return '-';
+        if (ms == null || isNaN(ms)) return '–';
         if (ms >= 1000) return (ms / 1000).toFixed(2) + ' s';
         if (ms >= 10) return Math.round(ms) + ' ms';
         return ms.toFixed(1) + ' ms';
@@ -52,57 +60,71 @@
         if (!el || !state.data) return;
 
         var s = state.data.status || {};
+
         var badge, badgeClass;
         if (!s.enabled) {
             badge = t('trace.status.disabled', '未启用');
-            badgeClass = 'bg-secondary';
+            badgeClass = 'tr-badge--off';
         } else if (!s.running) {
             badge = t('trace.status.failed', '启动失败');
-            badgeClass = 'bg-danger';
+            badgeClass = 'tr-badge--fail';
+        } else if (s.restartRequired) {
+            /* Configured on, not yet in effect: the one state where "on" and
+               "working" genuinely differ, so it gets its own label. */
+            badge = t('trace.band.pendingRestart', '等重启生效');
+            badgeClass = 'tr-badge--muted';
         } else {
             badge = t('trace.status.running', '运行中');
-            badgeClass = 'bg-success';
+            badgeClass = 'tr-badge--on';
         }
 
-        var meta = [
-            [t('trace.status.service', '服务名'), s.serviceName || '-'],
-            [t('trace.status.endpoint', '导出地址'),
-                s.exportEnabled ? (s.protocol + ' → ' + (s.endpoint || '-')) : t('trace.status.noExport', '仅内存')],
-            [t('trace.status.buffer', '内存缓冲'), (s.bufferCount || 0) + ' / ' + (s.bufferCapacity || 0)],
-            [t('trace.status.spans', '已捕获 Span'), String(s.spansCaptured || 0) +
-                (s.spansDropped ? ' (' + t('trace.status.dropped', '丢弃') + ' ' + s.spansDropped + ')' : '')],
-            [t('trace.status.decisions', '采样判定 / 丢弃判定'), (s.sampledTraces || 0) + ' / ' + (s.droppedTraces || 0),
-                t('trace.status.decisions.hint',
-                    '判定次数包含控制面与健康检查请求：它们在采样之后就被过滤掉，不入缓冲也不导出，' +
-                    '所以这个数会大于实际捕获的链路数。')]
-        ];
+        var exportText = s.exportEnabled
+            ? '<span class="tr-endpoint">' + esc((s.protocol || 'otlp') + ' → ' + (s.endpoint || '-')) + '</span>'
+            : '<span class="tr-badge tr-badge--muted"><i class="bi bi-hdd"></i>' +
+                esc(t('trace.status.noExport', '仅内存')) + '</span>' +
+              '<span class="text-muted small">' + esc(t('trace.band.noExportHint', '没有导出到 Jaeger / Tempo')) + '</span>';
 
-        var metaHtml = meta.map(function (row) {
-            return '<div class="trace-meta-item"' + (row.length > 2 ? ' title="' + esc(row[2]) + '"' : '') + '>' +
-                '<div class="text-muted small">' + esc(row[0]) + '</div>' +
-                '<div class="trace-meta-value">' + esc(row[1]) + '</div></div>';
-        }).join('');
+        var buffer = (s.bufferCount || 0) + ' / ' + (s.bufferCapacity || 0);
+        var spans = (s.spansCaptured || 0) +
+            (s.spansDropped ? ' · ' + t('trace.status.dropped', '丢弃') + ' ' + s.spansDropped : '');
 
         var percent = Math.round((s.samplingRatio || 0) * 100);
 
         el.innerHTML =
-            '<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">' +
-                '<div class="d-flex align-items-center gap-2">' +
-                    '<span class="badge ' + badgeClass + '">' + esc(badge) + '</span>' +
-                    '<span class="text-muted small">' + esc(s.sectionName || '') + '</span>' +
+            '<div class="tr-band__seg">' +
+                '<div class="tr-band__label" data-i18n="trace.band.state">' + esc(t('trace.band.state', '运行状态')) + '</div>' +
+                '<div class="tr-band__value">' +
+                    '<span class="tr-badge ' + badgeClass + '"><i class="bi ' +
+                        (badgeClass === 'tr-badge--on' ? 'bi-record-circle' : 'bi-exclamation-circle') + '"></i>' +
+                        esc(badge) + '</span>' +
+                    '<span class="tr-svc">' + esc(s.serviceName || '-') + '</span>' +
                 '</div>' +
-                '<div class="d-flex align-items-center gap-2 trace-sampling">' +
-                    '<label class="small text-muted mb-0" for="trace-sampling">' +
-                        esc(t('trace.sampling.label', '采样率')) + ' <strong id="trace-sampling-value">' + percent + '%</strong>' +
-                    '</label>' +
+                '<div class="tr-band__note"><code>' + esc(s.sectionName || '') + '</code></div>' +
+            '</div>' +
+
+            '<div class="tr-band__seg">' +
+                '<div class="tr-band__label" data-i18n="trace.band.export">' + esc(t('trace.band.export', '数据出口')) + '</div>' +
+                '<div class="tr-band__value">' + exportText + '</div>' +
+                '<div class="tr-band__note">' +
+                    esc(t('trace.status.buffer', '内存缓冲')) + ' ' + esc(buffer) +
+                    ' · ' + esc(t('trace.status.spans', '已捕获 Span')) + ' ' + esc(spans) +
+                '</div>' +
+            '</div>' +
+
+            '<div class="tr-band__seg tr-band__sampling">' +
+                '<div class="tr-band__label" data-i18n="trace.band.sampling">' + esc(t('trace.band.sampling', '采样率')) + '</div>' +
+                '<div class="tr-band__value">' +
                     '<input type="range" class="form-range" id="trace-sampling" min="0" max="100" step="1" value="' + percent + '">' +
+                    '<span class="tr-pct" id="trace-sampling-value">' + percent + '%</span>' +
                     '<button class="btn btn-sm btn-outline-primary" id="trace-sampling-apply">' +
                         esc(t('trace.sampling.apply', '应用')) + '</button>' +
                 '</div>' +
-            '</div>' +
-            '<div class="trace-meta">' + metaHtml + '</div>' +
-            '<div class="text-muted small mt-2">' + esc(t('trace.sampling.hint',
-                '采样率只影响新请求，无需重启。低采样率下这里和 Jaeger 里都只会看到一部分链路。')) + '</div>';
+                '<div class="tr-band__note">' +
+                    esc(t('trace.band.samplingHint', '只影响新请求，无需重启')) +
+                    ' · ' + esc(t('trace.band.filtered', '已判定 / 已丢弃')) + ' ' +
+                    (s.sampledTraces || 0) + ' / ' + (s.droppedTraces || 0) +
+                '</div>' +
+            '</div>';
 
         var slider = document.getElementById('trace-sampling');
         var label = document.getElementById('trace-sampling-value');
@@ -131,7 +153,7 @@
         }
     }
 
-    /* ------------------------------------------------------------------ notices */
+    /* ----------------------------------------------------------------- notices */
 
     function renderNotice() {
         var el = document.getElementById('trace-notice');
@@ -164,7 +186,7 @@
     function notice(kind, title, body) {
         var icon = kind === 'danger' ? 'bi-exclamation-octagon'
             : kind === 'warning' ? 'bi-exclamation-triangle' : 'bi-info-circle';
-        return '<div class="alert alert-' + kind + ' py-2 px-3 mb-3 trace-notice">' +
+        return '<div class="alert alert-' + kind + ' py-2 px-3 mb-3">' +
             '<div class="fw-semibold mb-1"><i class="bi ' + icon + '"></i> ' + esc(title) + '</div>' +
             '<div class="small">' + body + '</div></div>';
     }
@@ -177,7 +199,13 @@
         if (!el || !state.data) return;
 
         var traces = state.data.traces || [];
-        if (count) count.textContent = traces.length ? traces.length + ' / ' + (state.data.status.bufferCapacity || 0) : '';
+        var capacity = (state.data.status || {}).bufferCapacity || 0;
+        if (count) {
+            count.textContent = traces.length
+                ? t('trace.list.count', '列出的条数') + ' ' + traces.length +
+                  (capacity ? ' / ' + t('trace.list.capacity', '缓冲') + ' ' + capacity : '')
+                : '';
+        }
 
         if (!traces.length) {
             var s = state.data.status || {};
@@ -186,17 +214,28 @@
                 : (s.samplingRatio < 1
                     ? t('trace.list.emptySampled', '当前采样率较低，请求还没被抽中。把采样率调到 100% 再试。')
                     : t('trace.list.emptyHelp', '发一个请求后这里就会出现链路。'));
-            el.innerHTML = '<div class="text-center text-muted py-4">' +
-                '<i class="bi bi-bezier2" style="font-size:1.6rem;"></i>' +
-                '<div class="mt-2">' + esc(t('trace.list.empty', '还没有链路')) + '</div>' +
-                '<div class="small mt-1">' + esc(hint) + '</div></div>';
+            el.innerHTML = '<div class="tr-empty">' +
+                '<i class="bi bi-bezier2"></i>' +
+                '<div class="tr-empty__title">' + esc(t('trace.list.empty', '还没有链路')) + '</div>' +
+                '<div class="tr-empty__hint">' + esc(hint) + '</div></div>';
             return;
         }
 
-        el.innerHTML = traces.map(rowHtml).join('');
-        el.querySelectorAll('.trace-row').forEach(function (row) {
+        /* Relative bar scale. A shared maximum makes "which one is slow" a glance
+           instead of a comparison of numbers across rows. */
+        var max = 0;
+        traces.forEach(function (tr) { if (tr.durationMs > max) max = tr.durationMs; });
+        if (max <= 0) max = 1;
+
+        el.innerHTML = traces.map(function (tr) { return rowHtml(tr, max); }).join('');
+        el.querySelectorAll('.tr-row').forEach(function (row) {
             row.addEventListener('click', function () {
-                toggleTrace(row.getAttribute('data-trace'));
+                toggleTrace(row.parentElement.getAttribute('data-trace'));
+            });
+            row.addEventListener('keydown', function (event) {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                toggleTrace(row.parentElement.getAttribute('data-trace'));
             });
         });
 
@@ -204,68 +243,74 @@
         // waterfall the operator is in the middle of reading.
         Object.keys(state.expanded).forEach(function (id) {
             if (!state.expanded[id]) return;
-            var item = el.querySelector('.trace-item[data-trace="' + id + '"]');
+            var item = el.querySelector('.tr-item[data-trace="' + id + '"]');
             if (item) {
                 item.classList.add('is-open');
-                var body = item.querySelector('.trace-body');
+                var body = item.querySelector('.tr-body');
                 if (body) body.style.display = '';
                 if (state.details[id]) renderDetail(id);
             }
         });
     }
 
-    function rowHtml(trace) {
+    function rowHtml(trace, maxDuration) {
         var cls = statusClass(trace.statusCode, trace.status);
-        var codeBadge = trace.statusCode
-            ? '<span class="badge trace-code ' + cls + '">' + trace.statusCode + '</span>'
-            : '<span class="badge trace-code ' + cls + '">' + esc(trace.status) + '</span>';
+        var code = trace.statusCode
+            ? '<span class="tr-code ' + cls + '">' + trace.statusCode + '</span>'
+            : '<span class="tr-code ' + cls + '">' + esc(trace.status || '?') + '</span>';
 
-        var route = trace.routeId
-            ? '<span class="trace-chip">' + esc(trace.routeId) + '</span>'
-            : '';
-        var cluster = trace.clusterId
-            ? '<span class="trace-chip">' + esc(trace.clusterId) + '</span>'
-            : '';
-        var dest = trace.destinationId
-            ? '<span class="trace-chip trace-chip-dest">' + esc(trace.destinationId) + '</span>'
-            : '<span class="trace-chip trace-chip-dest">' +
-                esc(t('trace.noDestination', '未到目标')) + '</span>';
+        /* Hop chain on its own line: route → cluster → destination. Missing hops are
+           dropped rather than rendered as "未到目标" chips, which is what made a
+           short-circuited trace look like three broken values. */
+        var hops = [];
+        if (trace.routeId) hops.push('<span class="tr-hop tr-hop--route">' + esc(trace.routeId) + '</span>');
+        if (trace.clusterId) hops.push('<span class="tr-hop tr-hop--cluster">' + esc(trace.clusterId) + '</span>');
+        if (trace.destinationId) hops.push('<span class="tr-hop tr-hop--dest">' + esc(trace.destinationId) + '</span>');
 
-        var flags = '';
+        var path = hops.length
+            ? hops.join('<i class="bi bi-chevron-right tr-arrow"></i>')
+            : '<span class="tr-hop">' + esc(t('trace.noRoute', '未匹配路由')) + '</span>';
+
         if (trace.shortCircuited) {
-            flags += '<span class="badge bg-warning text-dark">' +
+            path += '<span class="tr-flag tr-flag--short">' +
                 esc(t('trace.badge.shortCircuit', '插件拦截')) + '</span>';
         }
         if (trace.truncated) {
-            flags += '<span class="badge bg-secondary">' +
+            path += '<span class="tr-flag tr-flag--trunc">' +
                 esc(t('trace.badge.truncated', '已截断')) + '</span>';
         }
 
-        return '<div class="trace-item" data-trace="' + esc(trace.traceId) + '">' +
-            '<div class="trace-row" role="button" tabindex="0">' +
-                '<i class="bi bi-chevron-right trace-caret"></i>' +
-                codeBadge +
-                '<span class="trace-name">' + esc(trace.rootName || trace.traceId) + '</span>' +
-                route + cluster + dest + flags +
-                '<span class="trace-duration ms-auto">' + esc(fmtMs(trace.durationMs)) + '</span>' +
-                '<span class="trace-spans text-muted small">' + (trace.spanCount || 0) + ' ' +
-                    esc(t('trace.spans', 'span')) + '</span>' +
-                '<span class="trace-time text-muted small">' +
-                    esc(new Date(trace.startedAt).toLocaleTimeString()) + '</span>' +
+        var pct = Math.max(2, Math.min(100, Math.round((trace.durationMs / maxDuration) * 100)));
+        var barCls = cls === 'is-error' ? 'is-err' : (pct >= 70 ? 'is-slow' : '');
+
+        return '<div class="tr-item" data-trace="' + esc(trace.traceId) + '">' +
+            '<div class="tr-row" role="button" tabindex="0">' +
+                '<i class="bi bi-chevron-right tr-row__caret"></i>' +
+                code +
+                '<div class="tr-row__main">' +
+                    '<div class="tr-row__name"><em>' + esc(trace.rootName || trace.traceId) + '</em></div>' +
+                    '<div class="tr-row__path">' + path + '</div>' +
+                '</div>' +
+                '<div class="tr-row__dur">' +
+                    '<b>' + esc(fmtMs(trace.durationMs)) + '</b>' +
+                    '<div class="tr-durbar"><i class="' + barCls + '" style="width:' + pct + '%"></i></div>' +
+                '</div>' +
+                '<span class="tr-row__spans">' + (trace.spanCount || 0) + '</span>' +
+                '<span class="tr-row__time">' + esc(new Date(trace.startedAt).toLocaleTimeString()) + '</span>' +
             '</div>' +
-            '<div class="trace-body" style="display:none;"></div>' +
+            '<div class="tr-body" style="display:none;"></div>' +
         '</div>';
     }
 
     async function toggleTrace(traceId) {
-        var item = document.querySelector('.trace-item[data-trace="' + traceId + '"]');
+        var item = document.querySelector('.tr-item[data-trace="' + traceId + '"]');
         if (!item) return;
 
         var opening = !state.expanded[traceId];
         state.expanded[traceId] = opening;
         item.classList.toggle('is-open', opening);
 
-        var body = item.querySelector('.trace-body');
+        var body = item.querySelector('.tr-body');
         if (body) body.style.display = opening ? '' : 'none';
         if (!opening) return;
 
@@ -274,7 +319,9 @@
             return;
         }
 
-        if (body) body.innerHTML = '<div class="text-muted small p-2">' + esc(t('trace.loading', '加载中...')) + '</div>';
+        if (body) {
+            body.innerHTML = '<div class="text-muted small p-2">' + esc(t('trace.loading', '加载中...')) + '</div>';
+        }
         try {
             var detail = await DashboardApi.request('/api/tracing/traces/' + encodeURIComponent(traceId), { silent: true });
             state.details[traceId] = detail;
@@ -287,22 +334,35 @@
         }
     }
 
+    /* ---------------------------------------------------------------- waterfall */
+
     function renderDetail(traceId) {
         var detail = state.details[traceId];
-        var item = document.querySelector('.trace-item[data-trace="' + traceId + '"]');
+        var item = document.querySelector('.tr-item[data-trace="' + traceId + '"]');
         if (!detail || !item) return;
 
-        var body = item.querySelector('.trace-body');
+        var body = item.querySelector('.tr-body');
         if (!body) return;
 
         var summary = detail.summary || {};
         var spans = detail.spans || [];
         var total = Math.max(summary.durationMs || 0, 0.1);
 
-        var head = '<div class="trace-detail-head small text-muted">' +
-            '<span class="text-muted">trace</span> <code class="trace-id" data-copy="' +
-                esc(summary.traceId) + '">' + esc(summary.traceId) + '</code>' +
-            '<span class="ms-3">' + esc(t('trace.detail.spans', 'Span 数')) + ': ' + spans.length + '</span>' +
+        var meta = '<div class="tr-detail__meta">' +
+            '<span>' + esc(t('trace.detail.spans', 'Span 数')) + ' ' + spans.length + '</span>' +
+            '<span>' + esc(t('trace.detail.total', '总耗时')) + ' <b>' + esc(fmtMs(total)) + '</b></span>' +
+            '<code class="tr-id" data-copy="' + esc(summary.traceId) + '" title="' +
+                esc(t('trace.detail.copyHint', '点击复制 trace id')) + '">' + esc(summary.traceId) + '</code>' +
+            '</div>';
+
+        /* Ruler anchored to the same grid as the rows: the labels mark 0 / ¼ / ½ / ¾ / total
+           of the bar column, so a bar's position can be read as a time, not a proportion. */
+        var scale = '<div class="tr-wf__scale">' +
+            '<span style="left:0;">0</span>' +
+            '<span style="left:25%;transform:translateX(-50%);">' + esc(fmtMs(total * 0.25)) + '</span>' +
+            '<span style="left:50%;transform:translateX(-50%);">' + esc(fmtMs(total * 0.5)) + '</span>' +
+            '<span style="left:75%;transform:translateX(-50%);">' + esc(fmtMs(total * 0.75)) + '</span>' +
+            '<span style="left:100%;transform:translateX(-100%);">' + esc(fmtMs(total)) + '</span>' +
             '</div>';
 
         var rows = spans.map(function (span) {
@@ -310,52 +370,58 @@
             var width = Math.max(0.6, Math.min(100 - left, (span.durationMs / total) * 100));
             var cls = span.status === 'error' ? 'is-error'
                 : span.status === 'ok' ? 'is-ok' : 'is-idle';
-            var indent = Math.min(span.depth || 0, 6) * 14;
-            var tagTitle = Object.keys(span.tags || {}).map(function (k) {
-                return k + '=' + span.tags[k];
-            }).join('\n');
+            var indent = Math.min(span.depth || 0, 6) * 11;
 
-            var tags = Object.keys(span.tags || {}).map(function (k) {
-                return '<div class="trace-tag"><span class="trace-tag-key">' + esc(k) + '</span>' +
-                    '<span class="trace-tag-val">' + esc(span.tags[k]) + '</span></div>';
+            var tagRows = Object.keys(span.tags || {}).map(function (k) {
+                return '<div class="tr-tag"><k>' + esc(k) + '</k><v>' + esc(span.tags[k]) + '</v></div>';
             }).join('');
 
-            return '<div class="trace-span" data-span="' + esc(span.spanId) + '">' +
-                '<div class="trace-span-main">' +
-                    '<div class="trace-span-name" style="padding-left:' + indent + 'px" title="' + esc(tagTitle) + '">' +
-                        '<i class="bi bi-chevron-right trace-span-caret"></i>' +
-                        '<span class="trace-span-title">' + esc(span.name) + '</span>' +
-                        '<span class="trace-span-source">' + esc(span.source) + '</span>' +
-                        (span.status === 'error'
-                            ? '<i class="bi bi-exclamation-triangle-fill text-danger" title="' +
-                                esc(span.statusMessage || '') + '"></i>'
-                            : '') +
-                    '</div>' +
-                    '<div class="trace-span-bar">' +
-                        '<div class="trace-bar ' + cls + '" style="left:' + left.toFixed(2) +
-                            '%;width:' + width.toFixed(2) + '%"></div>' +
-                    '</div>' +
-                    '<div class="trace-span-duration">' + esc(fmtMs(span.durationMs)) + '</div>' +
+            return '<div class="tr-wf__row" data-span="' + esc(span.spanId) + '">' +
+                '<div class="tr-wf__label" style="padding-left:' + indent + 'px" title="' + esc(span.name) + '">' +
+                    '<i class="bi bi-chevron-right"></i>' +
+                    '<span>' + esc(span.name) + '</span>' +
+                    (span.source ? '<span class="tr-wf__src">' + esc(span.source) + '</span>' : '') +
+                    (span.status === 'error'
+                        ? '<i class="bi bi-exclamation-triangle-fill text-danger" title="' +
+                            esc(span.statusMessage || '') + '"></i>'
+                        : '') +
                 '</div>' +
-                '<div class="trace-span-tags" style="display:none;">' +
-                    (tags || '<div class="text-muted small">' + esc(t('trace.detail.noTags', '没有属性')) + '</div>') +
+                '<div class="tr-wf__track">' +
+                    '<div class="tr-wf__bar ' + cls + '" style="left:' + left.toFixed(2) +
+                        '%;width:' + width.toFixed(2) + '%"></div>' +
+                '</div>' +
+                '<div class="tr-wf__dur">' + esc(fmtMs(span.durationMs)) + '</div>' +
+                '<div class="tr-wf__tags" style="display:none;">' +
+                    (tagRows || '<div class="text-muted small">' + esc(t('trace.detail.noTags', '没有属性')) + '</div>') +
                 '</div>' +
             '</div>';
         }).join('');
 
-        body.innerHTML = head + '<div class="trace-waterfall">' + rows + '</div>' +
+        body.innerHTML = meta +
+            '<div class="tr-wf">' +
+                '<div class="tr-wf__ruler">' +
+                    '<span>' + esc(t('trace.wf.span', 'Span')) + '</span>' +
+                    scale +
+                    '<span>' + esc(t('trace.wf.duration', '耗时')) + '</span>' +
+                '</div>' +
+                rows +
+            '</div>' +
+            '<div class="tr-legend">' +
+                '<span><i style="background:#34d399"></i>' + esc(t('trace.legend.ok', '正常')) + '</span>' +
+                '<span><i style="background:#f87171"></i>' + esc(t('trace.legend.error', '错误')) + '</span>' +
+                '<span><i style="background:#94a3b8"></i>' + esc(t('trace.legend.unset', '未标注')) + '</span>' +
+                '<span>' + esc(t('trace.wf.hint', '点一行展开该 span 的属性')) + '</span>' +
+            '</div>' +
             (summary.truncated
                 ? '<div class="text-muted small mt-2"><i class="bi bi-scissors"></i> ' +
                     esc(t('trace.detail.truncated', 'Span 数超过上限，其余未记录。')) + '</div>'
                 : '');
 
-        body.querySelectorAll('.trace-span-main').forEach(function (row) {
+        body.querySelectorAll('.tr-wf__row').forEach(function (row) {
             row.addEventListener('click', function (event) {
                 event.stopPropagation();
-                var span = row.parentElement;
-                if (!span) return;
-                var tags = span.querySelector('.trace-span-tags');
-                var caret = row.querySelector('.trace-span-caret');
+                var tags = row.querySelector('.tr-wf__tags');
+                var caret = row.querySelector('.tr-wf__label i');
                 if (!tags) return;
                 var open = tags.style.display === 'none';
                 tags.style.display = open ? '' : 'none';
@@ -367,7 +433,6 @@
         });
 
         body.querySelectorAll('[data-copy]').forEach(function (node) {
-            node.style.cursor = 'pointer';
             node.addEventListener('click', function (event) {
                 event.stopPropagation();
                 var value = node.getAttribute('data-copy');
@@ -401,8 +466,8 @@
         } catch (e) {
             var el = document.getElementById('trace-list');
             if (el) {
-                el.innerHTML = '<div class="text-danger small py-3">' +
-                    esc(t('trace.loadFailed', '链路加载失败')) + ': ' + esc(e.message) + '</div>';
+                el.innerHTML = '<div class="tr-empty"><div class="text-danger small">' +
+                    esc(t('trace.loadFailed', '链路加载失败')) + ': ' + esc(e.message) + '</div></div>';
             }
         }
     }

@@ -80,6 +80,22 @@
 
     window.DashboardApi.getConfigVersion = function() { return configVersion; };
 
+    /*
+     * Turns the server's role-refusal reason code into text the reader can act on.
+     * The codes come from DashboardRolePolicy; anything unknown falls through to the
+     * server's own message rather than being swallowed.
+     */
+    function describeDenial(reason) {
+        const dict = (window.__dashboard && window.__dashboard.I18N) || {};
+        const role = (window.DashboardPermissions && window.DashboardPermissions.role) ? window.DashboardPermissions.role() : '';
+        const roleLabel = (role && dict['auth.role.' + role]) || role;
+        const key = reason === 'read-only' ? 'auth.denied.readOnly'
+            : reason === 'admin-required' ? 'auth.denied.adminRequired'
+            : null;
+        if (!key || !dict[key]) return null;
+        return dict[key].replace('{role}', roleLabel);
+    }
+
     window.DashboardApi.request = async function(url, options = {}) {
         const {
             method = 'GET',
@@ -136,9 +152,14 @@
 
             if (response.status >= 400) {
                 let errMsg = `Request failed: ${response.status}`;
+                let errReason = null;
                 try {
                     const errBody = await response.json();
                     errMsg = errBody.title || errBody.message || errBody.detail || errMsg;
+                    // A refusal by role is not a failure of the request, it is a fact about the
+                    // account. Say so in the reader's language instead of forwarding the server's
+                    // English sentence to someone whose UI is Chinese.
+                    errReason = errBody.reason || null;
                     // If there are validation errors, include them
                     if (errBody.errors) {
                         const details = Object.entries(errBody.errors)
@@ -147,6 +168,7 @@
                         if (details) errMsg = details;
                     }
                 } catch (_) { /* use default message */ }
+                if (errReason) errMsg = describeDenial(errReason) || errMsg;
                 throw new Error(errMsg);
             }
 
@@ -338,6 +360,9 @@
 
         // Circuit Breaker
         getCircuitBreakerStatus: () => DashboardApi.get('/api/circuit-breaker/status'),
+        // Thresholds per cluster, including clusters that have not carried traffic yet —
+        // the status endpoint only reports circuits that have actually been evaluated.
+        getCircuitBreakerConfig: () => DashboardApi.get('/api/circuit-breaker/config'),
         resetCircuitBreakers: () => DashboardApi.post('/api/circuit-breaker/reset', {}),
 
         // Plugins
@@ -345,6 +370,7 @@
         getPlugin: (id) => DashboardApi.get('/api/plugins/' + id),
         togglePlugin: (id, enabled) => DashboardApi.post('/api/plugins/' + id + '/toggle', { enabled }),
         resetPlugins: () => DashboardApi.post('/api/plugins/reset'),
+        installPlugin: (sourceDirectory) => DashboardApi.post('/api/plugins/install', { sourceDirectory }),
         uninstallPlugin: (pluginId) => DashboardApi.delete('/api/plugins/' + pluginId),
         upgradePlugin: (pluginId, sourceDirectory) => DashboardApi.post('/api/plugins/' + pluginId + '/upgrade', { sourceDirectory }),
 
@@ -399,11 +425,13 @@
     window.DashboardApi.getRoutes = () => DashboardApi.endpoints.getRoutes();
     window.DashboardApi.getClusters = () => DashboardApi.endpoints.getClusters();
     window.DashboardApi.getCircuitBreakerStatus = () => DashboardApi.endpoints.getCircuitBreakerStatus();
+    window.DashboardApi.getCircuitBreakerConfig = () => DashboardApi.endpoints.getCircuitBreakerConfig();
     window.DashboardApi.resetCircuitBreakers = () => DashboardApi.endpoints.resetCircuitBreakers();
     window.DashboardApi.getPlugins = () => DashboardApi.endpoints.getPlugins();
     window.DashboardApi.getPlugin = (id) => DashboardApi.endpoints.getPlugin(id);
     window.DashboardApi.togglePlugin = (id, enabled) => DashboardApi.endpoints.togglePlugin(id, enabled);
     window.DashboardApi.resetPlugins = () => DashboardApi.endpoints.resetPlugins();
+    window.DashboardApi.installPlugin = (sourceDirectory) => DashboardApi.endpoints.installPlugin(sourceDirectory);
     window.DashboardApi.uninstallPlugin = (pluginId) => DashboardApi.endpoints.uninstallPlugin(pluginId);
     window.DashboardApi.upgradePlugin = (pluginId, sourceDirectory) => DashboardApi.endpoints.upgradePlugin(pluginId, sourceDirectory);
     window.DashboardApi.getBindings = (scope, scopeId) => DashboardApi.endpoints.getBindings(scope, scopeId);

@@ -1,0 +1,19 @@
+{
+  "id": "$PluginId$",
+  "name": "$PluginName$",
+  "version": "$PluginVersion$",
+  "description": "Adds a response header so you can see the plugin is in the pipeline.",
+  "scopes": [ "Route" ],
+  "capabilities": [ "ProxyPipeline" ],
+  "order": 750,
+  "resources": {
+    "requestMiddleware": true,
+    "backgroundServices": false,
+    "database": false,
+    "networkConnections": false
+  },
+  "schemas": [],
+  "dependencies": [],
+  "entryAssembly": "$EntryAssembly$",
+  "entryType": "$EntryType$"
+}

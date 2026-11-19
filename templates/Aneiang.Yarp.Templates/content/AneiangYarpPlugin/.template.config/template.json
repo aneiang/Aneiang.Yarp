@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "AneiangSoft Team",
+  "classifications": [ "Gateway", "Plugin", "YARP" ],
+  "identity": "Aneiang.Yarp.Plugin.CSharp",
+  "groupIdentity": "Aneiang.Yarp.Plugin",
+  "name": "Aneiang.Yarp Gateway Plugin",
+  "description": "An out-of-tree gateway plugin: implements IGatewayPlugin, emits a plugin.json manifest at build time, and can be dropped into the host's plugins directory.",
+  "shortName": "aneiang-yarp-plugin",
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "sourceName": "AneiangYarpPlugin",
+  "preferNameDirectory": true,
+  "symbols": {
+    "Framework": {
+      "type": "parameter",
+      "description": "The target framework for the project.",
+      "datatype": "choice",
+      "choices": [
+        {
+          "choice": "net8.0",
+          "description": ".NET 8 (LTS)"
+        },
+        {
+          "choice": "net9.0",
+          "description": ".NET 9"
+        }
+      ],
+      "defaultValue": "net8.0",
+      "replaces": "net8.0"
+    },
+    "PluginId": {
+      "type": "parameter",
+      "description": "Plugin identifier. Must be unique among installed plugins; the host refuses a duplicate.",
+      "datatype": "text",
+      "defaultValue": "my-plugin",
+      "replaces": "aneiang-yarp-plugin"
+    }
+  },
+  "primaryOutputs": [
+    {
+      "path": "AneiangYarpPlugin.csproj"
+    }
+  ]
+}

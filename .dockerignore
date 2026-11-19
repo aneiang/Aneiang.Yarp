@@ -1,0 +1,21 @@
+# The official image is built from a repository checkout, not from this folder.
+# Keeping the build context out of the image matters: `bin/`, `obj/` and the committed sample
+# databases would otherwise be copied in and, worse, invalidate the restore layer on every build.
+bin/
+obj/
+**/bin/
+**/obj/
+
+.git/
+.github/
+.vs/
+.vscode/
+artifacts/
+docs/
+
+# A committed store must never become the image's initial database.
+**/*.db
+**/*.db-wal
+**/*.db-shm
+
+**/*.user

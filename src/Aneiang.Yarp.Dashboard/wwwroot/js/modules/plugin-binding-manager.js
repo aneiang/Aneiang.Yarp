@@ -41,6 +41,11 @@
             pluginSchema: null
         };
 
+        /* Rows ticked for a bulk action, keyed by binding id.
+           Kept outside the render so a reload (or a single-row toggle, which also reloads)
+           does not silently drop the operator's selection. Cleared after every bulk call. */
+        var selected = {};
+
         var module = {
             initialized: false,
             autoRefreshInterval: null,
@@ -124,8 +129,19 @@
                     html += '<div class="pc-help-line"><i class="bi bi-info-circle"></i><span>' + esc(helpText || descText) + '</span></div>';
                 }
 
+                // Bulk bar: appears once at least one row is ticked. Hidden rather than
+                // disabled when nothing is selected — a permanently greyed toolbar reads
+                // as "this feature is broken", not "pick something first".
+                html += '<div class="plg-batch-bar d-none align-items-center gap-2 mb-2 px-2 py-2 border rounded-3 bg-light" data-role="batch-bar">';
+                html += '<span class="small text-muted" data-role="batch-count"></span>';
+                html += '<button class="btn btn-sm btn-outline-success" data-action="batch-enable" data-requires-write><i class="bi bi-toggle-on me-1"></i>' + t('pluginPage.batchEnable', 'Enable selected') + '</button>';
+                html += '<button class="btn btn-sm btn-outline-warning" data-action="batch-disable" data-requires-write><i class="bi bi-toggle-off me-1"></i>' + t('pluginPage.batchDisable', 'Disable selected') + '</button>';
+                html += '<button class="btn btn-sm btn-outline-danger ms-auto" data-action="batch-delete" data-requires-write><i class="bi bi-trash me-1"></i>' + t('pluginPage.batchDelete', 'Delete selected') + '</button>';
+                html += '</div>';
+
                 // Bindings table (shared plg-table style)
                 html += '<div class="plg-table-wrap"><table class="plg-table"><thead><tr>';
+                html += '<th style="width:34px;"><input type="checkbox" class="form-check-input" data-action="select-all" aria-label="' + attr(t('pluginPage.selectAll', 'Select all')) + '"></th>';
                 html += '<th style="width:220px;">' + scopeLabel + ' ID</th>';
                 html += '<th>' + t('pluginPage.configSummary', 'Config Summary') + '</th>';
                 html += '<th style="width:110px;">' + t('common.status', 'Status') + '</th>';
@@ -139,6 +155,7 @@
                         var isOn = b.enabled;
                         var healthColor = isOn ? '#10b981' : '#94a3b8';
                         html += '<tr' + (isOn ? '' : ' class="plg-row--off"') + '>';
+                        html += '<td><input type="checkbox" class="form-check-input" data-role="row-select" data-id="' + attr(b.id) + '"' + (selected[b.id] ? ' checked' : '') + ' aria-label="' + attr(t('pluginPage.selectRow', 'Select this binding')) + '"></td>';
                         html += '<td><span class="plg-plugin-id" style="font-size:12px;">' + esc(b.scopeId || '-') + '</span></td>';
                         html += '<td><span class="plg-plugin-id" style="font-size:12px;">' + esc(summary) + '</span></td>';
                         html += '<td><span class="plg-health" style="color:' + healthColor + ';"><span class="plg-dot" style="background:' + healthColor + ';"></span>' + (isOn ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled')) + '</span></td>';
@@ -150,7 +167,7 @@
                         html += '</tr>';
                     });
                 } else {
-                    html += '<tr><td colspan="4" style="white-space:normal;">';
+                    html += '<tr><td colspan="5" style="white-space:normal;">';
                     html += '<div class="pr-empty">';
                     html += '<i class="bi bi-inbox"></i>';
                     html += '<p class="mb-1">' + t('pluginPage.noBindings', 'No bindings yet') + '</p>';
@@ -178,8 +195,33 @@
                         else if (action === 'edit') module.openEditModal(id);
                         else if (action === 'toggle') module.toggleBinding(id);
                         else if (action === 'delete') module.deleteBinding(id);
+                        else if (action === 'batch-enable') module.batchSetEnabled(true);
+                        else if (action === 'batch-disable') module.batchSetEnabled(false);
+                        else if (action === 'batch-delete') module.batchDelete();
+                    });
+                    /* Checkboxes are handled on 'change', not 'click': the click fires before
+                       the checked state flips, so reading it there always gives the old value. */
+                    container.addEventListener('change', function(event) {
+                        var box = event.target;
+                        if (!box || !box.matches) return;
+                        if (box.matches('[data-role="row-select"]')) {
+                            var rowId = box.getAttribute('data-id');
+                            if (box.checked) selected[rowId] = true; else delete selected[rowId];
+                            syncBatchBar(container);
+                        } else if (box.matches('[data-action="select-all"]')) {
+                            selected = {};
+                            if (box.checked) {
+                                state.bindings.forEach(function(b) { selected[b.id] = true; });
+                            }
+                            container.querySelectorAll('[data-role="row-select"]').forEach(function(item) {
+                                item.checked = !!selected[item.getAttribute('data-id')];
+                            });
+                            syncBatchBar(container);
+                        }
                     });
                 }
+
+                syncBatchBar(container);
             },
 
             openAddModal: function() {
@@ -231,6 +273,63 @@
                 );
             },
 
+            /* One atomic round-trip for N bindings: the server takes the same publish gate
+               as a single edit, so "half applied" is not a state this can leave behind. */
+            batchSetEnabled: async function(enabled) {
+                var ids = Object.keys(selected);
+                if (!ids.length) return;
+                var self = this;
+                try {
+                    var resp = await window.DashboardApi.endpoints.batchSetBindingsEnabled(ids, enabled);
+                    var result = (resp && resp.data) || resp || {};
+                    var failed = Number(result.failed || 0);
+                    if (failed > 0) {
+                        window.DashboardModals.showWarning(
+                            t('pluginPage.batchPartial', 'Some bindings were not updated') +
+                            ': ' + failed + '/' + (result.total || ids.length));
+                    } else {
+                        window.DashboardModals.showSuccess(
+                            (enabled ? t('pluginPage.batchEnabledSuccess', 'Selected bindings enabled')
+                                     : t('pluginPage.batchDisabledSuccess', 'Selected bindings disabled')) +
+                            ' (' + ids.length + ')');
+                    }
+                    selected = {};
+                    await self.load();
+                } catch (error) {
+                    window.DashboardModals.showError(t('common.operationFailed', 'Operation failed') + ': ' + (error.message || error));
+                }
+            },
+
+            batchDelete: function() {
+                var ids = Object.keys(selected);
+                if (!ids.length) return;
+                var self = this;
+                window.DashboardModals.showConfirm(
+                    t('pluginPage.batchDeleteConfirm', 'Delete {count} selected bindings? This does not affect other bindings.')
+                        .replace('{count}', String(ids.length)),
+                    async function() {
+                        try {
+                            var resp = await window.DashboardApi.endpoints.batchDeleteBindings(ids);
+                            var result = (resp && resp.data) || resp || {};
+                            var failed = Number(result.failed || 0);
+                            if (failed > 0) {
+                                window.DashboardModals.showWarning(
+                                    t('pluginPage.batchPartial', 'Some bindings were not updated') +
+                                    ': ' + failed + '/' + (result.total || ids.length));
+                            } else {
+                                window.DashboardModals.showSuccess(t('pluginPage.batchDeletedSuccess', 'Selected bindings deleted') + ' (' + ids.length + ')');
+                            }
+                            selected = {};
+                            await self.load();
+                        } catch (error) {
+                            window.DashboardModals.showError(t('common.deleteFailed', 'Delete failed') + ': ' + (error.message || error));
+                        }
+                    },
+                    null,
+                    { title: t('common.delete', 'Delete'), danger: true }
+                );
+            },
+
             updateRefreshTime: function() {
                 var el = document.getElementById(refreshTimeId);
                 if (el) el.textContent = new Date().toLocaleTimeString();
@@ -250,7 +349,34 @@
             return state.bindings.find(function(b) { return String(b.id) === String(bindingId); });
         }
 
+        /* The bulk bar and the header checkbox both derive from `selected`; nothing else
+           may write that state, so this is the single place that has to stay in sync. */
+        function syncBatchBar(container) {
+            var bar = container.querySelector('[data-role="batch-bar"]');
+            var count = Object.keys(selected).length;
+            if (bar) {
+                bar.classList.toggle('d-none', count === 0);
+                bar.classList.toggle('d-flex', count > 0);
+                var label = bar.querySelector('[data-role="batch-count"]');
+                if (label) label.textContent = t('pluginPage.batchSelected', 'Selected') + ': ' + count;
+            }
+            var all = container.querySelector('[data-action="select-all"]');
+            if (all) {
+                all.checked = count > 0 && count === state.bindings.length;
+                /* Indeterminate is the only honest state for "some rows ticked"; without it
+                   the header box looks unchecked while the bulk bar says otherwise. */
+                all.indeterminate = count > 0 && count < state.bindings.length;
+            }
+        }
+
         function summarizeConfigSafe(config, pluginId) {
+            /* Same contract as the capability page: a plugin that ships an editor
+               also knows what its one-line summary should say. */
+            var editors = window.PluginConfigEditors;
+            if (editors && editors.summarize) {
+                var text = editors.summarize(pluginId, config);
+                if (text) return text;
+            }
             var keys = Object.keys(config);
             if (!keys.length) return '{}';
             var Cap = window.DashboardCapabilities;

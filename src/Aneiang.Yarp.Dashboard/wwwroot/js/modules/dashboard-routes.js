@@ -14,6 +14,11 @@
             this.setupEvents();
 
             this.initialized = true;
+
+            // Deep link from the configuration health check: highlight the route it flagged.
+            if (window.DashboardUtils && window.DashboardUtils.focusFromQuery) {
+                window.DashboardUtils.focusFromQuery({ rowSelector: 'tr', attr: 'data-route-id' });
+            }
         },
 
         loadRoutes: async function(forceReload) {

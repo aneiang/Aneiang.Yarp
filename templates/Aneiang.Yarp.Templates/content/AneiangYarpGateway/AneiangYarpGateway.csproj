@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>AneiangYarpGateway</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Three packages make a working gateway:
+        Aneiang.Yarp             — YARP wiring, dynamic routes, config management
+        Aneiang.Yarp.Dashboard   — management UI + admin API, and the observability exporters
+        Aneiang.Yarp.Storage.Sqlite — the default config store
+
+      The dashboard package references every built-in plugin, because configuring a plugin from the
+      UI requires knowing its schema. Builds without the dashboard (a pure data plane with routes
+      pushed in over gRPC) can reference only the plugin packages they actually run.
+    -->
+    <PackageReference Include="Aneiang.Yarp" Version="2.3.0.40" />
+    <PackageReference Include="Aneiang.Yarp.Dashboard" Version="2.3.0.40" />
+    <PackageReference Include="Aneiang.Yarp.Storage.Sqlite" Version="2.3.0.40" />
+  </ItemGroup>
+
+</Project>

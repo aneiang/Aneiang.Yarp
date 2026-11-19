@@ -5,6 +5,7 @@ using Aneiang.Yarp.Dashboard.Infrastructure.I18n;
 using Aneiang.Yarp.Dashboard.Modules.Dashboard.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Aneiang.Yarp.Dashboard.Modules.Dashboard.Controllers;
@@ -24,6 +25,8 @@ public class DashboardAuthController : Controller
     private readonly bool _enableTwoFactor;
     private readonly string? _twoFactorSecret;
     private readonly int _minPasswordLength;
+    private readonly IReadOnlyList<DashboardUserOptions> _users;
+    private readonly ILogger<DashboardAuthController> _logger;
 
     // Runtime 2FA state (persisted to file)
     private static readonly string _twoFactorStateFile = Path.Combine(AppContext.BaseDirectory, "twofactor-state.json");
@@ -34,9 +37,11 @@ public class DashboardAuthController : Controller
     /// </summary>
     public DashboardAuthController(
         IDashboardAuthorizationService authService,
-        IOptions<DashboardOptions> dashboardOptions)
+        IOptions<DashboardOptions> dashboardOptions,
+        ILogger<DashboardAuthController> logger)
     {
         _authService = authService;
+        _logger = logger;
 
         var opt = dashboardOptions.Value;
         _defaultLocale = opt.Locale;
@@ -47,6 +52,7 @@ public class DashboardAuthController : Controller
         _enableTwoFactor = opt.Auth.EnableTwoFactor;
         _twoFactorSecret = opt.Auth.TwoFactorSecret;
         _minPasswordLength = opt.Auth.MinPasswordLength;
+        _users = opt.Auth.Users;
     }
 
     #region Login Page
@@ -77,30 +83,61 @@ public class DashboardAuthController : Controller
         if (request.Password.Length < _minPasswordLength)
             return Json(new { code = 400, message = $"Password must be at least {_minPasswordLength} characters" });
 
-        bool valid = _authMode switch
+        // Configured accounts take precedence; the legacy single username/password pair stays as the
+        // fallback so an existing deployment keeps its login without touching configuration.
+        DashboardUserOptions? account = _authMode is DashboardAuthMode.CustomJwt or DashboardAuthMode.DefaultJwt
+            ? _users.FirstOrDefault(user =>
+                string.Equals(user.Username, request.Username, StringComparison.OrdinalIgnoreCase))
+            : null;
+
+        bool valid;
+        string? roleError;
+        DashboardRole role;
+
+        if (account is not null)
         {
-            DashboardAuthMode.CustomJwt =>
-                request.Username == _jwtUsername && request.Password == _jwtPassword,
-            DashboardAuthMode.DefaultJwt =>
-                request.Username == "admin" && request.Password == _jwtPassword,
-            _ => false
-        };
+            valid = string.Equals(account.Password, request.Password, StringComparison.Ordinal);
+            role = DashboardRoles.Parse(account.Role, DashboardRole.Admin, out roleError);
+        }
+        else
+        {
+            valid = _authMode switch
+            {
+                DashboardAuthMode.CustomJwt =>
+                    string.Equals(request.Username, _jwtUsername, StringComparison.Ordinal) &&
+                    string.Equals(request.Password, _jwtPassword, StringComparison.Ordinal),
+                DashboardAuthMode.DefaultJwt =>
+                    string.Equals(request.Username, "admin", StringComparison.Ordinal) &&
+                    string.Equals(request.Password, _jwtPassword, StringComparison.Ordinal),
+                _ => false
+            };
+            role = DashboardRole.Admin;
+            roleError = null;
+        }
 
         if (!valid)
             return Json(new { code = 401, message = "Invalid credentials" });
 
-        // 2FA verification
+        if (roleError is not null)
+            _logger.LogWarning("Account '{Username}' has an unusable role: {Error}", request.Username, roleError);
+
+        // 2FA verification: the account's own secret wins, the dashboard-wide one is the fallback
+        // for deployments that enabled 2FA before accounts existed.
         var (twoFactorEnabled, twoFactorSecret) = GetTwoFactorState();
-        if (twoFactorEnabled && !string.IsNullOrWhiteSpace(twoFactorSecret))
+        var effectiveSecret = string.IsNullOrWhiteSpace(account?.TwoFactorSecret)
+            ? twoFactorSecret
+            : account!.TwoFactorSecret;
+
+        if (twoFactorEnabled && !string.IsNullOrWhiteSpace(effectiveSecret))
         {
             if (string.IsNullOrWhiteSpace(request.TwoFactorCode))
                 return Json(new { code = 202, message = "Two-factor authentication required", requiresTwoFactor = true });
 
-            if (!TotpHelper.ValidateCode(twoFactorSecret, request.TwoFactorCode))
+            if (!TotpHelper.ValidateCode(effectiveSecret, request.TwoFactorCode))
                 return Json(new { code = 401, message = "Invalid two-factor code" });
         }
 
-        var token = DashboardJwtHelper.GenerateToken(request.Username, _jwtSecret!);
+        var token = DashboardJwtHelper.GenerateToken(request.Username, _jwtSecret!, role);
 
         Response.Cookies.Append("dashboard_token", token, new CookieOptions
         {
@@ -212,11 +249,16 @@ public class DashboardAuthController : Controller
     #region Auth Status
 
     /// <summary>Get current authorization status and mode.</summary>
+    /// <remarks>
+    /// The role is reported for display only. Every endpoint still re-checks it, because this
+    /// response is a statement about the past — a token can be replaced between page load and click.
+    /// </remarks>
     [HttpGet("api/auth/status")]
     public IActionResult GetAuthStatus()
     {
         var authModeDescription = _authService.GetAuthModeDescription();
         var isAuthEnabled = _authMode != DashboardAuthMode.None;
+        var principal = _authService.ResolvePrincipal(HttpContext);
 
         return Json(new
         {
@@ -226,7 +268,14 @@ public class DashboardAuthController : Controller
                 IsAuthEnabled = isAuthEnabled,
                 AuthMode = _authMode.ToString(),
                 AuthModeDescription = authModeDescription,
-                Locale = _defaultLocale
+                Locale = _defaultLocale,
+                Username = principal.Username,
+                Role = principal.Role.ToClaimValue(),
+                // True when nobody chose this role (auth off, API key, custom delegate). The banner
+                // that warns "read-only" would be a lie in that case, so the UI keys off this.
+                IsImplicitRole = principal.Implicit,
+                CanWrite = principal.Role.CanWrite(),
+                CanAdminister = principal.Role.CanAdminister()
             }
         });
     }

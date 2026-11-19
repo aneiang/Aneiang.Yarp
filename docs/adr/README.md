@@ -7,6 +7,7 @@
 | [ADR-001](ADR-001-single-control-plane.md) | 多实例配置一致性采用「单控制面」 | 已接受 | 2.3.0.40 起生效，v3 复审 |
 | [ADR-002](ADR-002-open-lb-and-transform.md) | 插件模型开放负载均衡与 Transform 扩展点 | 已接受，待实施 | v2.5 |
 | [ADR-003](ADR-003-rate-limiting-extension-point.md) | 分布式限流只保留扩展位，不做实现 | 已接受 | 长期 |
+| [ADR-004](ADR-004-rbac-three-roles.md) | RBAC 按爆炸半径切三档，无法归属的身份视为隐式管理员 | 已接受 | 2.3.0.40 |
 
 ## 什么情况下该新增一篇
 
