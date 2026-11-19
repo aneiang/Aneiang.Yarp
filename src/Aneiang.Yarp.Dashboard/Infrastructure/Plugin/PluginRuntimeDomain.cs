@@ -292,7 +292,14 @@ public sealed class PluginRuntimeDomainManager : IPluginRuntimeDomainManager, IA
             // Forward the root logging factory so plugins can inject ILogger<T> and their log
             // entries flow through the host's Serilog pipeline. ValidateOnBuild below would
             // otherwise fail for any plugin that takes ILogger<T> in its constructor.
-            services.AddSingleton(_rootServices.GetRequiredService<ILoggerFactory>());
+            //
+            // A host that did not register logging (unit tests, embedded hosts) must not take the
+            // whole runtime domain down: fall back to a silent factory so plugin DI still resolves.
+            var loggerFactory = _rootServices.GetService<ILoggerFactory>();
+            if (loggerFactory != null)
+                services.AddSingleton(loggerFactory);
+            else
+                services.AddLogging();
             services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
             foreach (var plugin in plugins.Values)
             {

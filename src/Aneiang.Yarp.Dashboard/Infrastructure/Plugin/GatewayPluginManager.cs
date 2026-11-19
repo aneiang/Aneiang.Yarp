@@ -72,7 +72,9 @@ public class GatewayPluginManager : IGatewayPluginManager, IPluginActivationStat
             _pluginEnabledAt[manifest.Id] = DateTimeOffset.UtcNow;
         }
 
-        // Database is authoritative. The legacy JSON file is imported only when the database has no rows.
+        // gateway_plugins is the only source of truth. The 2.3.0.x-era plugin-states.json importer
+        // was removed in 2.3.0.30, so a file left behind by an old deployment is ignored — it is
+        // neither read nor deleted.
         LoadState();
         CleanupNativeBindings();
 

@@ -48,11 +48,19 @@ Run("Removed compatibility contracts stay isolated from runtime source", () =>
         "DefaultHealthCheckService"
     };
 
+    // Whole-identifier matching, not substring: "WafRateLimitOptions" is a live WAF type and used
+    // to trip this check on a plain Contains() scan, which made the guard report a failure that
+    // was not one. Surrounding characters must not continue an identifier.
+    var patterns = forbidden
+        .Select(symbol => (Symbol: symbol, Regex: new System.Text.RegularExpressions.Regex(
+            $@"(?<![A-Za-z0-9_]){System.Text.RegularExpressions.Regex.Escape(symbol)}(?![A-Za-z0-9_])")))
+        .ToArray();
+
     foreach (var path in sourceFiles)
     {
         var source = File.ReadAllText(path);
-        foreach (var symbol in forbidden)
-            False(source.Contains(symbol, StringComparison.Ordinal));
+        foreach (var (symbol, pattern) in patterns)
+            False(pattern.IsMatch(source), $"{symbol} reappeared in {Path.GetRelativePath(root, path)}");
     }
 });
 
@@ -172,7 +180,7 @@ Run("ClientIpResolver ignores spoofed forwarding headers", () =>
 await RunAsync("Dashboard API key is header-only", async () =>
 {
     var options = Options.Create(new DashboardOptions { Auth = new DashboardAuthOptions { AuthMode = DashboardAuthMode.ApiKey, ApiKey = "secret", ApiKeyHeaderName = "X-Api-Key" } });
-    var service = new DashboardAuthorizationService(options, NullLogger<DashboardAuthorizationService>.Instance);
+    var service = new DashboardAuthorizationService(options, new DashboardTokenRevocationStore(), NullLogger<DashboardAuthorizationService>.Instance);
     var queryContext = new DefaultHttpContext();
     queryContext.Request.QueryString = new QueryString("?api-key=secret");
     False(await service.IsAuthorizedAsync(queryContext));
@@ -185,7 +193,7 @@ await RunAsync("JWT query token is restricted to dashboard hubs", async () =>
 {
     const string secret = "regression-test-secret-that-is-long-enough";
     var token = DashboardJwtHelper.GenerateToken("tester", secret);
-    var service = new DashboardAuthorizationService(Options.Create(new DashboardOptions { Auth = new DashboardAuthOptions { AuthMode = DashboardAuthMode.CustomJwt, JwtSecret = secret } }), NullLogger<DashboardAuthorizationService>.Instance);
+    var service = new DashboardAuthorizationService(Options.Create(new DashboardOptions { Auth = new DashboardAuthOptions { AuthMode = DashboardAuthMode.CustomJwt, JwtSecret = secret } }), new DashboardTokenRevocationStore(), NullLogger<DashboardAuthorizationService>.Instance);
     var apiContext = new DefaultHttpContext();
     apiContext.Request.Path = "/apigateway/api/routes";
     apiContext.Request.QueryString = new QueryString($"?access_token={token}");
@@ -293,7 +301,7 @@ await RunAsync("Cluster rename preserves native extensions", () =>
 });
 
 await RunAsync("PluginBinding SQLite CRUD and uniqueness", TestPluginBindingRepositoryAsync);
-await RunAsync("GatewayPluginManager persists state in gateway_plugins and imports legacy JSON", TestGatewayPluginStatePersistenceAsync);
+await RunAsync("GatewayPluginManager persists state in gateway_plugins and ignores legacy JSON", TestGatewayPluginStatePersistenceAsync);
 await RunAsync("GatewaySnapshotCompiler filters disabled and missing targets", TestSnapshotCompilerAsync);
 await RunAsync("GatewaySnapshotCompiler keeps UID bindings stable across target renames", TestSnapshotUidRenameStabilityAsync);
 Run("GatewaySnapshotPublisher rejects stale versions", TestSnapshotPublisher);
@@ -344,10 +352,14 @@ async Task TestGatewayPluginStatePersistenceAsync()
 {
     var root = Path.Combine(Path.GetTempPath(), $"aneiang-yarp-plugin-state-{Guid.NewGuid():N}");
     var dbPath = Path.Combine(root, "state.db");
+    var legacyPath = Path.Combine(root, "plugin-states.json");
     Directory.CreateDirectory(root);
     try
     {
-        await File.WriteAllTextAsync(Path.Combine(root, "plugin-states.json"), "{\"test-plugin\":false}");
+        // A plugin-states.json left behind by a 2.3.0.x deployment. The importer was removed in
+        // 2.3.0.30, so this file must be ignored — and left on disk, since deleting another
+        // program's data file is not this manager's job.
+        await File.WriteAllTextAsync(legacyPath, "{\"test-plugin\":false}");
         var services = new ServiceCollection().AddLogging().BuildServiceProvider();
         var options = Options.Create(new StorageOptions { Sqlite = new SqliteStorageOptions { ConnectionString = $"Data Source={dbPath}" } });
         var repository = new SqliteGatewayPluginRepository(new SqliteConnectionFactory(options, services));
@@ -359,28 +371,30 @@ async Task TestGatewayPluginStatePersistenceAsync()
 
         var imported = new GatewayPluginManager([plugin], configuration, environment,
             NullLogger<GatewayPluginManager>.Instance, publisher, externalHost, repository);
-        False(imported.IsPluginEnabled(plugin.PluginId));
+        True(imported.IsPluginEnabled(plugin.PluginId), "the legacy plugin-states.json must not influence the enabled state");
         var importedRow = await repository.GetAsync(plugin.PluginId);
-        True(importedRow is not null);
+        True(importedRow is not null, "the startup snapshot must be written to gateway_plugins");
         Equal("1.2.3", importedRow!.Version);
-        Equal(false, importedRow.Enabled);
+        Equal(true, importedRow.Enabled);
         Equal(true, importedRow.IsBuiltIn);
         Equal("Loaded", importedRow.RegistrationStatus);
         True(importedRow.InstalledAt <= importedRow.UpdatedAt);
-        False(File.Exists(Path.Combine(root, "plugin-states.json")));
+        True(File.Exists(legacyPath), "the legacy file must be ignored, not deleted");
 
-        True(imported.SetPluginEnabled(plugin.PluginId, true).Succeeded);
-        var enabledRow = await repository.GetAsync(plugin.PluginId);
-        Equal(true, enabledRow!.Enabled);
-        var installedAt = enabledRow.InstalledAt;
+        True(imported.SetPluginEnabled(plugin.PluginId, false).Succeeded);
+        var disabledRow = await repository.GetAsync(plugin.PluginId);
+        Equal(false, disabledRow!.Enabled);
+        var installedAt = disabledRow.InstalledAt;
 
-        await File.WriteAllTextAsync(Path.Combine(root, "plugin-states.json"), "{\"test-plugin\":false}");
+        // Rewriting the legacy file must not resurrect the old state on the next start.
+        await File.WriteAllTextAsync(legacyPath, "{\"test-plugin\":true}");
         var reloaded = new GatewayPluginManager([plugin], configuration, environment,
             NullLogger<GatewayPluginManager>.Instance, publisher, externalHost, repository);
-        True(reloaded.IsPluginEnabled(plugin.PluginId));
+        False(reloaded.IsPluginEnabled(plugin.PluginId), "gateway_plugins must win over the legacy file");
         var reloadedRow = await repository.GetAsync(plugin.PluginId);
         Equal(installedAt, reloadedRow!.InstalledAt);
-        True(reloadedRow.UpdatedAt >= enabledRow.UpdatedAt);
+        True(reloadedRow.UpdatedAt >= disabledRow.UpdatedAt);
+        Equal(false, reloadedRow.Enabled);
     }
     finally
     {
@@ -602,9 +616,9 @@ async Task RunAsync(string name, Func<Task> action)
     try { await action(); Console.WriteLine($"PASS: {name}"); }
     catch (Exception ex) { failures.Add($"{name}: {ex.Message}"); }
 }
-void Equal<T>(T expected, T actual) { if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new InvalidOperationException($"Expected '{expected}', got '{actual}'."); }
-void True(bool value) { if (!value) throw new InvalidOperationException("Expected true."); }
-void False(bool value) { if (value) throw new InvalidOperationException("Expected false."); }
+void Equal<T>(T expected, T actual, string? because = null) { if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new InvalidOperationException($"Expected '{expected}', got '{actual}'{(because is null ? "" : $" ({because})")}."); }
+void True(bool value, string? because = null) { if (!value) throw new InvalidOperationException($"Expected true{(because is null ? "" : $" ({because})")}."); }
+void False(bool value, string? because = null) { if (value) throw new InvalidOperationException($"Expected false{(because is null ? "" : $" ({because})")}."); }
 static string FindRepositoryRoot()
 {
     for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory != null; directory = directory.Parent)
