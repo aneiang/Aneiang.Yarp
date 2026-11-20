@@ -207,15 +207,27 @@ jobs:
           dotnet new install out/Aneiang.Yarp.Templates.*.nupkg
           mkdir -p tmpltest && cd tmpltest
           dotnet new aneiang-yarp -n GeneratedGateway --Framework net10.0
-          # The heredoc body has to start in column 0 of the generated file, so these lines sit at the
-          # same indentation as everything else in this block and YAML strips it uniformly.
+          # The generated project must resolve *our* packages from the commit being tested, but its
+          # third-party graph (YARP, OpenTelemetry, SQLitePCLRaw, the Microsoft.Extensions floor the
+          # abstractions carry) only exists on nuget.org. packageSourceMapping is what keeps both
+          # properties at once: without it, a local-only feed fails restore with NU1101 the first
+          # time a transitive package is not already in the global cache.
           printf '%s\n' \
             '<?xml version="1.0" encoding="utf-8"?>' \
             '<configuration>' \
             '  <packageSources>' \
             '    <clear />' \
             '    <add key="local" value="../../localfeed" />' \
+            '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />' \
             '  </packageSources>' \
+            '  <packageSourceMapping>' \
+            '    <packageSource key="local">' \
+            '      <package pattern="Aneiang.*" />' \
+            '    </packageSource>' \
+            '    <packageSource key="nuget.org">' \
+            '      <package pattern="*" />' \
+            '    </packageSource>' \
+            '  </packageSourceMapping>' \
             '</configuration>' > GeneratedGateway/nuget.config
           dotnet build GeneratedGateway/GeneratedGateway.csproj -c Release --nologo
           # The Dockerfile ships with the project; a stale assembly name there is a broken image
@@ -232,13 +244,25 @@ jobs:
         run: |
           cd tmpltest
           dotnet new aneiang-yarp-plugin -n DemoPlugin --PluginId demo-plugin --Framework net9.0
+          # Same source mapping as the gateway step: Aneiang.* from this commit, everything the
+          # plugin drags in transitively from nuget.org. A plugin that references ExcludeAssets
+          # = "runtime" still gets the full restore graph, so a local-only feed is not enough.
           printf '%s\n' \
             '<?xml version="1.0" encoding="utf-8"?>' \
             '<configuration>' \
             '  <packageSources>' \
             '    <clear />' \
             '    <add key="local" value="../../localfeed" />' \
+            '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />' \
             '  </packageSources>' \
+            '  <packageSourceMapping>' \
+            '    <packageSource key="local">' \
+            '      <package pattern="Aneiang.*" />' \
+            '    </packageSource>' \
+            '    <packageSource key="nuget.org">' \
+            '      <package pattern="*" />' \
+            '    </packageSource>' \
+            '  </packageSourceMapping>' \
             '</configuration>' > DemoPlugin/nuget.config
           dotnet publish DemoPlugin/DemoPlugin.csproj -c Release -o DemoPlugin/out --nologo
           # The contract assembly must NOT be in the plugin folder: the host resolves it to its own
