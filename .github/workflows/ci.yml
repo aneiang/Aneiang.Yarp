@@ -121,7 +121,19 @@ jobs:
       - name: Pack
         run: |
           for p in src/*/*.csproj; do
-            dotnet pack "$p" -c Release -o out --nologo
+            if ! dotnet pack "$p" -c Release -o out --nologo; then
+              # NU5050 names the destination but not the two sources that produced it. Dump the
+              # inputs here so a duplicate is diagnosable from the log instead of guessed at.
+              echo "::group::why $p failed"
+              echo "--- tracked logo paths ---"
+              git ls-files | grep -i 'logo\.png' || true
+              echo "--- logo files on disk (case-sensitive on Linux) ---"
+              find . -maxdepth 3 -iname 'logo.png' -not -path './.git/*' || true
+              echo "--- package items mentioning logo ---"
+              grep -rn "logo.png" src/*/obj/Release/*.nuspec 2>/dev/null | head -20 || true
+              echo "::endgroup::"
+              exit 1
+            fi
           done
 
       - name: Verify the Grafana template is inside the package
