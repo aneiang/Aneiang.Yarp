@@ -228,9 +228,9 @@
             'display:flex', 'align-items:center', 'justify-content:center',
             'animation:dashboard-loading-fade 200ms ease'
         ].join(';');
-        overlayEl.innerHTML = '<div style="background:#fff;padding:24px 32px;border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,0.3);display:flex;align-items:center;gap:14px;max-width:min(90vw,420px);">' +
+        overlayEl.innerHTML = '<div style="background: var(--card-bg);padding:24px 32px;border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,0.3);display:flex;align-items:center;gap:14px;max-width:min(90vw,420px);">' +
             '<div class="spinner-border text-primary" role="status" style="width:28px;height:28px;flex-shrink:0;"></div>' +
-            '<div class="dashboard-loading-overlay-text" style="color:#334155;font-size:14px;font-weight:500;line-height:1.5;"></div>' +
+            '<div class="dashboard-loading-overlay-text" style="color: var(--text-secondary);font-size:14px;font-weight:500;line-height:1.5;"></div>' +
             '</div>';
         overlayEl.querySelector('.dashboard-loading-overlay-text').textContent = message;
         document.body.appendChild(overlayEl);
@@ -358,10 +358,10 @@
         var wrap = document.createElement('div');
         wrap.style.cssText = 'padding:32px 24px;text-align:center;color:#64748b;';
         wrap.innerHTML =
-            '<div style="display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:50%;background:#fee2e2;color:#dc2626;font-size:24px;margin-bottom:12px;">' +
+            '<div style="display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:50%;background: var(--danger-bg);color: var(--danger-color);font-size:24px;margin-bottom:12px;">' +
             '<i class="bi bi-exclamation-triangle-fill"></i></div>' +
-            '<div style="font-size:14px;font-weight:500;color:#334155;margin-bottom:6px;">' + __('loading.loadFailed') + '</div>' +
-            '<div style="font-size:13px;color:#64748b;margin-bottom:16px;max-width:480px;margin-left:auto;margin-right:auto;"></div>';
+            '<div style="font-size:14px;font-weight:500;color: var(--text-secondary);margin-bottom:6px;">' + __('loading.loadFailed') + '</div>' +
+            '<div style="font-size:13px;color: var(--text-muted);margin-bottom:16px;max-width:480px;margin-left:auto;margin-right:auto;"></div>';
         wrap.children[2].textContent = message || __('loading.requestFailed');
 
         if (typeof onRetry === 'function') {

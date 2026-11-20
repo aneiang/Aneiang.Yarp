@@ -78,9 +78,8 @@ public sealed class JwtSecretProvider
         var newSecret = GenerateSecret();
         PersistSecret(newSecret);
         _logger.LogWarning(
-            "JWT secret auto-generated and persisted to {File}. " +
-            "All existing tokens will be invalidated after restart. " +
-            "Set Gateway:Dashboard:JwtSecret explicitly in configuration for production.",
+            "JWT secret auto-generated and persisted to {File}. Tokens signed with the previous key are no " +
+            "longer accepted. Set Gateway:Dashboard:JwtSecret explicitly in configuration for production.",
             _filePath);
         return newSecret;
     }

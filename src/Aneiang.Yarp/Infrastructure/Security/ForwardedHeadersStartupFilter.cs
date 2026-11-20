@@ -49,7 +49,7 @@ internal sealed class ForwardedHeadersStartupFilter : IStartupFilter
             _logger.LogInformation(
                 "Forwarded headers enabled for {Proxies} trusted proxy address(es) and {Networks} trusted network(s), ForwardLimit=1.",
                 forwarded.KnownProxies.Count,
-                forwarded.KnownNetworks.Count);
+                TrustedProxyConfigurator.NetworkCount(forwarded));
 
             app.UseForwardedHeaders(forwarded);
         }

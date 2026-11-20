@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
@@ -9,6 +9,16 @@
     <Description>YARP gateway base library: dynamic route registration, auto-registration, and config management.</Description>
     <PackageTags>yarp;reverse-proxy;gateway;api-gateway;dotnet</PackageTags>
   </PropertyGroup>
+
+  <!--
+    Forwarded-headers options changed shape in .NET 10 (KnownNetworks → KnownIPNetworks), so
+    TrustedProxyConfigurator exposes one internal accessor for "how many networks are trusted" and
+    the tests read through it instead of carrying a second #if of their own. Kept internal rather
+    than public so the package surface does not grow for a testing concern.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Aneiang.Yarp.UnitTests" />
+  </ItemGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />

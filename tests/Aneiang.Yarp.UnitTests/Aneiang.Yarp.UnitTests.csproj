@@ -1,7 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <!--
+      Two runtimes, on purpose: net9.0 proves the net9.0 asset of every library still behaves, and
+      net10.0 proves the newest one does. A compile-only check would not catch a runtime difference
+      (SQLite native binding, JSON defaults, Razor compiled views), and those are exactly what a new
+      target framework changes.
+    -->
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>

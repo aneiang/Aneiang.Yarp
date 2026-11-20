@@ -35,7 +35,7 @@ public sealed class PluginPathTraversalTests : IDisposable
     {
         var source = WritePlugin(id);
 
-        var installed = Host().TryInstall(source, out var error);
+        var installed = Host().TryInstall(source, isIdReserved: null, out var error);
 
         Assert.False(installed);
         Assert.NotNull(error);
@@ -52,7 +52,7 @@ public sealed class PluginPathTraversalTests : IDisposable
 
         var source = WritePlugin("../victim");
 
-        Assert.False(Host().TryInstall(source, out _));
+        Assert.False(Host().TryInstall(source, isIdReserved: null, out _));
 
         Assert.True(Directory.Exists(victim));
         Assert.True(File.Exists(Path.Combine(victim, "keep.txt")));
@@ -64,10 +64,24 @@ public sealed class PluginPathTraversalTests : IDisposable
         // The regex must not be so tight that normal ids stop working.
         var source = WritePlugin("acme.waf_v2-beta");
 
-        var installed = Host().TryInstall(source, out var error);
+        var installed = Host().TryInstall(source, isIdReserved: null, out var error);
 
         Assert.True(installed, error);
         Assert.True(Directory.Exists(Path.Combine(PluginRoot, "acme.waf_v2-beta")));
+    }
+
+    [Fact]
+    public void An_id_already_used_by_a_builtin_is_refused_at_install_time()
+    {
+        // Without this check the external plugin installs fine and then vanishes from the merged
+        // manifest list - the state that reads as "install did nothing" and takes a debugger to fix.
+        var source = WritePlugin("rate-limit");
+
+        var installed = Host().TryInstall(source, isIdReserved: id => id == "rate-limit", out var error);
+
+        Assert.False(installed);
+        Assert.Contains("built-in", error, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(Path.Combine(PluginRoot, "rate-limit")));
     }
 
     [Theory]
@@ -123,13 +137,24 @@ public sealed class PluginPathTraversalTests : IDisposable
     {
         var source = Path.Combine(_sandbox, "src-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(source);
+
+        // A real assembly rather than a placeholder: install reads the assembly metadata to catch
+        // "this .dll is a zip or a half-copied 0-byte file" packaging mistakes, so an empty Test.dll
+        // would make the happy path fail for a reason none of these tests are about.
+        File.Copy(
+            typeof(PluginPathTraversalTests).Assembly.Location,
+            Path.Combine(source, "Test.dll"),
+            overwrite: true);
+
         File.WriteAllText(Path.Combine(source, "plugin.json"), $$"""
         {
           "id": {{System.Text.Json.JsonSerializer.Serialize(id)}},
           "name": "Test",
           "version": "1.0.0",
           "entryAssembly": "Test.dll",
-          "entryType": "Test.Plugin"
+          "entryType": "Test.Plugin",
+          "scopes": [ "Route" ],
+          "schemas": []
         }
         """);
         return source;

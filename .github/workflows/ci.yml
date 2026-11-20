@@ -20,13 +20,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # One SDK, not a matrix: the libraries multi-target net8.0;net9.0 and the .NET 9 SDK
-      # compiles both, so `dotnet build` already proves both target frameworks. A matrix of
-      # 8.0.x SDKs would fail outright — an SDK cannot build a framework newer than itself.
-      - name: Setup .NET 9
+      # One SDK builds every target framework: the .NET 10 SDK compiles net8.0, net9.0 and net10.0
+      # alike, so the solution build already proves all three. A matrix of older SDKs would fail
+      # outright — an SDK cannot build a framework newer than itself.
+      #
+      # The 9.0 runtime is installed separately because the test project multi-targets
+      # net9.0;net10.0: .NET does not roll forward across major versions by default, so running the
+      # net9.0 test target needs the 9.0 shared runtime present.
+      - name: Setup .NET (10 SDK, 9 runtime)
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: |
+            9.0.x
+            10.0.x
+
+      # setup-dotnet installs a matching SDK but does not decide which one MSBuild picks: with no
+      # global.json the highest SDK in the install root wins. That is how this pipeline once
+      # compiled on .NET 11 while the workflow said 9 — and how `dotnet pack` began failing with
+      # NU5050 on a file that packs cleanly on 9. global.json is the pin; this step proves it held.
+      - name: Verify the SDK matches global.json
+        run: |
+          pinned=$(jq -r '.sdk.version' global.json | cut -d. -f1)
+          actual=$(dotnet --version)
+          echo "global.json pins .NET ${pinned}; the build will use ${actual}"
+          if [ "${actual%%.*}" != "${pinned}" ]; then
+            echo "::error::Resolved SDK ${actual} does not match the major version pinned in global.json (${pinned}). Fix the image/setup-dotnet combination instead of editing global.json to whatever the runner happens to ship."
+            exit 1
+          fi
 
       - name: Restore
         run: dotnet restore Aneiang.Yarp.sln
@@ -34,18 +54,23 @@ jobs:
       - name: Build (all target frameworks)
         run: dotnet build Aneiang.Yarp.sln --no-restore -c Release
 
-      - name: Test
-        run: >
-          dotnet test tests/Aneiang.Yarp.UnitTests/Aneiang.Yarp.UnitTests.csproj
-          --no-build -c Release
-          --logger "trx;LogFileName=test-results.trx"
-          --results-directory TestResults
+      # Both targets explicitly: `dotnet test` on a multi-target project would otherwise pick one
+      # and leave the other asset compiled but never executed — which is the half of "we support
+      # net10.0" that a green build cannot prove.
+      - name: Test (net9.0 and net10.0)
+        run: |
+          for tfm in net9.0 net10.0; do
+            dotnet test tests/Aneiang.Yarp.UnitTests/Aneiang.Yarp.UnitTests.csproj \
+              --no-build -c Release -f "$tfm" \
+              --logger "trx;LogFileName=test-results-$tfm.trx" \
+              --results-directory "TestResults/$tfm"
+          done
 
       # Keeps the "quietly runs nothing" failure mode honest: a filter typo would otherwise
       # turn the suite green while it validates exactly zero behaviour.
       - name: Verify tests actually ran
         run: |
-          total=$(grep -o 'total="[0-9]*"' TestResults/test-results.trx | head -1 | tr -dc '0-9')
+          total=$(grep -ho 'total="[0-9]*"' TestResults/*/*.trx | sed 's/[^0-9]//g' | awk '{ s += $1 } END { print s + 0 }')
           echo "Executed test cases: ${total:-0}"
           if [ -z "$total" ] || [ "$total" -lt 100 ]; then
             echo "::error::Expected at least 100 test cases, got '${total:-0}'."
@@ -68,10 +93,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup .NET 9
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 10.0.x
+
+      # setup-dotnet installs a matching SDK but does not decide which one MSBuild picks: with no
+      # global.json the highest SDK in the install root wins. That is how this pipeline once
+      # compiled on .NET 11 while the workflow said 9 — and how `dotnet pack` began failing with
+      # NU5050 on a file that packs cleanly on 9. global.json is the pin; this step proves it held.
+      - name: Verify the SDK matches global.json
+        run: |
+          pinned=$(jq -r '.sdk.version' global.json | cut -d. -f1)
+          actual=$(dotnet --version)
+          echo "global.json pins .NET ${pinned}; the build will use ${actual}"
+          if [ "${actual%%.*}" != "${pinned}" ]; then
+            echo "::error::Resolved SDK ${actual} does not match the major version pinned in global.json (${pinned}). Fix the image/setup-dotnet combination instead of editing global.json to whatever the runner happens to ship."
+            exit 1
+          fi
 
       # Packing on every push catches the "works in the repo, ships without a file" class of
       # bug. The Grafana board is packaged from docs/, so a wrong <None Include> path is
@@ -105,10 +144,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup .NET 9
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 10.0.x
+
+      # setup-dotnet installs a matching SDK but does not decide which one MSBuild picks: with no
+      # global.json the highest SDK in the install root wins. That is how this pipeline once
+      # compiled on .NET 11 while the workflow said 9 — and how `dotnet pack` began failing with
+      # NU5050 on a file that packs cleanly on 9. global.json is the pin; this step proves it held.
+      - name: Verify the SDK matches global.json
+        run: |
+          pinned=$(jq -r '.sdk.version' global.json | cut -d. -f1)
+          actual=$(dotnet --version)
+          echo "global.json pins .NET ${pinned}; the build will use ${actual}"
+          if [ "${actual%%.*}" != "${pinned}" ]; then
+            echo "::error::Resolved SDK ${actual} does not match the major version pinned in global.json (${pinned}). Fix the image/setup-dotnet combination instead of editing global.json to whatever the runner happens to ship."
+            exit 1
+          fi
 
       # The template references the published packages, so the only way to prove it is usable is to
       # pack this commit and restore from that feed. Pointing the template at nuget.org would test
@@ -134,7 +187,7 @@ jobs:
           # bump should not fail CI with a "file not found" that looks like a missing template.
           dotnet new install out/Aneiang.Yarp.Templates.*.nupkg
           mkdir -p tmpltest && cd tmpltest
-          dotnet new aneiang-yarp -n GeneratedGateway --Framework net9.0
+          dotnet new aneiang-yarp -n GeneratedGateway --Framework net10.0
           # The heredoc body has to start in column 0 of the generated file, so these lines sit at the
           # same indentation as everything else in this block and YAML strips it uniformly.
           printf '%s\n' \
@@ -149,6 +202,9 @@ jobs:
           # The Dockerfile ships with the project; a stale assembly name there is a broken image
           # that nobody notices until `docker run`.
           grep -q 'ENTRYPOINT \["dotnet", "GeneratedGateway.dll"\]' GeneratedGateway/Dockerfile
+          # --Framework has to reach the csproj, not just the template's choice list: a choice that
+          # renders nothing is the failure mode this assertion exists for.
+          grep -q '<TargetFramework>net10.0</TargetFramework>' GeneratedGateway/GeneratedGateway.csproj
 
       # A plugin template fails differently from a gateway template: it compiles, then the host
       # refuses to load it because the manifest points at the wrong assembly or the wrong type.

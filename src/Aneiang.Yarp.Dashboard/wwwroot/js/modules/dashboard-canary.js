@@ -164,12 +164,12 @@
 
         _errorCell: function (requests, failures, rate) {
             if (!requests) {
-                return '<span style="color:#94a3b8;">' + this.esc(this.t('noTraffic')) + '</span>';
+                return '<span style="color: var(--text-faint);">' + this.esc(this.t('noTraffic')) + '</span>';
             }
             var percent = (rate === null || rate === undefined) ? 0 : (rate * 100);
             var color = percent >= 20 ? '#dc2626' : percent >= 5 ? '#d97706' : '#15803d';
             return '<strong style="color:' + color + ';">' + percent.toFixed(1) + '%</strong>' +
-                '<span style="color:#94a3b8;margin-left:6px;">(' + failures + '/' + requests + ')</span>';
+                '<span style="color: var(--text-faint);margin-left:6px;">(' + failures + '/' + requests + ')</span>';
         },
 
         _liveSection: function (rollout) {
@@ -199,16 +199,16 @@
                     failures = index === 0 ? live.canaryFailures : live.baselineFailures;
                     rate = index === 0 ? live.canaryErrorRate : live.baselineErrorRate;
                 }
-                html += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:10px 12px;background:var(--bg-secondary,#f8fafc);">' +
+                html += '<div style="border:1px solid var(--border-color);border-radius:8px;padding:10px 12px;background: var(--bg-secondary,var(--surface-2));">' +
                     '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">' +
                     '<span style="width:8px;height:8px;border-radius:50%;background:' + row.dot + ';"></span>' +
                     '<span style="font-size:12px;font-weight:600;color:var(--text-primary);">' + Canary.esc(row.label) + '</span>' +
-                    (row.share === null ? '' : '<span style="margin-left:auto;font-size:11px;color:#64748b;">' + Canary.esc(Canary.t('share')) + ' ' + row.share + '%</span>') +
+                    (row.share === null ? '' : '<span style="margin-left:auto;font-size:11px;color: var(--text-muted);">' + Canary.esc(Canary.t('share')) + ' ' + row.share + '%</span>') +
                     '</div>' +
-                    '<div style="font-size:11px;color:#94a3b8;margin-bottom:6px;word-break:break-all;">' + Canary.esc(row.detail) + '</div>' +
+                    '<div style="font-size:11px;color: var(--text-faint);margin-bottom:6px;word-break:break-all;">' + Canary.esc(row.detail) + '</div>' +
                     '<div style="font-size:12px;color:var(--text-secondary);">' +
                     Canary.esc(Canary.t('requests')) + ' <strong>' + requests + '</strong>' +
-                    '<span style="color:#cbd5e1;margin:0 6px;">|</span>' +
+                    '<span style="color: var(--text-secondary);margin:0 6px;">|</span>' +
                     Canary.esc(Canary.t('errorRate')) + ' ' + Canary._errorCell(requests, failures, rate) +
                     '</div></div>';
             }, this);
@@ -252,9 +252,9 @@
                 this.esc(this.t(this._phaseKey(rollout.phase))) + '</span>' +
                 (isObserving
                     ? '<span id="canary-countdown" data-remaining="' + rollout.secondsRemaining + '" ' +
-                      'style="font-size:12px;color:#64748b;">' + this.esc(this.t('remaining', { seconds: rollout.secondsRemaining })) + '</span>'
+                      'style="font-size:12px;color: var(--text-muted);">' + this.esc(this.t('remaining', { seconds: rollout.secondsRemaining })) + '</span>'
                     : '') +
-                '<span style="margin-left:auto;font-size:12px;color:#64748b;">' +
+                '<span style="margin-left:auto;font-size:12px;color: var(--text-muted);">' +
                 this.esc(this.t('step', { current: rollout.stepIndex + 1, total: rollout.stepCount })) + '</span>' +
                 '</div>';
 
@@ -263,7 +263,7 @@
             // Step ramp
             html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
                 this._renderSteps(rollout) +
-                '<span style="margin-left:auto;font-size:11px;color:#94a3b8;">' +
+                '<span style="margin-left:auto;font-size:11px;color: var(--text-faint);">' +
                 this.esc(this.t('threshold')) + ' ' + Math.round(rollout.errorRateThreshold * 100) + '% · ' +
                 this.esc(this.t('minSamples')) + ' ' + rollout.minSamples + ' · ' +
                 this.esc(this.t('extensions')) + ' ' + rollout.windowExtensions + '</span>' +
@@ -282,7 +282,7 @@
                     '<div style="font-size:12px;color:var(--text-primary);">' +
                     '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:' + dot + ';margin-right:6px;"></span>' +
                     (codeLabel ? this.esc(codeLabel) : this.esc(verdict)) + '</div>' +
-                    '<div style="font-size:11px;color:#94a3b8;margin-top:2px;font-family:monospace;">' +
+                    '<div style="font-size:11px;color: var(--text-faint);margin-top:2px;font-family:monospace;">' +
                     this.esc(rollout.lastReason) + '</div></div>';
             }
 
@@ -323,7 +323,7 @@
                 html += '<div style="font-size:12px;color:var(--text-primary);">' + this.esc(codeLabel) + '</div>';
             }
             if (rollout.lastReason) {
-                html += '<div style="font-size:11px;color:#94a3b8;font-family:monospace;">' + this.esc(rollout.lastReason) + '</div>';
+                html += '<div style="font-size:11px;color: var(--text-faint);font-family:monospace;">' + this.esc(rollout.lastReason) + '</div>';
             }
             html += this._renderHistory(rollout);
             html += '</div>';
@@ -342,10 +342,10 @@
                 var canaryRate = record.canaryErrorRate === null ? '-' : (record.canaryErrorRate * 100).toFixed(1) + '%';
                 var baselineRate = record.baselineErrorRate === null ? '-' : (record.baselineErrorRate * 100).toFixed(1) + '%';
                 return '<tr>' +
-                    '<td style="padding:4px 8px;color:#64748b;">' + record.canaryPercent + '%</td>' +
+                    '<td style="padding:4px 8px;color: var(--text-muted);">' + record.canaryPercent + '%</td>' +
                     '<td style="padding:4px 8px;color:var(--text-secondary);">' + record.canaryRequests + '</td>' +
                     '<td style="padding:4px 8px;color:' + verdictColor + ';font-weight:600;">' + canaryRate + '</td>' +
-                    '<td style="padding:4px 8px;color:#94a3b8;">' + baselineRate + '</td>' +
+                    '<td style="padding:4px 8px;color: var(--text-faint);">' + baselineRate + '</td>' +
                     '<td style="padding:4px 8px;color:' + verdictColor + ';">' + self.esc(self.t('verdict' + record.verdict)) + '</td>' +
                     '<td style="padding:4px 8px;color:#94a3b8;font-family:monospace;font-size:10px;max-width:420px;' +
                     'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + self.esc(record.reason) + '">' +
@@ -353,9 +353,9 @@
             }).join('');
 
             return '<div>' +
-                '<div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">' + this.esc(this.t('history')) + '</div>' +
+                '<div style="font-size:11px;color: var(--text-faint);margin-bottom:4px;">' + this.esc(this.t('history')) + '</div>' +
                 '<table style="width:100%;border-collapse:collapse;font-size:11px;">' +
-                '<thead><tr style="text-align:left;color:#94a3b8;">' +
+                '<thead><tr style="text-align:left;color: var(--text-faint);">' +
                 '<th style="padding:2px 8px;font-weight:500;">' + this.esc(this.t('colStep')) + '</th>' +
                 '<th style="padding:2px 8px;font-weight:500;">' + this.esc(this.t('colCanaryReq')) + '</th>' +
                 '<th style="padding:2px 8px;font-weight:500;">' + this.esc(this.t('colCanary5xx')) + '</th>' +
@@ -439,9 +439,9 @@
                     'border-radius:8px;cursor:pointer;font-size:12px;">' +
                     '<input type="checkbox" class="form-check-input mt-0 canary-dest" value="' + self.esc(dest.id) + '"' + checked + '>' +
                     '<code style="font-size:12px;">' + self.esc(dest.id) + '</code>' +
-                    '<span style="color:#94a3b8;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + self.esc(dest.address || '') + '</span>' +
-                    (dest.tag ? '<span style="font-size:10px;padding:1px 6px;border-radius:999px;background:#eff6ff;color:#1d4ed8;">' + self.esc(dest.tag) + '</span>' : '') +
-                    '<span style="font-size:11px;color:#64748b;">w=' + dest.weight + '</span>' +
+                    '<span style="color: var(--text-faint);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + self.esc(dest.address || '') + '</span>' +
+                    (dest.tag ? '<span style="font-size:10px;padding:1px 6px;border-radius:999px;background: var(--info-bg);color: var(--info-color);">' + self.esc(dest.tag) + '</span>' : '') +
+                    '<span style="font-size:11px;color: var(--text-muted);">w=' + dest.weight + '</span>' +
                     '</label>';
             }).join('');
 
@@ -449,30 +449,30 @@
                 '<div class="modal fade" id="' + modalId + '" tabindex="-1" data-bs-backdrop="static">' +
                 '<div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content" ' +
                 'style="border-radius:16px;border:none;box-shadow:0 25px 50px rgba(0,0,0,0.25);overflow:hidden;">' +
-                '<div class="modal-header" style="background:linear-gradient(135deg,#f8fafc,#e2e8f0);border-bottom:1px solid #e2e8f0;padding:18px 24px;">' +
+                '<div class="modal-header" style="background: linear-gradient(135deg,var(--surface-2),var(--surface-4));border-bottom: 1px solid var(--border-color);padding:18px 24px;">' +
                 '<h5 class="modal-title" style="font-weight:600;font-size:16px;display:flex;align-items:center;gap:10px;">' +
                 '<span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;' +
                 'background:linear-gradient(135deg,#0ea5e9,#22d3ee);color:#fff;font-size:16px;"><i class="bi bi-signpost-split"></i></span>' +
                 self.esc(self.t('startTitle')) + '</h5>' +
                 '<button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>' +
                 '<div class="modal-body" style="padding:20px 24px;display:flex;flex-direction:column;gap:14px;">' +
-                '<div style="font-size:12px;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;">' +
+                '<div style="font-size:12px;color: var(--text-muted);background: var(--surface-2);border: 1px solid var(--border-color);border-radius:8px;padding:8px 12px;">' +
                 '<i class="bi bi-info-circle me-1"></i>' + self.esc(self.t('startHelp')) + '</div>' +
                 '<div><div style="font-size:12px;font-weight:600;margin-bottom:6px;">' + self.esc(self.t('canaryDestinations')) + '</div>' +
                 '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:200px;overflow:auto;">' + destRows + '</div></div>' +
                 '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
                 '<div><label class="form-label" style="font-size:12px;font-weight:600;">' + self.esc(self.t('stepsLabel')) + '</label>' +
                 '<input class="form-control form-control-sm" id="canary-steps" value="' + steps + '">' +
-                '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">' + self.esc(self.t('stepsHelp')) + '</div></div>' +
+                '<div style="font-size:11px;color: var(--text-faint);margin-top:2px;">' + self.esc(self.t('stepsHelp')) + '</div></div>' +
                 '<div><label class="form-label" style="font-size:12px;font-weight:600;">' + self.esc(self.t('windowLabel')) + '</label>' +
                 '<input type="number" class="form-control form-control-sm" id="canary-window" min="10" value="' + windowSeconds + '"></div>' +
                 '<div><label class="form-label" style="font-size:12px;font-weight:600;">' + self.esc(self.t('thresholdLabel')) + '</label>' +
                 '<input type="number" class="form-control form-control-sm" id="canary-threshold" min="1" max="100" value="' + thresholdPercent + '">' +
-                '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">' + self.esc(self.t('baselineTrusted')) + '</div></div>' +
+                '<div style="font-size:11px;color: var(--text-faint);margin-top:2px;">' + self.esc(self.t('baselineTrusted')) + '</div></div>' +
                 '<div><label class="form-label" style="font-size:12px;font-weight:600;">' + self.esc(self.t('minSamplesLabel')) + '</label>' +
                 '<input type="number" class="form-control form-control-sm" id="canary-minsamples" min="1" value="' + minSamples + '"></div>' +
                 '</div></div>' +
-                '<div class="modal-footer" style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 24px;justify-content:flex-end;gap:8px;">' +
+                '<div class="modal-footer" style="background: var(--surface-2);border-top: 1px solid var(--border-color);padding:14px 24px;justify-content:flex-end;gap:8px;">' +
                 '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">' + self.esc(self.t('cancelBtn')) + '</button>' +
                 '<button type="button" class="btn btn-primary btn-sm" id="canary-start-confirm">' +
                 '<i class="bi bi-play-fill me-1"></i>' + self.esc(self.t('startBtn')) + '</button>' +

@@ -15,6 +15,26 @@
 `<prefix>/plugin-market` →「安装外部插件」→ 填发布目录的绝对路径。后者只做复制与登记，
 **不重启网关、也不自动启用插件**（启用与绑定在「插件配置」里），所以"装上去"和"开始改流量"是两个动作。
 
+## 目标框架：宿主和插件怎么配对
+
+`2.3.0.40` 的每个包同时提供 `net8.0` / `net9.0` / `net10.0` 三份资产。NuGet 只允许**向下**兼容，
+所以规则只有一条：**插件的目标框架不能比宿主新**。
+
+| 插件 TFM | net8.0 宿主 | net9.0 宿主 | net10.0 宿主 |
+|:--|:--:|:--:|:--:|
+| `net8.0` | ✅ | ✅ | ✅ |
+| `net9.0` | ❌ 还原失败 | ✅ | ✅ |
+| `net10.0` | ❌ 还原失败 | ❌ 还原失败 | ✅ |
+
+「还原失败」发生在插件项目的 `dotnet restore` 阶段（`NU1202`），不是加载期 —— 插件作者在自己机器上
+就会看到，不会等装进网关才炸。
+
+反方向不受限：**宿主比插件新没问题**。`net8.0` 编译出来的程序集在 `net10.0` 宿主里正常加载，因为契约
+程序集始终由宿主提供（同名同版本），插件只是按程序集标识绑定过去。
+
+这也是 `Aneiang.Yarp.Plugin.Abstractions` 永远保留 `net8.0` 资产的原因：删掉它，所有以 net8.0 为目标的
+插件项目下一次还原就失败，而他们一行代码都没改。
+
 ## 内置插件矩阵
 
 `order` 是代理管线的执行顺序（升序）。中间件在管线里从外到内按这个顺序排列，`fault-injection`
@@ -40,16 +60,22 @@
 
 ## `plugin.json` 的校验表
 
-外部插件被启用时按顺序检查下面这些。**注意这些都是运行时检查**，所以"构建成功"不代表"能装上"。
+外部插件在**安装/升级时**和**启动扫描时**都会按顺序检查下面这些，安装时检查失败会直接拒装并给出原因。
+**注意这些都是运行时检查**，所以"构建成功"不代表"能装上"。
 
 | 字段 | 规则 | 不满足 |
 |:--|:--|:--|
-| `id` | 非空、全局唯一；与插件实例的 `PluginId` 必须一致 | `InvalidManifest` / `LoadFailed`（错误信息写明两个 id） |
+| `id` | 非空、全局唯一；与插件实例的 `PluginId` 必须一致；不能和内置插件重名 | `InvalidManifest` / `LoadFailed`（错误信息写明两个 id）；重名时安装直接失败 |
 | `name` | 非空 | `InvalidManifest` |
 | `version` | 语义化版本（`1`、`1.0`、`1.0.0`、`1.0.0-beta.1` 均可） | `InvalidManifest` |
-| `entryAssembly` | 必填、相对 `plugin.json`、且不能跳出插件目录 | `InvalidManifest` / `LoadFailed` |
+| `scopes` | 非空，取值 `Route` / `Cluster` | `InvalidManifest`（否则没有任何可绑定的目标） |
+| `entryAssembly` | 必填、相对 `plugin.json`、不能跳出插件目录、**文件必须存在且是可加载的 .NET 程序集** | `InvalidManifest`（`entryAssembly '...' was not found next to plugin.json` / `is not a loadable .NET assembly`） |
 | `entryType` | 必填，加载后必须实现 `IGatewayPlugin`，且有无参构造函数 | `LoadFailed` |
+| `schemas` | 必填数组（可为空数组）；`version` 是 ≥1 的整数且不重复；每个 `configJsonSchema` 能解析、根节点声明 `"type": "object"` | `InvalidManifest`，错误信息指明是 `schemas[0]` 的哪条规则 |
 | `dependencies` | 每个依赖必须已安装，且满足版本约束（`>=2.0`、`<3.0` 这类比较符） | `DependencyUnsatisfied` |
+
+`configJsonSchema` 怎么写（支持的关键字、两种 `anyOf` 语义、版本升级与迁移）单独一页：
+[插件配置 schema](https://yarp.aneiang.com/docs/#plugin-config-schema)。
 
 ## 外部插件能做什么、不能做什么
 

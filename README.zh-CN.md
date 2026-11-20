@@ -1,7 +1,4 @@
 <div align="center">
-<img src="cover-zh.png" alt="Aneiang.Yarp — 为 .NET 而生的反向代理与 API 网关" width="100%"/>
-
-<br/>
 
 <img src="logo.png" alt="Aneiang.Yarp" width="240" style="border-radius: 15px;"/>
 
@@ -13,7 +10,7 @@
 [![NuGet](https://img.shields.io/nuget/v/Aneiang.Yarp.Dashboard.svg)](https://www.nuget.org/packages/Aneiang.Yarp.Dashboard)
 [![NuGet](https://img.shields.io/nuget/v/Aneiang.Yarp.Client.svg)](https://www.nuget.org/packages/Aneiang.Yarp.Client)
 [![YARP](https://img.shields.io/badge/YARP-2.3.0-blue.svg)](https://github.com/microsoft/reverse-proxy)
-[![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%209.0-purple.svg)](https://dotnet.microsoft.com/)
+[![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-purple.svg)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 [English](README.md) | [中文](README.zh-CN.md)
@@ -22,76 +19,9 @@
 
 ---
 
-**Aneiang.Yarp** 是基于 [微软 YARP](https://microsoft.github.io/reverse-proxy/) 2.3.0 构建的生产级 API 网关。它开箱即用地提供了你原本需要自行搭建的全部能力：**插件化架构**（10 个内置插件）、可视化**管理面板**、WAF 防火墙、AI 智能助手、多 Provider **服务发现**、通知告警、健康检查与熔断监控，以及微服务**一行代码自动注册**。
+**Aneiang.Yarp** 是基于 [微软 YARP](https://microsoft.github.io/reverse-proxy/) 2.3.0 构建的生产级 API 网关。它开箱即用地提供了你原本需要自行搭建的全部能力：**插件化架构**（11 个内置插件）、可视化**管理面板**、WAF 防火墙、AI 智能助手、多 Provider **服务发现**、通知告警、健康检查与熔断监控，以及微服务**一行代码自动注册**。
 
 [📖 文档](https://yarp.aneiang.com/docs/index.html#overview) · [🚀 在线演示](https://yarp-test.aneiang.com/aneiang) `admin` / `demo123` 
-
-> **当前为预览版 `2.3.0.40-preview.1`** · 本版稳定版尚未发布。预发布版本不会被 `dotnet` 默认选中，安装模板时要显式指定版本：
->
-> ```
-> dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
-> ```
->
-> 在仓库内也可以直接从目录装：`dotnet new install ./templates/Aneiang.Yarp.Templates`。引用 NuGet 包时同理，`PackageReference` 必须写完整的 `2.3.0.40-preview.1`，只写 `2.3.0.40` 会还原失败——那个版本还不存在。稳定版发布后这段说明会删掉。
-
----
-
-## Aneiang.Yarp 与裸 YARP 对比
-
-| 需求 | 裸 YARP | Aneiang.Yarp |
-|:-----|:----------|:-------------|
-| 管理界面 | 自行搭建 | ✅ 内置 |
-| 运行时编辑配置 | 仅支持重载文件 | ✅ 增删改查 + 表单/JSON 编辑 + 回滚 + 审计 |
-| 安全防护（WAF） | 无 | ✅ WAF 插件（声明式规则、IP 黑白名单、SQLi / XSS / 路径遍历、monitor 预演） |
-| 微服务注册 | 无 | ✅ 一行代码 REST/gRPC + 心跳自愈 |
-| 可观测性 | 仅日志 | ✅ 指标、请求日志、健康检查、熔断面板 |
-| 服务发现 | 手动维护集群 | ✅ Consul / Nacos / Eureka / K8s / HTTP-JSON / Static |
-| AI 助手 | 无 | ✅ 对话式管理（40 个工具，读写分离） |
-| 扩展性 | 自定义中间件 | ✅ 即插即用的 `IGatewayPlugin` 插件框架 |
-
----
-
-## 系统架构
-
-```
-                   +-----------------------------------------------------------+
-                   |                  Aneiang.Yarp 网关（YARP 2.3.0）              |
- +-------------+   |   +------------------+  +-------------------------------+  |
- |  5+ 个客户端  |   |   |  Web Dashboard   |  |  管理 API + gRPC 宿主             |  |
- |   浏览器/App  |   |   |  路由 / 插件       |  |  客户端自动注册                   |  |
- +-------------+   |   |  WAF / AI / 2FA   |  |                               |  |
-                   |   +--------+----------+  +--------------+----------------+  |
-                   |            +------------------------------------------------+ |
-                   |            |                                                  |
-                   |   +--------v---------+                                    | |
-                   |   |  插件管道（10 个内置插件）                                    | |
-                   |   |  WAF → 限流 → 重试 → 熔断 →            | |
-                   |   |  压缩 → 缓存 → 指标 → 日志              | |
-                   |   +--------+---------+                                    | |
-                   |            +------------------------------------------------+ |
-                   |            |                                                  |
-                   |   +--------v---------+   +-------------------------------+  |
-                   |   |  YARP 反向代理       | → |  目标服务 / 集群               |  |
-                   |   |   动态路由         |   |  （通过服务发现）              |  |
-                   |   +--------+---------+   +-------------------------------+  |
-                   |            |
-                   |   +--------v--------+
-                   |   |  存储：SQLite（SQLCipher AES-256） |
-                   +-----------------------------------------------------------+
-```
-
----
-
-## 项目亮点
-
-- **插件化架构** —— 一切都是插件；11 个第一方插件提供 WAF、限流、重试、熔断、压缩、缓存、监控等能力。编写自己的 `IGatewayPlugin` 即可在几分钟内扩展网关；**插件市场页**把已装插件、来源（内置 / 外部）与安装/升级/卸载放在一处，外部插件从本机目录装进来。
-- **可视化管理面板** —— 在一个界面统一管理集群、路由、插件、WAF、健康检查、熔断器、日志、通知、审计与配置历史。
-- **运行时动态路由** —— 无需重启即可创建 / 编辑集群与路由，自动持久化并在重启后自动恢复。
-- **原生 YARP 配置编辑** —— 表单 + JSON 双模编辑器，直接面向标准 YARP Schema。
-- **多 Provider 服务发现** —— Consul、Nacos、Eureka、Kubernetes、HTTP-JSON、Static。
-- **客户端一行注册** —— 微服务启动自动注册、关闭自动注销，支持 REST / gRPC + 心跳自愈。
-- **AI 智能助手** —— 以对话方式管理网关；40 个 Function Calling 工具，读写权限严格分离。
-- **灵活部署** —— `Auto` / `AllInOne` / `Split` / `ProxyOnly` / `DashboardOnly`，基于角色的端口路由。
 
 ---
 
@@ -152,20 +82,39 @@ app.Run();
 
 ---
 
-## 包结构
+## 为什么选它
 
-| 包 | 用途 | 依赖 YARP |
-|:----|:-----|:---:|
-| **Aneiang.Yarp** | 网关核心：动态路由、IP 隔离、API 鉴权、插件执行 | ✅ |
-| **Aneiang.Yarp.Dashboard** | Web 管理面板 + AI 助手 | 通过核心库 |
-| **Aneiang.Yarp.Client** | 一行代码自动注册（无 YARP 依赖） | ❌ |
-| **Aneiang.Yarp.Storage.Sqlite** | SQLite 存储（SQLCipher AES-256 加密） | 通过存储层 |
-| **Aneiang.Yarp.Storage.Abstractions** | 存储接口与实体 | ❌ |
-| **Aneiang.Yarp.Grpc** | gRPC 注册协议 | ❌ |
-| **Aneiang.Yarp.Plugin.Abstractions** | 插件契约（`IGatewayPlugin`） | ❌ |
-| **Aneiang.Yarp.Plugin.\*** | 11 个第一方插件，按需单独引入 | 通过核心库 |
+### Aneiang.Yarp 与裸 YARP 对比
 
-**.NET 8.0 / 9.0**。
+| 需求 | 裸 YARP | Aneiang.Yarp |
+|:-----|:----------|:-------------|
+| 管理界面 | 自行搭建 | ✅ 内置 |
+| 运行时编辑配置 | 仅支持重载文件 | ✅ 增删改查 + 表单/JSON 编辑 + 回滚 + 审计 |
+| 安全防护（WAF） | 无 | ✅ WAF 插件（声明式规则、IP 黑白名单、SQLi / XSS / 路径遍历、monitor 预演） |
+| 微服务注册 | 无 | ✅ 一行代码 REST/gRPC + 心跳自愈 |
+| 可观测性 | 仅日志 | ✅ 指标、请求日志、健康检查、熔断面板 |
+| 服务发现 | 手动维护集群 | ✅ Consul / Nacos / Eureka / K8s / HTTP-JSON / Static |
+| AI 助手 | 无 | ✅ 对话式管理（40 个工具，读写分离） |
+| 扩展性 | 自定义中间件 | ✅ 即插即用的 `IGatewayPlugin` 插件框架 |
+
+---
+
+### 系统架构
+
+![系统架构](docs/architecture-zh.png)
+
+---
+
+### 项目亮点
+
+- **插件化架构** —— 一切都是插件；11 个第一方插件提供 WAF、限流、重试、熔断、压缩、缓存、监控等能力。编写自己的 `IGatewayPlugin` 即可在几分钟内扩展网关；**插件市场页**把已装插件、来源（内置 / 外部）与安装/升级/卸载放在一处，外部插件从本机目录装进来。
+- **可视化管理面板** —— 在一个界面统一管理集群、路由、插件、WAF、健康检查、熔断器、日志、通知、审计与配置历史。
+- **运行时动态路由** —— 无需重启即可创建 / 编辑集群与路由，自动持久化并在重启后自动恢复。
+- **原生 YARP 配置编辑** —— 表单 + JSON 双模编辑器，直接面向标准 YARP Schema。
+- **多 Provider 服务发现** —— Consul、Nacos、Eureka、Kubernetes、HTTP-JSON、Static。
+- **客户端一行注册** —— 微服务启动自动注册、关闭自动注销，支持 REST / gRPC + 心跳自愈。
+- **AI 智能助手** —— 以对话方式管理网关；40 个 Function Calling 工具，读写权限严格分离。
+- **灵活部署** —— `Auto` / `AllInOne` / `Split` / `ProxyOnly` / `DashboardOnly`，基于角色的端口路由。
 
 ---
 
@@ -189,7 +138,9 @@ app.Run();
 
 ---
 
-## 服务发现
+## 核心能力
+
+### 服务发现
 
 `ServiceDiscoveryRefreshService` 周期从注册中心解析集群目标端点并发布新的 YARP 快照 —— 全程无需重启。按集群绑定（`service-discovery` 插件绑定）。
 
@@ -206,7 +157,7 @@ app.Run();
 
 ---
 
-## 可观测性与生产化（2.3.0.40）
+### 可观测性与生产化
 
 - **Prometheus 指标** —— `GET /metrics` 输出标准文本格式：`gateway_requests_total`、`gateway_request_duration_seconds`（直方图）、`gateway_responses_total{class}`、`gateway_inflight_requests`、`gateway_circuits{state}`、`gateway_config_version`。采集点在代理管道内，不依赖任何插件是否绑定；序列数上限 300，超出并入 `route="other"`，避免基数爆炸。
 - **上游连接池** —— `gateway_upstream_connections{host,state}` 用 `MeterListener` 读取 `System.Net.Http` 内置 Meter，区分 active / idle："池打满"和"上游慢"在请求侧长得一样，但从这两条线一眼能分开。
@@ -225,7 +176,7 @@ Grafana 面板模板随包提供，位于包内 `content/observability/grafana-d
 
 ---
 
-## 灰度发布（2.3.0.40）
+### 灰度发布
 
 内置 `Weighted` 负载均衡策略，按节点权重**精确**分流，而不是"大致按比例"。
 
@@ -250,7 +201,7 @@ Grafana 面板模板随包提供，位于包内 `content/observability/grafana-d
 
 可覆盖的集群级 metadata：`Weighted.WeightKey`、`Weighted.DefaultWeight`、`Weighted.TagKey`、`Weighted.HeaderName`。
 
-### 自动放量与自动回滚
+#### 自动放量与自动回滚
 
 权重会算了，接下来要有人盯着看 —— 这件事交给灰度状态机，在 Dashboard「集群」页每行的灰度按钮里操作，或者直接调 `POST /api/canary/rollouts`：
 
@@ -297,7 +248,7 @@ Grafana 面板模板随包提供，位于包内 `content/observability/grafana-d
 
 **插件扩展点**：`PluginCapability` 新增 `LoadBalancingPolicy` 与 `Transform`，第三方插件实现 `IGatewayPluginHostServices.ConfigureHostServices(IServiceCollection)` 即可注册自己的策略（注意走的是宿主容器，不是插件的运行时容器 —— 后者注册的策略 YARP 看不见）。
 
-### 指标告警（2.3.0.40）
+#### 指标告警
 
 灰度会自己回滚，但前提是有人在看；没人看的时候，5xx 率、P99、熔断开闸该有人喊一声。位置在 Dashboard「通知管理 → 指标告警」，或直接调 `POST /api/alerts/rules`：
 
@@ -356,7 +307,7 @@ Grafana 面板模板随包提供，位于包内 `content/observability/grafana-d
 
 ---
 
-## 链路追踪（2.3.0.40）
+### 链路追踪
 
 指标能告诉你"错了多少"，回答不了"错在哪一跳"。开了追踪之后，一次请求在网关里的每一段都有自己的 span，位置在 Dashboard「链路追踪」页（或直接 `GET /api/tracing`）：
 
@@ -415,7 +366,7 @@ docker run -d --name jaeger -p 16686:16686 -p 4317:4317 jaegertracing/all-in-one
 
 ---
 
-## 故障注入（2.3.0.40）
+### 故障注入
 
 前面几块能力（重试、熔断、指标、告警、自动回滚）都是"等真故障发生时才验证"的东西 —— 而故障总是发生在最不方便的时候，也总在你没盯着面板的时候。故障注入把这件事反过来：**主动把故障造出来，然后看那些组件有没有按你说的反应。**
 
@@ -464,7 +415,7 @@ curl -X POST http://localhost:5000/apigateway/api/plugin-bindings/batch-enabled 
 
 ---
 
-## WAF 防火墙（2.3.0.40）
+### WAF 防火墙
 
 原来的 WAF 是五个写死的检查器加一排开关：SQL 注入要么全开要么全关，没法说"只对 `/api` 开"；想加一条"拦掉 UA 是 sqlmap 的请求"只能改代码。
 
@@ -489,7 +440,7 @@ curl -X POST http://localhost:5000/apigateway/api/plugin-bindings/batch-enabled 
 }
 ```
 
-## 三个部分
+#### 三个部分
 
 | 部分 | 可取值 | 说明 |
 |:--|:--|:--|
@@ -508,7 +459,7 @@ curl -X POST http://localhost:5000/apigateway/api/plugin-bindings/batch-enabled 
 
 `op` 支持 `equals` / `contains` / `prefix` / `suffix` / `regex` / `cidr` / `greaterThan` / `lessThan`；`matchMode` 决定条件是 `all`（默认）还是 `any`。
 
-## 在面板里配规则
+#### 在面板里配规则
 
 手写上面那段 JSON 不是配置 WAF 的正常方式。面板里一条规则就是一张卡片，卡片的标题把它读成一句话：
 
@@ -528,7 +479,7 @@ curl -X POST http://localhost:5000/apigateway/api/plugin-bindings/batch-enabled 
 - **五个模板**：SQL 注入、XSS、路径穿越、IP 网段、仅观察。从一张填好的卡片开始，比从十四个空字段开始可靠
 - **规则可以上下移**。顺序有意义 —— 一条 `allow` 放在前面会短路后面所有规则
 
-## 限流：不是流量整形，是闸门
+#### 限流：不是流量整形，是闸门
 
 `rate-limit` 动作回答的不是"这条路由的配额是多少"，而是"有人在反复撞同一条规则，先让他停一会儿"：
 
@@ -547,7 +498,7 @@ curl -X POST http://localhost:5000/apigateway/api/plugin-bindings/batch-enabled 
 - **裸数字会被拒绝**。`300` 不是 300 秒，`TimeSpan.Parse("300")` 是 300 **天** —— 与其把单位写错放大成三个月封禁，不如在校验期把它丢掉并记一条 warning
 - `partition` 可选 `ip`（默认）/ `path` / `ip-path` / `global`
 
-## monitor：先看命中，再决定拦
+#### monitor：先看命中，再决定拦
 
 `"mode": "monitor"` 时规则照常运行、日志照常写，但**一条都不拦**：
 
@@ -557,7 +508,7 @@ curl -X POST http://localhost:5000/apigateway/api/plugin-bindings/batch-enabled 
 
 上线一条新规则的正确顺序是先观察它命中了哪些真实请求，再改成 `enforce`。没有这一步，第一次发现误报只能是在用户投诉之后。
 
-## 请求体检查的边界
+#### 请求体检查的边界
 
 只扫能**完整读入**的内容，故意不做截断扫描：
 
@@ -571,7 +522,7 @@ curl -X POST http://localhost:5000/apigateway/api/plugin-bindings/batch-enabled 
 
 读完的 body 会**复位**，后续管线（含转发）拿到的是完整的原始请求体。
 
-## 拦截长什么样
+#### 拦截长什么样
 
 ```json
 { "error": "Forbidden", "message": "Blocked by security policy", "waf": true, "rule": "sql" }
@@ -583,7 +534,7 @@ curl -X POST http://localhost:5000/apigateway/api/plugin-bindings/batch-enabled 
 { "response": { "statusCode": 429, "contentType": "text/plain", "body": "slow down" } }
 ```
 
-## 几点值得知道的事实
+#### 几点值得知道的事实
 
 - **IP 与大小校验是前导，任何规则都绕不过去**。`allow` 规则可以豁免内容检测，但不能豁免 IP 封禁 —— 否则一条写错的条件就等于把黑名单关了
 - **旧配置零迁移**。`enableSqlInjectionDetection`、`ipWhitelist`、`maxRequestBodySize` 这些字段都还在；`rules` 为空时自动合成原来的三条内置规则，行为与升级前一致（除了不再误报）
@@ -594,7 +545,7 @@ curl -X POST http://localhost:5000/apigateway/api/plugin-bindings/batch-enabled 
 
 ---
 
-## 多环境（2.3.0.40）
+### 多环境
 
 一份配置管一个环境。想把 dev / staging / prod 分开，就得有**两个不同的问题**各自的答案：网关**正在转发**哪个环境的配置，以及你**正在编辑**哪个环境。这两件事在大多数工具里被合成一个开关，于是"打开 staging 看一眼"就等于把生产流量切到 staging。
 
@@ -651,7 +602,7 @@ curl -X POST http://localhost:5000/apigateway/api/environments/switch \
 - **日志、指标、链路追踪是运行态数据**，切到没跑过流量的环境后这些页面会是空的。这不是 bug：那个环境确实没有流量。
 - **环境名只允许字母、数字、`_`、`-`**，因为它要进文件名。`../prod` 这类名字在配置加载时就会报错，而不是等到打开库的时候。
 
-### 环境间差异与一键提升
+#### 环境间差异与一键提升
 
 切到 dev 改完，要把配置推到 prod，需要先看清**差在哪**，再确认**推的是你看过的那一份**：
 
@@ -677,7 +628,9 @@ curl -X POST http://localhost:5000/apigateway/api/environments/promote/apply \
 
 ---
 
-## 角色与权限（2.3.0.40）
+## 权限与管理 API
+
+### 角色与权限
 
 三档角色，切分依据是**能造成多大破坏**，不是资历：
 
@@ -720,7 +673,7 @@ curl -X POST http://localhost:5000/apigateway/api/environments/promote/apply \
 
 ---
 
-## 管理 API 文档（2.3.0.40）
+### 管理 API 文档
 
 面板本身就是这个 API，所以文档从**实际映射的路由**生成，不是另写一份契约：
 
@@ -741,33 +694,9 @@ GET <prefix>/api-docs           # 人看的版本：按控制器分组、可过�
 
 ---
 
-## 部署（2.3.0.40）
+## 插件体系
 
-三种拿走方式，区别是"你要不要拥有这个镜像"：
-
-```bash
-# 1. 你自己的项目（推荐）：一条命令生成，自带 Dockerfile 与 README
-# 预览版需显式指定版本；稳定版发布后去掉 :: 及其后的后缀
-dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
-dotnet new aneiang-yarp -n MyGateway && cd MyGateway && dotnet run
-
-# 2. Kubernetes：Helm chart。密码留空则安装时随机生成，写在 NOTES 里
-helm install gw deploy/helm/aneiang-yarp --namespace gateway --create-namespace
-
-# 3. 官方参考镜像（跑本仓库的 SampleGateway，用于试跑和集成测试）
-docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:2.3.0.40-preview.1 .
-```
-
-两件必须先知道的事：
-
-- **配置存储是单个 SQLite 文件，所以一个副本才是对的。** 两个副本就是两份互不知道对方的路由表，负载均衡把面板请求轮流发过去，"我刚保存的路由不见了"。要扩数据面用 `Deployment:Mode: Split`，不要 `replicaCount: 2` —— Helm chart 会直接拒绝渲染这种配置并说明原因
-- **配置存储必须挂在容器外。** 数据库里装的是全部路由、快照和审计记录；两个官方产物都已经处理（`VOLUME /app/data` 与带 `helm.sh/resource-policy: keep` 的 PVC）
-
-完整说明（探针、凭据、安全上下文、验证清单）见 [`deploy/README.md`](deploy/README.md)。
-
----
-
-## 开发插件（2.3.0.40）
+### 开发插件
 
 外部插件是独立的程序集，装的时候不需要重新编译网关：
 
@@ -794,22 +723,7 @@ dotnet publish -c Release -o out
 
 ---
 
-## 我们明确不做的事
-
-写清楚边界，是为了避免选型时误判 —— 下面这些不是"还没做"，而是**有意不做**：
-
-| 不做 | 原因 | 该用什么 |
-|:--|:--|:--|
-| **API 门户 / 开发者自助控制台** | 会把这套东西变成第二个 Kong Dev Portal，但网关的核心价值在数据面稳定，不在文档托管 | 单独的门户产品；本仓库只提供 `<prefix>/api-docs` 与 `api/openapi.json`，够对接方看 |
-| **自带 IdP / 用户目录** | 认证是专业领域，自建账号体系只会让安全边界变得更差 | Keycloak、Authing、Azure AD；网关只做 token 校验与转发 |
-| **日志存储与检索引擎** | 网关侧只做采集与转发，存与查是 Elasticsearch / Loki 的活 | `proxy-log` 插件输出 + 外部日志平台 |
-| **Service Mesh 控制面** | sidecar 模型与网关的"入口集中治理"是两种架构，混在一起会把两边的复杂度叠加 | Istio / Linkerd |
-| **Kubernetes Ingress Controller** | 需要 CRD、调谐循环与 K8s 生命周期语义，是另一个产品而不是一个特性 | ingress-nginx、Traefik、YARP 官方 Ingress 方案 |
-| **分布式限流（跨实例共享计数）** | 依赖外部计数器（Redis）会引入新的故障域，单机限流已覆盖绝大多数入口场景 | 在 `rate-limit` 之前挂 Redis 限流中间件，或按实例数做配额除法 |
-
----
-
-## 内置插件
+### 内置插件
 
 | ID | 作用域 | 功能 |
 |:---|:---|:-----|
@@ -827,7 +741,67 @@ dotnet publish -c Release -o out
 
 ---
 
-## 文档中心
+## 部署
+
+三种拿走方式，区别是"你要不要拥有这个镜像"：
+
+```bash
+# 1. 你自己的项目（推荐）：一条命令生成，自带 Dockerfile 与 README
+# 预览版需显式指定版本；稳定版发布后去掉 :: 及其后的后缀
+dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
+dotnet new aneiang-yarp -n MyGateway && cd MyGateway && dotnet run
+
+# 2. Kubernetes：Helm chart。密码留空则安装时随机生成，写在 NOTES 里
+helm install gw deploy/helm/aneiang-yarp --namespace gateway --create-namespace
+
+# 3. 官方参考镜像（跑本仓库的 SampleGateway，用于试跑和集成测试）
+docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:2.3.0.40-preview.1 .
+```
+
+两件必须先知道的事：
+
+- **配置存储是单个 SQLite 文件，所以一个副本才是对的。** 两个副本就是两份互不知道对方的路由表，负载均衡把面板请求轮流发过去，"我刚保存的路由不见了"。要扩数据面用 `Deployment:Mode: Split`，不要 `replicaCount: 2` —— Helm chart 会直接拒绝渲染这种配置并说明原因
+- **配置存储必须挂在容器外。** 数据库里装的是全部路由、快照和审计记录；两个官方产物都已经处理（`VOLUME /app/data` 与带 `helm.sh/resource-policy: keep` 的 PVC）
+
+完整说明（探针、凭据、安全上下文、验证清单）见 [`deploy/README.md`](deploy/README.md)。
+
+---
+
+## 我们明确不做的事
+
+写清楚边界，是为了避免选型时误判 —— 下面这些不是"还没做"，而是**有意不做**：
+
+| 不做 | 原因 | 该用什么 |
+|:--|:--|:--|
+| **API 门户 / 开发者自助控制台** | 会把这套东西变成第二个 Kong Dev Portal，但网关的核心价值在数据面稳定，不在文档托管 | 单独的门户产品；本仓库只提供 `<prefix>/api-docs` 与 `api/openapi.json`，够对接方看 |
+| **自带 IdP / 用户目录** | 认证是专业领域，自建账号体系只会让安全边界变得更差 | Keycloak、Authing、Azure AD；网关只做 token 校验与转发 |
+| **日志存储与检索引擎** | 网关侧只做采集与转发，存与查是 Elasticsearch / Loki 的活 | `proxy-log` 插件输出 + 外部日志平台 |
+| **Service Mesh 控制面** | sidecar 模型与网关的"入口集中治理"是两种架构，混在一起会把两边的复杂度叠加 | Istio / Linkerd |
+| **Kubernetes Ingress Controller** | 需要 CRD、调谐循环与 K8s 生命周期语义，是另一个产品而不是一个特性 | ingress-nginx、Traefik、YARP 官方 Ingress 方案 |
+| **分布式限流（跨实例共享计数）** | 依赖外部计数器（Redis）会引入新的故障域，单机限流已覆盖绝大多数入口场景 | 在 `rate-limit` 之前挂 Redis 限流中间件，或按实例数做配额除法 |
+
+---
+
+## 附录
+
+### 包结构
+
+| 包 | 用途 | 依赖 YARP |
+|:----|:-----|:---:|
+| **Aneiang.Yarp** | 网关核心：动态路由、IP 隔离、API 鉴权、插件执行 | ✅ |
+| **Aneiang.Yarp.Dashboard** | Web 管理面板 + AI 助手 | 通过核心库 |
+| **Aneiang.Yarp.Client** | 一行代码自动注册（无 YARP 依赖） | ❌ |
+| **Aneiang.Yarp.Storage.Sqlite** | SQLite 存储（SQLCipher AES-256 加密） | 通过存储层 |
+| **Aneiang.Yarp.Storage.Abstractions** | 存储接口与实体 | ❌ |
+| **Aneiang.Yarp.Grpc** | gRPC 注册协议 | ❌ |
+| **Aneiang.Yarp.Plugin.Abstractions** | 插件契约（`IGatewayPlugin`） | ❌ |
+| **Aneiang.Yarp.Plugin.\*** | 11 个第一方插件，按需单独引入 | 通过核心库 |
+
+**.NET 8.0 / 9.0 / 10.0**。
+
+---
+
+### 文档中心
 
 完整文档位于 **[yarp.aneiang.com](https://yarp.aneiang.com)**。
 
@@ -844,7 +818,7 @@ dotnet publish -c Release -o out
 
 ---
 
-## 贡献规范
+### 贡献规范
 
 欢迎任何人参与贡献！
 
@@ -859,7 +833,7 @@ dotnet publish -c Release -o out
 
 ---
 
-## NuGet
+### NuGet
 
 | 包 | NuGet |
 |:--------|:-----:|
@@ -871,11 +845,11 @@ dotnet publish -c Release -o out
 | **Aneiang.Yarp.Grpc** | [![NuGet](https://img.shields.io/nuget/v/Aneiang.Yarp.Grpc.svg)](https://www.nuget.org/packages/Aneiang.Yarp.Grpc) |
 | **Aneiang.Yarp.Plugin.Abstractions** | [![NuGet](https://img.shields.io/nuget/v/Aneiang.Yarp.Plugin.Abstractions.svg)](https://www.nuget.org/packages/Aneiang.Yarp.Plugin.Abstractions) |
 
-**.NET 8.0 / 9.0** · **YARP 2.3.0**
+**.NET 8.0 / 9.0 / 10.0** · **YARP 2.3.0**
 
 ---
 
-## 许可证
+### 许可证
 
 [MIT](LICENSE)
 

@@ -101,7 +101,7 @@
                     emptyRow.innerHTML = `
                         <td colspan="8" class="text-center py-5">
                             <div class="empty-state">
-                                <i class="bi bi-hdd-rack" style="font-size: 2.5rem; opacity: 0.4; color: #64748b;"></i>
+                                <i class="bi bi-hdd-rack" style="font-size: 2.5rem; opacity: 0.4;color: var(--text-muted);"></i>
                                 <div class="mt-3 text-muted" style="font-size: 14px;">${__('index.cluster.empty')}</div>
                                 <div class="mt-2 text-muted small">${__('index.cluster.emptyHelp')}</div>
                             </div>
@@ -322,9 +322,9 @@
 
             if (clusters.length === 0) {
                 container.innerHTML = '<div style="text-align:center;padding:48px 0;">' +
-                    '<i class="bi bi-hdd-rack" style="font-size:2.5rem;opacity:0.4;color:#64748b;display:block;margin-bottom:12px;"></i>' +
-                    '<div style="font-size:14px;color:#64748b;">' + __('index.cluster.empty') + '</div>' +
-                    '<div style="font-size:12px;color:#94a3b8;margin-top:6px;">' + __('index.cluster.emptyHelp') + '</div></div>';
+                    '<i class="bi bi-hdd-rack" style="font-size:2.5rem;opacity:0.4;color: var(--text-muted);display:block;margin-bottom:12px;"></i>' +
+                    '<div style="font-size:14px;color: var(--text-muted);">' + __('index.cluster.empty') + '</div>' +
+                    '<div style="font-size:12px;color: var(--text-faint);margin-top:6px;">' + __('index.cluster.emptyHelp') + '</div></div>';
                 return;
             }
 
@@ -356,11 +356,11 @@
                 html += '<div style="min-width:0;flex:1;">';
                 html += '<div style="font-weight:600;font-size:14px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + (window.DashboardUtils ? DashboardUtils.escapeHtml(cluster.clusterId) : cluster.clusterId) + '">' + (window.DashboardUtils ? DashboardUtils.escapeHtml(cluster.displayName || cluster.clusterKey || cluster.clusterId) : (cluster.displayName || cluster.clusterKey || cluster.clusterId)) + '</div>';
                 if (cluster.displayName || cluster.clusterUid || cluster.clusterKey) {
-                    html += '<div style="font-size:11px;color:#94a3b8;margin-top:2px;display:flex;gap:6px;flex-wrap:wrap;">';
+                    html += '<div style="font-size:11px;color: var(--text-faint);margin-top:2px;display:flex;gap:6px;flex-wrap:wrap;">';
                     if (cluster.clusterUid) {
                         html += '<span title="UID"><i class="bi bi-fingerprint me-1"></i>' + (window.DashboardUtils ? DashboardUtils.escapeHtml(cluster.clusterUid) : cluster.clusterUid) + '</span>';
                     }
-                    html += '<span style="color:#cbd5e1;">|</span>';
+                    html += '<span style="color: var(--text-secondary);">|</span>';
                     if (cluster.clusterKey) {
                         html += '<span title="Key"><i class="bi bi-key me-1"></i>' + (window.DashboardUtils ? DashboardUtils.escapeHtml(cluster.clusterKey) : cluster.clusterKey) + '</span>';
                     }
@@ -368,7 +368,7 @@
                 }
                 html += '<div style="display:flex;align-items:center;gap:6px;margin-top:3px;">';
                 html += '<span>' + (window.DashboardUtils ? DashboardUtils.createSourceBadge(cluster.source) : cluster.source || '-') + '</span>';
-                html += '<span style="color:#cbd5e1;">|</span>';
+                html += '<span style="color: var(--text-secondary);">|</span>';
                 html += '<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:' + healthColor + ';"><i class="bi ' + healthIcon + '"></i>' + healthLabel + '</span>';
                 html += '</div></div></div>';
 
@@ -384,7 +384,7 @@
                 // Destinations
                 html += '<div style="padding:12px 16px;">';
                 if (destinations.length === 0) {
-                    html += '<div style="text-align:center;padding:16px 0;color:#94a3b8;font-size:13px;"><i class="bi bi-inbox me-1"></i>' + __('index.cluster.noDestinations') + '</div>';
+                    html += '<div style="text-align:center;padding:16px 0;color: var(--text-faint);font-size:13px;"><i class="bi bi-inbox me-1"></i>' + __('index.cluster.noDestinations') + '</div>';
                 } else {
                     html += '<div style="display:flex;flex-direction:column;gap:8px;">';
                     destinations.forEach(function(dest) {
@@ -393,10 +393,10 @@
                         var ahColor = ah === 'Healthy' ? '#22c55e' : ah === 'Unhealthy' ? '#ef4444' : '#94a3b8';
                         var phColor = ph === 'Healthy' ? '#22c55e' : ph === 'Unhealthy' ? '#ef4444' : '#94a3b8';
 
-                        html += '<div style="background:var(--bg-secondary,#f8fafc);border:1px solid var(--border-color);border-radius:8px;padding:10px 12px;">';
+                        html += '<div style="background: var(--bg-secondary,var(--surface-2));border:1px solid var(--border-color);border-radius:8px;padding:10px 12px;">';
                         html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">';
                         html += '<div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">';
-                        html += '<i class="bi bi-robot" style="color:#6366f1;font-size:13px;flex-shrink:0;"></i>';
+                        html += '<i class="bi bi-robot" style="color: var(--primary-light);font-size:13px;flex-shrink:0;"></i>';
                         html += '<code style="font-size:12px;color:var(--text-secondary);flex-shrink:0;">' + (window.DashboardUtils ? DashboardUtils.escapeHtml(dest.name || '-') : dest.name || '-') + '</code>';
                         html += '<span style="font-size:12px;color:var(--text-secondary);font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1;" title="' + (window.DashboardUtils ? DashboardUtils.escapeHtml(dest.address || '') : dest.address || '') + '">' + (window.DashboardUtils ? DashboardUtils.escapeHtml(dest.address || '-') : dest.address || '-') + '</span>';
                         html += '</div>';
@@ -426,8 +426,8 @@
                     }
                 }
                 html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid var(--border-color);">';
-                html += '<span style="font-size:11px;color:#64748b;"><i class="bi bi-nodes me-1"></i>' + destinations.length + ' ' + __('index.cluster.destCount') + '</span>';
-                html += '<span style="font-size:11px;color:#64748b;"><i class="bi bi-sliders me-1"></i>' + (cluster.loadBalancingPolicy || 'RoundRobin') + canarySplitLabel + '</span>';
+                html += '<span style="font-size:11px;color: var(--text-muted);"><i class="bi bi-nodes me-1"></i>' + destinations.length + ' ' + __('index.cluster.destCount') + '</span>';
+                html += '<span style="font-size:11px;color: var(--text-muted);"><i class="bi bi-sliders me-1"></i>' + (cluster.loadBalancingPolicy || 'RoundRobin') + canarySplitLabel + '</span>';
                 html += '</div>';
 
                 html += '</div></div>';
@@ -855,11 +855,11 @@
                     const passiveBadge = this.createHealthBadgeInline(dest.passiveHealth || 'Unknown');
                     detailHtml.push('<tr>');
                     detailHtml.push(`<td><code>${dest.name || '-'}</code></td>`);
-                    detailHtml.push(`<td><a href="${dest.address || '#'}" target="_blank" style="text-decoration:none;color:#0ea5e9;">${dest.address || '-'}</a></td>`);
+                    detailHtml.push(`<td><a href="${dest.address || '#'}" target="_blank" style="text-decoration:none;color: var(--info-color);">${dest.address || '-'}</a></td>`);
                     if (hasWeights) {
                         const entry = weightByIndex[index] || { weight: 0, share: 0 };
-                        const zeroStyle = entry.weight === 0 ? ' style="color:#94a3b8;text-decoration:line-through;"' : '';
-                        detailHtml.push(`<td><span class="badge bg-light text-dark"${zeroStyle}>${entry.weight}</span> <span style="font-size:11px;color:#64748b;">${entry.share}%</span></td>`);
+                        const zeroStyle = entry.weight === 0 ? ' style="color: var(--text-faint);text-decoration:line-through;"' : '';
+                        detailHtml.push(`<td><span class="badge bg-light text-dark"${zeroStyle}>${entry.weight}</span> <span style="font-size:11px;color: var(--text-muted);">${entry.share}%</span></td>`);
                     }
                     detailHtml.push(`<td>${activeBadge}</td>`);
                     detailHtml.push(`<td>${passiveBadge}</td>`);
@@ -902,7 +902,7 @@
                 if (cbRow) {
                     var cbValSpan = cbRow.querySelector('.detail-kv-value');
                     if (cbValSpan) {
-                        cbValSpan.innerHTML += ' <span id="' + circuitPlaceholderId + '" class="ms-1"><i class="bi bi-arrow-repeat spin" style="font-size:11px;color:#6b7280;"></i></span>';
+                        cbValSpan.innerHTML += ' <span id="' + circuitPlaceholderId + '" class="ms-1"><i class="bi bi-arrow-repeat spin" style="font-size:11px;color: var(--text-muted);"></i></span>';
                     }
                 }
                 window.DashboardApi.getCircuitBreakerStatus().then(function(allCircuits) {
@@ -1317,9 +1317,9 @@
                     <div class="modal fade" id="${modalId}" tabindex="-1">
                         <div class="modal-dialog modal-dialog-centered">
                             <div class="modal-content" style="border-radius:16px;border:none;box-shadow:0 25px 50px rgba(0,0,0,0.25);overflow:hidden;">
-                                <div class="modal-header" style="background:linear-gradient(135deg,#f8fafc 0%,#e2e8f0 100%);border-bottom:1px solid #e2e8f0;padding:18px 24px;">
+                                <div class="modal-header" style="background: linear-gradient(135deg,var(--surface-2) 0%,var(--surface-4) 100%);border-bottom: 1px solid var(--border-color);padding:18px 24px;">
                                     <h5 class="modal-title" style="font-weight:600;font-size:16px;display:flex;align-items:center;gap:10px;">
-                                        <span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#818cf8);color:#fff;font-size:16px;">
+                                        <span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background: linear-gradient(135deg,var(--primary-solid-2),#818cf8);color:#fff;font-size:16px;">
                                             <i class="bi bi-tag"></i>
                                         </span>
                                         ${__('modal.clusterId')}
@@ -1328,20 +1328,20 @@
                                 </div>
                                 <div class="modal-body" style="padding:24px;">
                                     <div style="margin-bottom:12px;">
-                                        <label class="form-label" style="font-weight:500;font-size:13px;color:#334155;">Cluster ID</label>
+                                        <label class="form-label" style="font-weight:500;font-size:13px;color: var(--text-secondary);">Cluster ID</label>
                                         <input type="text" class="form-control" id="${modalId}-input" 
                                                placeholder="${__('modal.clusterIdPlaceholder')}"
                                                required
-                                               style="border-radius:8px;padding:10px 14px;font-size:14px;border:1.5px solid #e2e8f0;transition:border-color 0.2s,box-shadow 0.2s;"
+                                               style="border-radius:8px;padding:10px 14px;font-size:14px;border: 1.5px solid var(--border-color);transition:border-color 0.2s,box-shadow 0.2s;"
                                                onfocus="this.style.borderColor='#6366f1';this.style.boxShadow='0 0 0 3px rgba(99,102,241,0.1)'"
                                                onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none'">
                                     </div>
-                                    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px 14px;font-size:12px;color:#0369a1;display:flex;align-items:flex-start;gap:8px;">
+                                    <div style="background: var(--info-bg);border:1px solid #bae6fd;border-radius:8px;padding:10px 14px;font-size:12px;color: var(--info-color);display:flex;align-items:flex-start;gap:8px;">
                                         <i class="bi bi-info-circle" style="font-size:14px;margin-top:2px;flex-shrink:0;"></i>
                                         <span>${__('modal.clusterIdHelp')}</span>
                                     </div>
                                 </div>
-                                <div class="modal-footer" style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 24px;gap:8px;">
+                                <div class="modal-footer" style="background: var(--surface-2);border-top: 1px solid var(--border-color);padding:14px 24px;gap:8px;">
                                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">${__('modal.cancelBtn')}</button>
                                     <button type="button" class="btn btn-primary btn-sm" id="${modalId}-confirm">${__('modal.confirmBtn')}</button>
                                 </div>

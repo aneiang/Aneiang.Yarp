@@ -2,7 +2,7 @@
   "id": "$PluginId$",
   "name": "$PluginName$",
   "version": "$PluginVersion$",
-  "description": "Adds a response header so you can see the plugin is in the pipeline.",
+  "description": "Adds a response header so you can see the plugin is in the pipeline, with the header name and value taken from the binding configuration.",
   "scopes": [ "Route" ],
   "capabilities": [ "ProxyPipeline" ],
   "order": 750,
@@ -12,7 +12,13 @@
     "database": false,
     "networkConnections": false
   },
-  "schemas": [],
+  "schemas": [
+    {
+      "version": 1,
+      "reference": "$PluginId$/v1",
+      "configJsonSchema": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"title\":\"Plugin settings\",\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"enabled\":{\"type\":\"boolean\",\"default\":true,\"title\":\"Enabled\",\"description\":\"Turn this binding off without deleting it.\"},\"headerName\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":64,\"default\":\"X-Plugin-Badge\",\"title\":\"Header name\",\"description\":\"Response header written on every proxied request.\"},\"headerValue\":{\"type\":\"string\",\"maxLength\":256,\"default\":\"hello from the plugin\",\"title\":\"Header value\",\"description\":\"Value for that header. What you type here is what the response shows.\"}}}"
+    }
+  ],
   "dependencies": [],
   "entryAssembly": "$EntryAssembly$",
   "entryType": "$EntryType$"

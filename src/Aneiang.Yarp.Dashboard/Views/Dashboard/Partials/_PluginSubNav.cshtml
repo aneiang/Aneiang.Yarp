@@ -67,11 +67,11 @@
         padding: 3px 8px; border-radius: 999px;
         font-variant-numeric: tabular-nums; font-weight: 500;
     }
-    .plugin-subnav__todo .pst--live { background: #f0fdf4; color: #15803d; }
-    .plugin-subnav__todo .pst--todo { background: #fffbeb; color: #b45309; }
+    .plugin-subnav__todo .pst--live { background: var(--success-bg); color: var(--success-color); }
+    .plugin-subnav__todo .pst--todo { background: var(--warning-bg); color: var(--warning-color); }
     .plugin-subnav__todo .pst--off  { background: var(--border-light, #f1f5f9); color: var(--text-muted, #94a3b8); }
     a.pst--todo { text-decoration: none; cursor: pointer; }
-    a.pst--todo:hover { background: #fef3c7; }
+    a.pst--todo:hover { background: var(--warning-bg); }
 
     @@media (max-width: 640px) {
         .plugin-subnav { flex-direction: column; align-items: stretch; }

@@ -387,3 +387,6 @@ ai-config.json
 # 本地开发配置：样例网关把真实 OTLP 地址与凭据放在这里，appsettings.json 只留占位符
 appsettings.Development.json
 appsettings.*.local.json
+
+# 本地调试工具（WorkBuddy 会话临时脚本，不入库）
+.tools/

@@ -20,7 +20,10 @@ public class DashboardAuthOptions
     /// <summary>Header name for ApiKey mode. Default: X-Api-Key.</summary>
     public string ApiKeyHeaderName { get; set; } = "X-Api-Key";
 
-    /// <summary>JWT signing secret. Auto-generated if not set (invalidated on restart).</summary>
+    /// <summary>
+    /// JWT signing secret. When not set, one is generated and persisted to <c>Data/.jwt-secret</c>
+    /// under the content root, so restarting does not invalidate issued tokens.
+    /// </summary>
     public string? JwtSecret { get; set; }
 
     /// <summary>Username for CustomJwt mode.</summary>

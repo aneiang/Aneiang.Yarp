@@ -114,7 +114,7 @@
                     emptyRow.innerHTML = `
                         <td colspan="8" class="text-center py-5">
                             <div class="empty-state">
-                                <i class="bi bi-signpost-split" style="font-size: 2.5rem; opacity: 0.4; color: #64748b;"></i>
+                                <i class="bi bi-signpost-split" style="font-size: 2.5rem; opacity: 0.4;color: var(--text-muted);"></i>
                                 <div class="mt-3 text-muted" style="font-size: 14px;">${__('index.route.empty')}</div>
                                 <div class="mt-2 text-muted small">${__('index.route.emptyHelp')}</div>
                             </div>
@@ -426,9 +426,9 @@
 
             if (routes.length === 0) {
                 container.innerHTML = '<div style="text-align:center;padding:48px 0;">' +
-                    '<i class="bi bi-signpost-split" style="font-size:2.5rem;opacity:0.4;color:#64748b;display:block;margin-bottom:12px;"></i>' +
-                    '<div style="font-size:14px;color:#64748b;">' + __('index.route.empty') + '</div>' +
-                    '<div style="font-size:12px;color:#94a3b8;margin-top:6px;">' + __('index.route.emptyHelp') + '</div></div>';
+                    '<i class="bi bi-signpost-split" style="font-size:2.5rem;opacity:0.4;color: var(--text-muted);display:block;margin-bottom:12px;"></i>' +
+                    '<div style="font-size:14px;color: var(--text-muted);">' + __('index.route.empty') + '</div>' +
+                    '<div style="font-size:12px;color: var(--text-faint);margin-top:6px;">' + __('index.route.emptyHelp') + '</div></div>';
                 return;
             }
 
@@ -497,9 +497,9 @@
 
             if (routes.length === 0) {
                 container.innerHTML = '<div style="text-align:center;padding:48px 0;">' +
-                    '<i class="bi bi-signpost-split" style="font-size:2.5rem;opacity:0.4;color:#64748b;display:block;margin-bottom:12px;"></i>' +
-                    '<div style="font-size:14px;color:#64748b;">' + __('index.route.empty') + '</div>' +
-                    '<div style="font-size:12px;color:#94a3b8;margin-top:6px;">' + __('index.route.emptyHelp') + '</div></div>';
+                    '<i class="bi bi-signpost-split" style="font-size:2.5rem;opacity:0.4;color: var(--text-muted);display:block;margin-bottom:12px;"></i>' +
+                    '<div style="font-size:14px;color: var(--text-muted);">' + __('index.route.empty') + '</div>' +
+                    '<div style="font-size:12px;color: var(--text-faint);margin-top:6px;">' + __('index.route.emptyHelp') + '</div></div>';
                 return;
             }
 
@@ -540,17 +540,17 @@
                         ';color:' + (route.order < 100 ? '#92400e' : route.order < 1000 ? '#3730a3' : '#64748b') +
                         ';font-size:12px;font-weight:700;flex-shrink:0;">' + route.order + '</span>';
                 } else {
-                    html += '<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;background:#f1f5f9;color:#94a3b8;font-size:12px;flex-shrink:0;">-</span>';
+                    html += '<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;background: var(--surface-3);color: var(--text-faint);font-size:12px;flex-shrink:0;">-</span>';
                 }
 
                 html += '<div style="min-width:0;flex:1;">';
-                html += '<div style="font-weight:600;font-size:14px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + (window.DashboardUtils ? DashboardUtils.escapeHtml(route.routeId) : route.routeId) + '">' + (window.DashboardUtils ? DashboardUtils.escapeHtml(route.displayName || route.routeKey || route.routeId) : (route.displayName || route.routeKey || route.routeId)) + (route.enabled === false ? ' <span style="font-size:10px;font-weight:600;color:#dc2626;background:rgba(239,68,68,0.08);padding:2px 6px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);margin-left:4px;">' + (window.__ && __("route.disabledBadge") || '已禁用') + '</span>' : '') + '</div>';
+                html += '<div style="font-weight:600;font-size:14px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + (window.DashboardUtils ? DashboardUtils.escapeHtml(route.routeId) : route.routeId) + '">' + (window.DashboardUtils ? DashboardUtils.escapeHtml(route.displayName || route.routeKey || route.routeId) : (route.displayName || route.routeKey || route.routeId)) + (route.enabled === false ? ' <span style="font-size:10px;font-weight:600;color: var(--danger-color);background:rgba(239,68,68,0.08);padding:2px 6px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);margin-left:4px;">' + (window.__ && __("route.disabledBadge") || '已禁用') + '</span>' : '') + '</div>';
                 if (route.displayName || route.routeUid || route.routeKey) {
-                    html += '<div style="font-size:11px;color:#94a3b8;margin-top:2px;display:flex;gap:6px;flex-wrap:wrap;">';
+                    html += '<div style="font-size:11px;color: var(--text-faint);margin-top:2px;display:flex;gap:6px;flex-wrap:wrap;">';
                     if (route.routeUid) {
                         html += '<span title="UID"><i class="bi bi-fingerprint me-1"></i>' + (window.DashboardUtils ? DashboardUtils.escapeHtml(route.routeUid) : route.routeUid) + '</span>';
                     }
-                    html += '<span style="color:#cbd5e1;">|</span>';
+                    html += '<span style="color: var(--text-secondary);">|</span>';
                     if (route.routeKey) {
                         html += '<span title="Key"><i class="bi bi-key me-1"></i>' + (window.DashboardUtils ? DashboardUtils.escapeHtml(route.routeKey) : route.routeKey) + '</span>';
                     }
@@ -559,13 +559,13 @@
                 html += '<div style="display:flex;align-items:center;gap:6px;margin-top:3px;">';
                 html += '<span>' + (window.DashboardUtils ? DashboardUtils.createSourceBadge(route.source) : route.source || '-') + '</span>';
                 if (hostText) {
-                    html += '<span style="color:#cbd5e1;">|</span><span style="font-size:11px;color:#64748b;"><i class="bi bi-globe me-1"></i>' + (window.DashboardUtils ? DashboardUtils.escapeHtml(hostText) : hostText) + '</span>';
+                    html += '<span style="color: var(--text-secondary);">|</span><span style="font-size:11px;color: var(--text-muted);"><i class="bi bi-globe me-1"></i>' + (window.DashboardUtils ? DashboardUtils.escapeHtml(hostText) : hostText) + '</span>';
                 }
                 var indicators = [];
                 if (hasTransforms) indicators.push('<i class="bi bi-arrow-left-right" style="color:#8b5cf6;" title="Transforms"></i>');
-                if (hasAuthorization) indicators.push('<i class="bi bi-shield-lock" style="color:#f59e0b;" title="Authorization"></i>');
+                if (hasAuthorization) indicators.push('<i class="bi bi-shield-lock" style="color: var(--warning-color);" title="Authorization"></i>');
                 if (indicators.length > 0) {
-                    html += '<span style="color:#cbd5e1;">|</span><span style="display:inline-flex;gap:4px;">' + indicators.join('') + '</span>';
+                    html += '<span style="color: var(--text-secondary);">|</span><span style="display:inline-flex;gap:4px;">' + indicators.join('') + '</span>';
                 }
                 html += '</div></div></div>';
 
@@ -582,8 +582,8 @@
 
                 // Path
                 html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">';
-                html += '<span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:#eff6ff;color:#3b82f6;font-size:12px;flex-shrink:0;"><i class="bi bi-signpost-2"></i></span>';
-                html += '<code style="font-size:13px;color:var(--text-secondary);background:var(--bg-secondary,#f8fafc);padding:3px 8px;border-radius:4px;word-break:break-all;border:1px solid var(--border-color);">' + (window.DashboardUtils ? DashboardUtils.escapeHtml(pathText) : pathText) + '</code>';
+                html += '<span style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background: var(--info-bg);color: var(--info-color);font-size:12px;flex-shrink:0;"><i class="bi bi-signpost-2"></i></span>';
+                html += '<code style="font-size:13px;color:var(--text-secondary);background: var(--bg-secondary,var(--surface-2));padding:3px 8px;border-radius:4px;word-break:break-all;border:1px solid var(--border-color);">' + (window.DashboardUtils ? DashboardUtils.escapeHtml(pathText) : pathText) + '</code>';
                 html += '</div>';
 
                 // Cluster + Methods row
@@ -591,20 +591,20 @@
 
                 // Cluster
                 if (route.clusterId) {
-                    html += '<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:500;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;"><i class="bi bi-diagram-3"></i>' + (window.DashboardUtils ? DashboardUtils.escapeHtml(route.clusterId) : route.clusterId) + '</span>';
+                    html += '<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:500;background: var(--info-bg);color: var(--info-color);border: 1px solid var(--info-border);"><i class="bi bi-diagram-3"></i>' + (window.DashboardUtils ? DashboardUtils.escapeHtml(route.clusterId) : route.clusterId) + '</span>';
                 }
 
                 // Methods
                 if (methods.length > 0) {
                     methods.forEach(function(m) {
                         var mColors = { 'GET': '#22c55e', 'POST': '#3b82f6', 'PUT': '#f59e0b', 'DELETE': '#ef4444', 'PATCH': '#8b5cf6', 'HEAD': '#64748b', 'OPTIONS': '#94a3b8' };
-                        var mBg = { 'GET': '#f0fdf4', 'POST': '#eff6ff', 'PUT': '#fffbeb', 'DELETE': '#fef2f2', 'PATCH': '#f5f3ff', 'HEAD': '#f8fafc', 'OPTIONS': '#f8fafc' };
-                        var mBorder = { 'GET': '#bbf7d0', 'POST': '#bfdbfe', 'PUT': '#fde68a', 'DELETE': '#fecaca', 'PATCH': '#ddd6fe', 'HEAD': '#e2e8f0', 'OPTIONS': '#e2e8f0' };
+                        var mBg = { 'GET': 'var(--success-bg)', 'POST': 'var(--info-bg)', 'PUT': 'var(--warning-bg)', 'DELETE': 'var(--danger-bg)', 'PATCH': 'var(--primary-bg)', 'HEAD': 'var(--surface-2)', 'OPTIONS': 'var(--surface-2)' };
+                        var mBorder = { 'GET': 'var(--success-border)', 'POST': 'var(--info-border)', 'PUT': 'var(--warning-border)', 'DELETE': 'var(--danger-border)', 'PATCH': 'var(--primary-border)', 'HEAD': 'var(--border-color)', 'OPTIONS': 'var(--border-color)' };
                         var c = mColors[m] || '#64748b';
-                        html += '<span style="display:inline-flex;align-items:center;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;font-family:monospace;background:' + (mBg[m] || '#f8fafc') + ';color:' + c + ';border:1px solid ' + (mBorder[m] || '#e2e8f0') + ';">' + m + '</span>';
+                        html += '<span style="display:inline-flex;align-items:center;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;font-family:monospace;background:' + (mBg[m] || 'var(--surface-2)') + ';color:' + c + ';border:1px solid ' + (mBorder[m] || 'var(--border-color)') + ';">' + m + '</span>';
                     });
                 } else {
-                    html += '<span style="font-size:11px;color:#94a3b8;">ANY</span>';
+                    html += '<span style="font-size:11px;color: var(--text-faint);">ANY</span>';
                 }
 
                 html += '</div>';
@@ -865,8 +865,8 @@
             // Indicators (transforms, auth)
             var indicators = [];
             if (route.transforms && route.transforms.length > 0) indicators.push('<i class="bi bi-arrow-left-right" style="color:#8b5cf6;font-size:12px;" title="Transforms"></i>');
-            if (route.authorizationPolicy || route.authorizationPolicy === '') indicators.push('<i class="bi bi-shield-lock" style="color:#f59e0b;font-size:12px;" title="Authorization"></i>');
-            if (route.metadata && (route.metadata['Policy:Id'] || route.metadata['Policy:Name'])) indicators.push('<i class="bi bi-shield-check" style="color:#0ea5e9;font-size:12px;" title="' + (__('index.route.policyBadge') || 'Policy') + '"></i>');
+            if (route.authorizationPolicy || route.authorizationPolicy === '') indicators.push('<i class="bi bi-shield-lock" style="color: var(--warning-color);font-size:12px;" title="Authorization"></i>');
+            if (route.metadata && (route.metadata['Policy:Id'] || route.metadata['Policy:Name'])) indicators.push('<i class="bi bi-shield-check" style="color: var(--info-color);font-size:12px;" title="' + (__('index.route.policyBadge') || 'Policy') + '"></i>');
             if (indicators.length > 0) {
                 var indSpan = document.createElement('span');
                 indSpan.style.cssText = 'display:inline-flex;gap:3px;';
@@ -902,7 +902,7 @@
                 var clusterDiv = document.createElement('div');
                 clusterDiv.style.cssText = 'display:flex;align-items:center;gap:4px;';
                 var clusterBadge = document.createElement('span');
-                clusterBadge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:5px;font-size:12px;font-weight:600;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;white-space:nowrap;max-width:92px;overflow:hidden;text-overflow:ellipsis;';
+                clusterBadge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:5px;font-size:12px;font-weight:600;background:var(--info-bg);color:var(--info-color);border:1px solid #bfdbfe;white-space:nowrap;max-width:92px;overflow:hidden;text-overflow:ellipsis;';
                 clusterBadge.innerHTML = '<i class="bi bi-diagram-3" style="font-size:11px;flex-shrink:0;"></i><span style="overflow:hidden;text-overflow:ellipsis;">' + (window.DashboardUtils ? DashboardUtils.escapeHtml(route.clusterId) : route.clusterId) + '</span>';
                 clusterBadge.title = route.clusterId;
                 clusterDiv.appendChild(clusterBadge);
@@ -921,12 +921,12 @@
             methDiv.style.cssText = 'display:flex;align-items:center;gap:3px;flex-wrap:wrap;';
             if (methods.length > 0) {
                 var mColors = { 'GET': '#22c55e', 'POST': '#3b82f6', 'PUT': '#f59e0b', 'DELETE': '#ef4444', 'PATCH': '#8b5cf6', 'HEAD': '#64748b', 'OPTIONS': '#94a3b8' };
-                var mBg = { 'GET': '#f0fdf4', 'POST': '#eff6ff', 'PUT': '#fffbeb', 'DELETE': '#fef2f2', 'PATCH': '#f5f3ff', 'HEAD': '#f8fafc', 'OPTIONS': '#f8fafc' };
-                var mBorder = { 'GET': '#bbf7d0', 'POST': '#bfdbfe', 'PUT': '#fde68a', 'DELETE': '#fecaca', 'PATCH': '#ddd6fe', 'HEAD': '#e2e8f0', 'OPTIONS': '#e2e8f0' };
+                var mBg = { 'GET': 'var(--success-bg)', 'POST': 'var(--info-bg)', 'PUT': 'var(--warning-bg)', 'DELETE': 'var(--danger-bg)', 'PATCH': 'var(--primary-bg)', 'HEAD': 'var(--surface-2)', 'OPTIONS': 'var(--surface-2)' };
+                var mBorder = { 'GET': 'var(--success-border)', 'POST': 'var(--info-border)', 'PUT': 'var(--warning-border)', 'DELETE': 'var(--danger-border)', 'PATCH': 'var(--primary-border)', 'HEAD': 'var(--border-color)', 'OPTIONS': 'var(--border-color)' };
                 methods.forEach(function(m) {
                     var methSpan = document.createElement('span');
                     var c = mColors[m] || '#64748b';
-                    methSpan.style.cssText = 'display:inline-flex;align-items:center;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;font-family:monospace;background:' + (mBg[m] || '#f8fafc') + ';color:' + c + ';border:1px solid ' + (mBorder[m] || '#e2e8f0') + ';';
+                    methSpan.style.cssText = 'display:inline-flex;align-items:center;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;font-family:monospace;background:' + (mBg[m] || 'var(--surface-2)') + ';color:' + c + ';border:1px solid ' + (mBorder[m] || 'var(--border-color)') + ';';
                     methSpan.textContent = m;
                     methDiv.appendChild(methSpan);
                 });
@@ -1801,9 +1801,9 @@
                     <div class="modal fade" id="${modalId}" tabindex="-1">
                         <div class="modal-dialog modal-dialog-centered">
                             <div class="modal-content" style="border-radius:16px;border:none;box-shadow:0 25px 50px rgba(0,0,0,0.25);overflow:hidden;">
-                                <div class="modal-header" style="background:linear-gradient(135deg,#f8fafc 0%,#e2e8f0 100%);border-bottom:1px solid #e2e8f0;padding:18px 24px;">
+                                <div class="modal-header" style="background: linear-gradient(135deg,var(--surface-2) 0%,var(--surface-4) 100%);border-bottom: 1px solid var(--border-color);padding:18px 24px;">
                                     <h5 class="modal-title" style="font-weight:600;font-size:16px;display:flex;align-items:center;gap:10px;">
-                                        <span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#818cf8);color:#fff;font-size:16px;">
+                                        <span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background: linear-gradient(135deg,var(--primary-solid-2),#818cf8);color:#fff;font-size:16px;">
                                             <i class="bi bi-tag"></i>
                                         </span>
                                         ${__('modal.routeId')}
@@ -1812,20 +1812,20 @@
                                 </div>
                                 <div class="modal-body" style="padding:24px;">
                                     <div style="margin-bottom:12px;">
-                                        <label class="form-label" style="font-weight:500;font-size:13px;color:#334155;">Route ID</label>
+                                        <label class="form-label" style="font-weight:500;font-size:13px;color: var(--text-secondary);">Route ID</label>
                                         <input type="text" class="form-control" id="${modalId}-input" 
                                                placeholder="${__('modal.routeIdPlaceholder')}"
                                                required
-                                               style="border-radius:8px;padding:10px 14px;font-size:14px;border:1.5px solid #e2e8f0;transition:border-color 0.2s,box-shadow 0.2s;"
+                                               style="border-radius:8px;padding:10px 14px;font-size:14px;border: 1.5px solid var(--border-color);transition:border-color 0.2s,box-shadow 0.2s;"
                                                onfocus="this.style.borderColor='#6366f1';this.style.boxShadow='0 0 0 3px rgba(99,102,241,0.1)'"
-                                               onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none'">
+                                               onblur="this.style.borderColor='var(--border-color)';this.style.boxShadow='none'">
                                     </div>
-                                    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:10px 14px;font-size:12px;color:#0369a1;display:flex;align-items:flex-start;gap:8px;">
+                                    <div style="background: var(--info-bg);border:1px solid #bae6fd;border-radius:8px;padding:10px 14px;font-size:12px;color: var(--info-color);display:flex;align-items:flex-start;gap:8px;">
                                         <i class="bi bi-info-circle" style="font-size:14px;margin-top:2px;flex-shrink:0;"></i>
                                         <span>${__('modal.routeIdHelp')}</span>
                                     </div>
                                 </div>
-                                <div class="modal-footer" style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 24px;gap:8px;">
+                                <div class="modal-footer" style="background: var(--surface-2);border-top: 1px solid var(--border-color);padding:14px 24px;gap:8px;">
                                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">${__('modal.cancelBtn')}</button>
                                     <button type="button" class="btn btn-primary btn-sm" id="${modalId}-confirm">${__('modal.confirmBtn')}</button>
                                 </div>
@@ -2129,7 +2129,7 @@
         _buildCardHTML: function(route, pathText, methods, hostText, hasTransforms, hasAuthorization) {
             const orderBadge = route.order !== null && route.order !== undefined 
                 ? '<span class="route-order-badge" style="background:' + (route.order < 100 ? '#fef3c7' : route.order < 1000 ? '#e0e7ff' : '#f1f5f9') + ';color:' + (route.order < 100 ? '#92400e' : route.order < 1000 ? '#3730a3' : '#64748b') + '">' + route.order + '</span>'
-                : '<span class="route-order-badge" style="background:#f1f5f9;color:#94a3b8">-</span>';
+                : '<span class="route-order-badge" style="background: var(--surface-3);color: var(--text-faint)">-</span>';
 
             const hostBadge = hostText 
                 ? '<span class="route-host"><i class="bi bi-globe"></i>' + window.DashboardUtils.escapeHtml(hostText) + '</span>' 
@@ -2137,17 +2137,17 @@
 
             const indicators = [];
             if (hasTransforms) indicators.push('<i class="bi bi-arrow-left-right" style="color:#8b5cf6;" title="Transforms"></i>');
-            if (hasAuthorization) indicators.push('<i class="bi bi-shield-lock" style="color:#f59e0b;" title="Authorization"></i>');
+            if (hasAuthorization) indicators.push('<i class="bi bi-shield-lock" style="color: var(--warning-color);" title="Authorization"></i>');
             const indicatorHtml = indicators.length > 0 ? '<span class="route-indicators">' + indicators.join('') + '</span>' : '';
 
             let methodsHtml = '';
             if (methods.length > 0) {
                 const mColors = { 'GET': '#22c55e', 'POST': '#3b82f6', 'PUT': '#f59e0b', 'DELETE': '#ef4444', 'PATCH': '#8b5cf6', 'HEAD': '#64748b', 'OPTIONS': '#94a3b8' };
-                const mBg = { 'GET': '#f0fdf4', 'POST': '#eff6ff', 'PUT': '#fffbeb', 'DELETE': '#fef2f2', 'PATCH': '#f5f3ff', 'HEAD': '#f8fafc', 'OPTIONS': '#f8fafc' };
-                const mBorder = { 'GET': '#bbf7d0', 'POST': '#bfdbfe', 'PUT': '#fde68a', 'DELETE': '#fecaca', 'PATCH': '#ddd6fe', 'HEAD': '#e2e8f0', 'OPTIONS': '#e2e8f0' };
+                const mBg = { 'GET': 'var(--success-bg)', 'POST': 'var(--info-bg)', 'PUT': 'var(--warning-bg)', 'DELETE': 'var(--danger-bg)', 'PATCH': 'var(--primary-bg)', 'HEAD': 'var(--surface-2)', 'OPTIONS': 'var(--surface-2)' };
+                const mBorder = { 'GET': 'var(--success-border)', 'POST': 'var(--info-border)', 'PUT': 'var(--warning-border)', 'DELETE': 'var(--danger-border)', 'PATCH': 'var(--primary-border)', 'HEAD': 'var(--border-color)', 'OPTIONS': 'var(--border-color)' };
                 methodsHtml = methods.map(m => {
                     const c = mColors[m] || '#64748b';
-                    return '<span class="route-method" style="background:' + (mBg[m] || '#f8fafc') + ';color:' + c + ';border-color:' + (mBorder[m] || '#e2e8f0') + '">' + m + '</span>';
+                    return '<span class="route-method" style="background:' + (mBg[m] || 'var(--surface-2)') + ';color:' + c + ';border-color:' + (mBorder[m] || 'var(--border-color)') + '">' + m + '</span>';
                 }).join('');
             } else {
                 methodsHtml = '<span class="route-method-any">ANY</span>';

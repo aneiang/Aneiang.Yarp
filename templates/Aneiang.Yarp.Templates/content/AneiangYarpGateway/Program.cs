@@ -14,7 +14,8 @@ builder.UseYarpKestrelAutoConfig();
 // YARP itself: routes, clusters and the dynamic-config pipeline.
 // enableRegistration stays false by default: the self-registration API lets a caller add a
 // route, which is exactly what you do not want open before the gateway has an auth story.
-// Turn it on together with AddGatewayApiAuth() — see the README.
+// AddAneiangYarp already registers the API authorization filter — turn registration on only after
+// configuring its credentials (Gateway:ApiAuth), or the endpoint accepts anonymous writes.
 builder.Services.AddAneiangYarp(enableRegistration: false);
 
 // The config store. This is the one line that decides where routes live.

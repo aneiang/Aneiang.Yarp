@@ -1,0 +1,62 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      Must match the host's target framework: an assembly built for net9.0 cannot be loaded into a
+      net8.0 gateway. The sample gateway in this repo is net8.0, so this plugin is net8.0 only.
+    -->
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>DemoPlayground</RootNamespace>
+    <AssemblyName>DemoPlayground</AssemblyName>
+    <IsPackable>false</IsPackable>
+
+    <!-- Rendered into plugin.json at build time; see RenderPluginManifest below. -->
+    <PluginId>demo-playground</PluginId>
+    <PluginDisplayName>Demo Playground</PluginDisplayName>
+    <PluginEntryType>$(RootNamespace).DemoPlaygroundPlugin</PluginEntryType>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      ExcludeAssets="runtime" on both references is the point of this sample: the host already has
+      Aneiang.Yarp and the contract assembly loaded, and the plugin load context resolves them from
+      the host. Copying a second Aneiang.Yarp.dll into the plugin folder would give the plugin a
+      different IGatewaySnapshotPublisher type than the one the host registered, and every lookup
+      would come back null.
+    -->
+    <ProjectReference Include="..\..\src\Aneiang.Yarp.Plugin.Abstractions\Aneiang.Yarp.Plugin.Abstractions.csproj" ExcludeAssets="runtime" Private="false" />
+    <ProjectReference Include="..\..\src\Aneiang.Yarp\Aneiang.Yarp.csproj" ExcludeAssets="runtime" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.manifest.json" CopyToOutputDirectory="Never" Pack="false" />
+  </ItemGroup>
+
+  <Target Name="RenderPluginManifest">
+    <PropertyGroup>
+      <_PluginManifestText>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)$([System.IO.Path]::DirectorySeparatorChar)plugin.manifest.json'))</_PluginManifestText>
+      <_PluginManifestText>$(_PluginManifestText.Replace('$PluginId$', '$(PluginId)'))</_PluginManifestText>
+      <_PluginManifestText>$(_PluginManifestText.Replace('$PluginName$', '$(PluginDisplayName)'))</_PluginManifestText>
+      <_PluginManifestText>$(_PluginManifestText.Replace('$PluginVersion$', '$(Version)'))</_PluginManifestText>
+      <_PluginManifestText>$(_PluginManifestText.Replace('$EntryAssembly$', '$(AssemblyName).dll'))</_PluginManifestText>
+      <_PluginManifestText>$(_PluginManifestText.Replace('$EntryType$', '$(PluginEntryType)'))</_PluginManifestText>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="GeneratePluginManifest" AfterTargets="Build" DependsOnTargets="RenderPluginManifest">
+    <WriteLinesToFile File="$(TargetDir)plugin.json" Lines="$(_PluginManifestText)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
+
+  <!-- After publish, the output folder is what gets copied into the host's plugins directory. -->
+  <Target Name="GeneratePluginManifestOnPublish" AfterTargets="Publish" DependsOnTargets="RenderPluginManifest">
+    <WriteLinesToFile File="$(PublishDir)plugin.json" Lines="$(_PluginManifestText)" Overwrite="true" />
+  </Target>
+
+</Project>

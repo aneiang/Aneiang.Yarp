@@ -8,7 +8,9 @@
     var PLATFORMS = [
         { key: 'dingtalk', icon: 'bi-chat-dots-fill',     color: '#0089FF', placeholder: 'https://oapi.dingtalk.com/robot/send?access_token=...' },
         { key: 'wechat',   icon: 'bi-wechat',             color: '#07C160', placeholder: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...' },
-        { key: 'feishu',   icon: 'bi-lark',               color: '#3370FF', placeholder: 'https://open.feishu.cn/open-apis/bot/v2/hook/...' },
+        // 图标名必须是 bootstrap-icons 里真实存在的 glyph：飞书没有官方图标（bi-lark
+        // 不存在，之前渲染出来是一个空方块），用方形气泡与钉钉的圆气泡区分。
+        { key: 'feishu',   icon: 'bi-chat-square-dots-fill', color: '#3370FF', placeholder: 'https://open.feishu.cn/open-apis/bot/v2/hook/...' },
         { key: 'slack',    icon: 'bi-slack',              color: '#4A154B', placeholder: 'https://hooks.slack.com/services/...' },
         { key: 'discord',  icon: 'bi-discord',            color: '#5865F2', placeholder: 'https://discord.com/api/webhooks/...' },
         { key: 'telegram', icon: 'bi-telegram',           color: '#2AABEE', placeholder: 'https://api.telegram.org/bot<TOKEN>/sendMessage' },
@@ -146,11 +148,16 @@
         PLATFORMS.forEach(function (pd) {
             var endpoints = state.platforms[pd.key] || [];
             var active = state.selectedPlatform === pd.key;
+            var on = endpoints.length > 0;
+            // 品牌色交给 CSS 变量：深色下由样式表统一提亮，JS 里不用判断主题
             html += `
-            <button type="button" class="notif-platform-nav-item${active ? ' active' : ''}" data-platform="${pd.key}" title="${esc(platformName(pd.key))}">
-                <span class="notif-platform-icon" style="background:${pd.color}1a;color:${pd.color};"><i class="bi ${pd.icon}"></i></span>
+            <button type="button" class="notif-platform-nav-item${active ? ' active' : ''}${on ? '' : ' is-empty'}" data-platform="${pd.key}" data-configured="${on ? '1' : '0'}" title="${esc(platformName(pd.key))}">
+                <span class="notif-platform-icon" style="--pf:${pd.color};">
+                    <i class="bi ${pd.icon}"></i>
+                    <span class="notif-status-pip${on ? ' is-on' : ''}"></span>
+                </span>
                 <span class="notif-platform-nav-name">${esc(platformName(pd.key))}</span>
-                <span class="notif-nav-count${endpoints.length === 0 ? ' notif-nav-count--zero' : ''}" title="${esc(__('notif.kpi.endpoints'))}">${endpoints.length}</span>
+                <span class="notif-nav-count${on ? '' : ' notif-nav-count--zero'}" title="${esc(on ? endpoints.length + ' ' + __('notif.events.unit') : __('notif.events.notConnected'))}">${endpoints.length}</span>
             </button>`;
         });
         return html + '</div>';
@@ -164,9 +171,9 @@
 
         var listHtml = '';
         if (endpoints.length === 0) {
-            listHtml = '<div class="text-center py-3 text-muted" style="font-size:12px;border:1px dashed #e2e8f0;border-radius:8px;">' +
-                '<i class="bi bi-inbox d-block mb-1" style="font-size:18px;opacity:.5;"></i>' +
-                esc(__('webhook.noEndpoints')) + '</div>';
+            listHtml = '<div class="notif-empty-endpoints">' +
+                '<i class="bi bi-inbox"></i>' +
+                '<span>' + esc(__('webhook.noEndpoints')) + '</span></div>';
         } else {
             endpoints.forEach(function (ep, idx) {
                 listHtml += renderEndpointRow(pd, ep, idx);
@@ -177,13 +184,16 @@
         <div class="notif-platform-detail">
             <div class="notif-platform-card" data-platform="${pd.key}">
                 <div class="notif-platform-head" style="border-left:4px solid ${pd.color};">
-                    <span class="notif-platform-icon" style="background:${pd.color}1a;color:${pd.color};"><i class="bi ${pd.icon}"></i></span>
+                    <span class="notif-platform-icon" style="--pf:${pd.color};"><i class="bi ${pd.icon}"></i></span>
                     <div class="flex-grow-1" style="min-width:0;">
-                        <div class="fw-semibold" style="font-size:14px;color:#1e293b;">${esc(platformName(pd.key))}</div>
-                        <small style="color:#64748b;font-size:12px;">${esc(__('webhook.' + pd.key + '.help'))}</small>
+                        <div class="fw-semibold" style="font-size:14px;color: var(--text-primary);">${esc(platformName(pd.key))}</div>
+                        <small style="color: var(--text-muted);font-size:12px;">${esc(__('webhook.' + pd.key + '.help'))}</small>
                     </div>
                     <span class="notif-platform-badges">
-                        <span class="notif-status-dot${configured ? ' notif-status-dot--on' : ''}" title="${configured ? esc(__('notif.platforms.connected')) : esc(__('webhook.noEndpoints'))}"></span>
+                        <span class="notif-status-pill${configured ? ' is-on' : ''}">
+                            <span class="notif-status-dot${configured ? ' notif-status-dot--on' : ''}"></span>
+                            ${esc(configured ? __('notif.platforms.connected') : __('notif.events.notConnected'))}
+                        </span>
                         <span class="badge text-bg-light" style="font-size:11px;">${endpoints.length} · ${subscribedCount} ${esc(__('notif.events.unit') || '')}</span>
                     </span>
                 </div>
@@ -211,14 +221,14 @@
         return `
         <div class="notif-endpoint-item" data-platform="${pd.key}" data-index="${idx}">
             <div class="notif-endpoint-url-row">
-                <i class="bi bi-robot" style="color:${pd.color};font-size:14px;"></i>
-                <span class="flex-grow-1 text-truncate" style="font-size:12px;font-family:monospace;color:#334155;" title="${esc(ep.url)}">${esc(displayUrl)}</span>
+                <i class="bi bi-robot" style="--pf:${pd.color};font-size:14px;"></i>
+                <span class="flex-grow-1 text-truncate" style="font-size:12px;font-family:monospace;color: var(--text-secondary);" title="${esc(ep.url)}">${esc(displayUrl)}</span>
                 <button type="button" class="btn btn-sm btn-link text-danger p-0 notif-remove-btn" data-platform="${pd.key}" data-index="${idx}" data-requires-admin title="${esc(__('webhook.removeEndpoint'))}">
                     <i class="bi bi-trash3" style="font-size:13px;"></i>
                 </button>
             </div>
             <div class="notif-endpoint-secret-row">
-                <i class="bi bi-key" style="color:#94a3b8;font-size:11px;"></i>
+                <i class="bi bi-key" style="color: var(--text-faint);font-size:11px;"></i>
                 <input type="password" class="form-control form-control-sm notif-secret-input" data-platform="${pd.key}" data-index="${idx}" data-requires-admin
                     value="${esc(ep.secret || '')}" placeholder="${esc(__('webhook.secret.placeholder.' + pd.key))}"
                     autocomplete="off" style="font-size:12px;font-family:monospace;padding:3px 8px;">
@@ -244,16 +254,35 @@
         return state.enabledEvents;
     }
 
+    /**
+     * 事件订阅矩阵。
+     *
+     * 未接入平台的列以前是整列 opacity:.38 —— 浅色下还能勉强看出有个勾选框，
+     * 深色下等于整列消失（图标、勾选框全糊进背景）。现在改成「结构化」表达：
+     *   · 列头写清平台名 + 状态（N 个端点 / 未接入），不再只靠一个品牌图标；
+     *   · 未接入列铺一层淡斜纹 + 勾选框 disabled，含义是「这里现在不能操作」，
+     *     而不是「这里什么都没有」；
+     *   · 已接入列保持干净底，勾选框可点。
+     */
     function renderEventMatrix() {
         var headRow = document.getElementById('notif-events-head-row');
         var body = document.getElementById('notif-events-body');
 
-        var headHtml = '<th>' + esc(__('notif.events.eventColumn')) + '</th>';
+        var headHtml = '<th class="notif-matrix-event-col">' + esc(__('notif.events.eventColumn')) + '</th>';
         PLATFORMS.forEach(function (pd) {
-            var inactive = (state.platforms[pd.key] || []).length === 0 ? ' notif-col-inactive' : '';
-            var followDot = state.platformEvents.hasOwnProperty(pd.key) ? '' : '<span class="notif-follow-dot" title="' + esc(__('notif.events.followGlobal')) + '"></span>';
-            headHtml += `<th class="text-center notif-matrix-head${inactive}" title="${esc(platformName(pd.key))}">` +
-                `<i class="bi ${pd.icon}" style="color:${pd.color};font-size:14px;"></i>${followDot}</th>`;
+            var eps = state.platforms[pd.key] || [];
+            var on = eps.length > 0;
+            // 「跟随全局」只在已接入的平台上有意义，未接入列不画这个点
+            var followDot = on && !state.platformEvents.hasOwnProperty(pd.key)
+                ? '<span class="notif-follow-dot" title="' + esc(__('notif.events.followGlobal')) + '"></span>'
+                : '';
+            var stateText = on ? (eps.length + ' ' + __('notif.events.unit')) : __('notif.events.notConnected');
+            headHtml += `<th class="text-center notif-matrix-head${on ? '' : ' is-off'}" title="${esc(platformName(pd.key) + ' · ' + stateText)}">` +
+                `<span class="notif-matrix-head-inner">` +
+                `<i class="bi ${pd.icon}" style="--pf:${pd.color};"></i>` +
+                `<span class="notif-matrix-name">${esc(platformName(pd.key))}</span>` +
+                `<span class="notif-matrix-state">${followDot}${esc(stateText)}</span>` +
+                `</span></th>`;
         });
         headRow.innerHTML = headHtml;
 
@@ -265,12 +294,14 @@
 
             group.events.forEach(function (eventKey) {
                 var eventName = esc(__('webhook.events.' + eventKey));
-                bodyHtml += `<tr><td style="font-size:13px;color:#334155;">${eventName}</td>`;
+                bodyHtml += `<tr><td class="notif-matrix-event-col" style="font-size:13px;color: var(--text-secondary);">${eventName}</td>`;
                 PLATFORMS.forEach(function (pd) {
-                    var inactive = (state.platforms[pd.key] || []).length === 0 ? ' notif-col-inactive' : '';
-                    var checked = subscribedEvents(pd.key).indexOf(eventKey) >= 0 ? 'checked' : '';
-                    bodyHtml += `<td class="text-center${inactive}">` +
-                        `<input type="checkbox" class="form-check-input notif-event-cb" data-platform="${pd.key}" data-event="${eventKey}" ${checked} style="accent-color:#6366f1;">` +
+                    var on = (state.platforms[pd.key] || []).length > 0;
+                    // 未接入的格子一律空着：禁用框里带个勾，等于同时说「已订阅」和「不可操作」
+                    var checked = on && subscribedEvents(pd.key).indexOf(eventKey) >= 0 ? 'checked' : '';
+                    bodyHtml += `<td class="text-center notif-matrix-cell${on ? '' : ' is-off'}">` +
+                        `<input type="checkbox" class="form-check-input notif-event-cb" data-platform="${pd.key}" data-event="${eventKey}" ${checked}${on ? '' : ' disabled'}` +
+                        `${on ? '' : ' title="' + esc(__('notif.events.notConnectedHint')) + '"'}>` +
                         `</td>`;
                 });
                 bodyHtml += '</tr>';
@@ -279,6 +310,39 @@
         body.innerHTML = bodyHtml;
 
         updateEventsMode();
+        renderEventHint();
+    }
+
+    /** 一个平台都没接入时，矩阵全是禁用的——必须给出下一步，否则这页看着像坏了 */
+    function renderEventHint() {
+        var el = document.getElementById('notif-events-hint');
+        if (!el) return;
+
+        var connected = PLATFORMS.filter(function (pd) { return (state.platforms[pd.key] || []).length > 0; }).length;
+        if (connected > 0) {
+            el.innerHTML = '';
+            return;
+        }
+
+        el.innerHTML = '<div class="notif-empty-callout">' +
+            '<i class="bi bi-info-circle"></i>' +
+            '<div class="notif-empty-callout-body">' +
+            '<strong>' + esc(__('notif.events.noneTitle')) + '</strong>' +
+            '<div class="notif-empty-callout-desc">' + esc(__('notif.events.noneDesc')) + '</div>' +
+            '</div>' +
+            '<button type="button" class="btn btn-sm btn-primary" id="notif-events-goto-platforms">' +
+            esc(__('notif.events.gotoPlatforms')) + '</button>' +
+            '</div>';
+
+        var gotoBtn = document.getElementById('notif-events-goto-platforms');
+        if (gotoBtn) {
+            gotoBtn.addEventListener('click', function () {
+                var tab = document.getElementById('tab-notif-platforms');
+                if (tab && window.bootstrap && window.bootstrap.Tab) {
+                    window.bootstrap.Tab.getOrCreateInstance(tab).show();
+                }
+            });
+        }
     }
 
     function updateEventsMode() {
@@ -310,6 +374,12 @@
             });
 
             state.platformEvents = data.platformEvents || {};
+            // 端点被删掉之后，平台上的显式订阅会留在服务端配置里。它既不生效（保存时
+            // 只写有端点的平台），又会让 KPI 和矩阵出现「未接入却已订阅」的矛盾，
+            // 所以在 UI 状态里先清掉；下一次保存就会把它从配置里一并抹去。
+            Object.keys(state.platformEvents).forEach(function (k) {
+                if ((state.platforms[k] || []).length === 0) delete state.platformEvents[k];
+            });
             state.enabledEvents = data.enabledEvents || [];
             state.cooldownSeconds = data.cooldownSeconds != null ? data.cooldownSeconds : 60;
             state.retryCount = data.retryCount != null ? data.retryCount : 2;
@@ -623,16 +693,16 @@
         var secret = secretInput ? secretInput.value.trim() : '';
 
         if (!url) {
-            setResult(platform, '<i class="bi bi-exclamation-circle-fill text-warning"></i><span class="ms-1" style="color:#b45309;">' + esc(__('webhook.urlRequired')) + '</span>');
+            setResult(platform, '<i class="bi bi-exclamation-circle-fill text-warning"></i><span class="ms-1" style="color: var(--warning-color);">' + esc(__('webhook.urlRequired')) + '</span>');
             return;
         }
         try { new URL(url); } catch (err) {
-            setResult(platform, '<i class="bi bi-exclamation-circle-fill text-warning"></i><span class="ms-1" style="color:#b45309;">' + esc(__('webhook.urlRequired')) + '</span>');
+            setResult(platform, '<i class="bi bi-exclamation-circle-fill text-warning"></i><span class="ms-1" style="color: var(--warning-color);">' + esc(__('webhook.urlRequired')) + '</span>');
             return;
         }
         var exists = (state.platforms[platform] || []).some(function (ep) { return ep.url === url; });
         if (exists) {
-            setResult(platform, '<i class="bi bi-exclamation-circle-fill text-warning"></i><span class="ms-1" style="color:#b45309;">' + esc(__('webhook.urlExists')) + '</span>');
+            setResult(platform, '<i class="bi bi-exclamation-circle-fill text-warning"></i><span class="ms-1" style="color: var(--warning-color);">' + esc(__('webhook.urlExists')) + '</span>');
             return;
         }
 
@@ -652,13 +722,13 @@
                 setResult(platform, '<i class="bi bi-check-circle-fill text-success"></i><span class="ms-1" style="color:#166534;">' +
                     esc(__('webhook.testSuccess')) + ' · ' + esc(__('notif.platform.saveReady')) + '</span>');
             } else {
-                setResult(platform, '<i class="bi bi-x-circle-fill text-danger"></i><span class="ms-1" style="color:#dc2626;">' +
+                setResult(platform, '<i class="bi bi-x-circle-fill text-danger"></i><span class="ms-1" style="color: var(--danger-color);">' +
                     esc(__('webhook.testFailed')) + (resp && resp.total > 0 ? ' (' + resp.succeeded + '/' + resp.total + ')' : '') + '</span>');
             }
         }).catch(function (e) {
             state.testPassed[platform] = false;
             setSaveEnabled(platform, false);
-            setResult(platform, '<i class="bi bi-x-circle-fill text-danger"></i><span class="ms-1" style="color:#dc2626;">' + esc(e.message) + '</span>');
+            setResult(platform, '<i class="bi bi-x-circle-fill text-danger"></i><span class="ms-1" style="color: var(--danger-color);">' + esc(e.message) + '</span>');
         }).finally(function () {
             btn.disabled = false;
         });
@@ -718,7 +788,7 @@
             if (idx >= 0) state.platforms[platform].splice(idx, 1);
             renderPlatformCards();
             renderEventMatrix();
-            setResult(platform, '<i class="bi bi-x-circle-fill text-danger"></i><span class="ms-1" style="color:#dc2626;">' + esc(__('notif.saveFailed') + ': ' + e.message) + '</span>');
+            setResult(platform, '<i class="bi bi-x-circle-fill text-danger"></i><span class="ms-1" style="color: var(--danger-color);">' + esc(__('notif.saveFailed') + ': ' + e.message) + '</span>');
         });
     }
 

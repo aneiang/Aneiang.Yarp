@@ -14,9 +14,9 @@ appVersion: "2.3.0.40-preview.1"
 
 kubeVersion: ">=1.23.0-0"
 
-home: https://github.com/aneiangsoft/Aneiang.Yarp
+home: https://github.com/aneiang/Aneiang.Yarp
 sources:
-  - https://github.com/aneiangsoft/Aneiang.Yarp
+  - https://github.com/aneiang/Aneiang.Yarp
 keywords:
   - yarp
   - reverse-proxy
@@ -25,4 +25,4 @@ keywords:
 
 maintainers:
   - name: AneiangSoft Team
-    url: https://github.com/aneiangsoft/Aneiang.Yarp
+    url: https://github.com/aneiang/Aneiang.Yarp

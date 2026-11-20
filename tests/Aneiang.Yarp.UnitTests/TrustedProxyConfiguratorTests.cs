@@ -42,7 +42,7 @@ public sealed class TrustedProxyConfiguratorTests
         // Two hops would mean walking past the trusted proxy into client-supplied text.
         Assert.Equal(1, result.ForwardLimit);
         Assert.Single(result.KnownProxies);
-        Assert.Empty(result.KnownNetworks);
+        Assert.Equal(0, TrustedProxyConfigurator.NetworkCount(result));
         Assert.Equal(IPAddress.Parse("10.0.0.5"), result.KnownProxies.Single());
     }
 
@@ -66,7 +66,7 @@ public sealed class TrustedProxyConfiguratorTests
 
         Assert.NotNull(result);
         Assert.Null(warning);
-        Assert.Single(result!.KnownNetworks);
+        Assert.Equal(1, TrustedProxyConfigurator.NetworkCount(result!));
         Assert.Empty(result.KnownProxies);
     }
 

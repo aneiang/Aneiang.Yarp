@@ -1,0 +1,29 @@
+{
+  "id": "$PluginId$",
+  "name": "$PluginName$",
+  "version": "$PluginVersion$",
+  "description": "演示用插件：把绑定里保存的配置变成响应头和延时，用来验证插件市场安装、启用与配置编辑的完整链路。",
+  "scopes": [
+    "Route"
+  ],
+  "capabilities": [
+    "ProxyPipeline"
+  ],
+  "order": 700,
+  "resources": {
+    "requestMiddleware": true,
+    "backgroundServices": false,
+    "database": false,
+    "networkConnections": false
+  },
+  "schemas": [
+    {
+      "version": 1,
+      "reference": "builtin://plugins/demo-playground/schemas/config-v1.json",
+      "configJsonSchema": "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"title\":\"Demo Playground 配置\",\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"enabled\"],\"properties\":{\"enabled\":{\"type\":\"boolean\",\"default\":true,\"title\":\"启用\",\"description\":\"关掉后这条绑定不再产生任何效果，配置仍保留。\"},\"mode\":{\"type\":\"string\",\"enum\":[\"stamp\",\"echo\",\"silent\"],\"default\":\"stamp\",\"title\":\"工作模式\",\"description\":\"stamp 只往响应上加头；echo 直接返回当前配置（不转发上游）；silent 完全不介入。\"},\"badge\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":32,\"default\":\"demo\",\"title\":\"标记\",\"description\":\"写进 X-Demo-Badge 的标记，用来确认命中的是哪条绑定。\"},\"samplePercent\":{\"anyOf\":[{\"const\":0},{\"type\":\"integer\",\"minimum\":1,\"maximum\":100}],\"default\":0,\"title\":\"生效比例（0-100）\",\"description\":\"0 表示每个请求都生效；1-100 表示只对这一比例的请求生效。\"},\"delayMs\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":3000,\"default\":0,\"title\":\"延时（毫秒）\",\"description\":\"转发前人为增加的延时，用来观察超时与重试。\"},\"skipPaths\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"title\":\"跳过路径前缀\",\"description\":\"请求路径以这些前缀开头时跳过，逗号分隔。\"},\"responseHeaders\":{\"type\":\"array\",\"title\":\"附加响应头\",\"description\":\"逐条添加，可增删多行。\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"name\",\"value\"],\"properties\":{\"name\":{\"type\":\"string\",\"maxLength\":64,\"title\":\"名称\"},\"value\":{\"type\":\"string\",\"maxLength\":256,\"title\":\"值\"}}}},\"echo\":{\"type\":\"object\",\"additionalProperties\":false,\"title\":\"echo 模式选项\",\"description\":\"仅在 mode 为 echo 时使用。\",\"properties\":{\"statusCode\":{\"type\":\"integer\",\"minimum\":200,\"maximum\":599,\"default\":200,\"title\":\"状态码\"},\"pretty\":{\"type\":\"boolean\",\"default\":true,\"title\":\"缩进输出\"}}}}}"
+    }
+  ],
+  "dependencies": [],
+  "entryAssembly": "$EntryAssembly$",
+  "entryType": "$EntryType$"
+}

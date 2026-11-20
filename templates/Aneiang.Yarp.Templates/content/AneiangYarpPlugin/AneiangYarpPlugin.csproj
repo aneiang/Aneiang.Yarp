@@ -8,7 +8,7 @@
 
     <!--
       Everything plugin.json cannot safely guess comes from here. The manifest is rendered from this
-      file at build time, so these three values and the shipped manifest can never disagree.
+      file at build time, so these values and the shipped manifest can never disagree.
 
       entryType must be the full type name of the class implementing IGatewayPlugin. A wrong value
       is caught when the plugin is enabled, not when it is built — which is exactly why it is
@@ -22,12 +22,26 @@
 
   <ItemGroup>
     <!--
-      ExcludeAssets="runtime" is deliberate. The host keeps its own copy of the contract assembly
-      and resolves the plugin's reference to it; shipping a second copy inside the plugin folder is
+      ExcludeAssets="runtime" is deliberate on both references. The host keeps its own copies and
+      resolves the plugin's references to them; shipping a second copy inside the plugin folder is
       how you end up with two IGatewayPlugin types that are not the same type, and a cast that fails
-      in a way nobody can read.
+      in a way nobody can read. It also keeps the plugin folder to your assembly plus your own
+      dependencies, which is the only thing worth upgrading later.
     -->
     <PackageReference Include="Aneiang.Yarp.Plugin.Abstractions" Version="2.3.0.40-preview.1" ExcludeAssets="runtime" />
+
+    <!--
+      Needed for one type: IGatewaySnapshotPublisher (namespace Aneiang.Yarp.Services), the per-request
+      view of the binding configuration. Without it a plugin can be enabled and still have no way to
+      read what was saved for it, which is why the schema in plugin.manifest.json and the code here
+      are only useful together.
+    -->
+    <PackageReference Include="Aneiang.Yarp" Version="2.3.0.40-preview.1" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- HttpContext, IApplicationBuilder and the request pipeline types. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>

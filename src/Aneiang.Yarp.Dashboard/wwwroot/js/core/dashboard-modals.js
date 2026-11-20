@@ -119,7 +119,7 @@
             <div class="modal fade" id="${confirmModalId}" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
                 <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content" style="border-radius:16px;border:none;box-shadow:0 25px 50px rgba(0,0,0,0.25);overflow:hidden;">
-                        <div class="modal-header" style="background:linear-gradient(135deg,#f8fafc 0%,#e2e8f0 100%);border-bottom:1px solid #e2e8f0;padding:18px 24px;">
+                        <div class="modal-header" style="background: linear-gradient(135deg,var(--surface-2) 0%,var(--surface-4) 100%);border-bottom: 1px solid var(--border-color);padding:18px 24px;">
                             <h5 class="modal-title" style="font-weight:600;font-size:16px;display:flex;align-items:center;gap:10px;">
                                 <span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:${danger ? 'linear-gradient(135deg,#ef4444,#f87171)' : 'linear-gradient(135deg,#6366f1,#818cf8)'};color:#fff;font-size:16px;">
                                     <i class="bi ${danger ? 'bi-exclamation-triangle' : 'bi-question-circle'}"></i>
@@ -128,10 +128,10 @@
                             </h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
-                        <div class="modal-body" style="padding:24px;font-size:14px;line-height:1.7;color:#334155;">
+                        <div class="modal-body" style="padding:24px;font-size:14px;line-height:1.7;color: var(--text-secondary);">
                             ${window.DashboardUtils?.escapeHtml?.(message) || message}
                         </div>
-                        <div class="modal-footer" style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 24px;gap:8px;">
+                        <div class="modal-footer" style="background: var(--surface-2);border-top: 1px solid var(--border-color);padding:14px 24px;gap:8px;">
                             <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">
                                 ${cancelText}
                             </button>
@@ -313,9 +313,9 @@
             <div class="modal fade" id="${modalId}" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
                 <div class="modal-dialog modal-dialog-centered modal-${size}">
                     <div class="modal-content" style="border-radius:16px;border:none;box-shadow:0 25px 50px rgba(0,0,0,0.25);overflow:hidden;">
-                        <div class="modal-header" style="background:linear-gradient(135deg,#f8fafc 0%,#e2e8f0 100%);border-bottom:1px solid #e2e8f0;padding:18px 24px;">
+                        <div class="modal-header" style="background: linear-gradient(135deg,var(--surface-2) 0%,var(--surface-4) 100%);border-bottom: 1px solid var(--border-color);padding:18px 24px;">
                             <h5 class="modal-title" style="font-weight:600;font-size:16px;display:flex;align-items:center;gap:10px;">
-                                <span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#818cf8);color:#fff;font-size:16px;">
+                                <span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background: linear-gradient(135deg,var(--primary-solid-2),#818cf8);color:#fff;font-size:16px;">
                                     <i class="bi ${config.icon || 'bi-pencil'}"></i>
                                 </span>
                                 ${title}
@@ -327,7 +327,7 @@
                                 ${formHtml}
                             </form>
                         </div>
-                        <div class="modal-footer" style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 24px;gap:8px;justify-content:space-between;">
+                        <div class="modal-footer" style="background: var(--surface-2);border-top: 1px solid var(--border-color);padding:14px 24px;gap:8px;justify-content:space-between;">
                             <div>
                                 ${config.jsonModeCallback ? `<button type="button" class="btn btn-outline-secondary btn-sm" id="${modalId}-json-switch" style="font-size:12px;"><i class="bi bi-braces me-1"></i>${window.__('modal.jsonMode') || 'JSON'}</button>` : ''}
                             </div>
@@ -535,9 +535,9 @@
         // Build editable ID input HTML if provided. ID fields can be locked to prevent accidental rename.
         const idReadOnly = editableId && editableId.readOnly === true;
         const idInputHtml = editableId ? `
-            <div style="padding:14px 24px 0 24px;background:#fff;">
+            <div style="padding:14px 24px 0 24px;background: var(--card-bg);">
                 <div style="display:flex;align-items:center;gap:10px;">
-                    <label style="font-weight:500;font-size:13px;color:#334155;white-space:nowrap;min-width:60px;">${editableId.label || 'ID'}</label>
+                    <label style="font-weight:500;font-size:13px;color: var(--text-secondary);white-space:nowrap;min-width:60px;">${editableId.label || 'ID'}</label>
                     <input type="text" class="form-control" id="${modalId}-id-input"
                            value="${editableId.value || ''}"
                            placeholder="${editableId.placeholder || ''}"
@@ -545,7 +545,7 @@
                            style="border-radius:8px;padding:8px 12px;font-size:14px;border:1.5px solid #e2e8f0;transition:border-color 0.2s,box-shadow 0.2s;${idReadOnly ? 'background:#f8fafc;color:#64748b;cursor:not-allowed;' : ''}"
                            onfocus="this.style.borderColor='#6366f1';this.style.boxShadow='0 0 0 3px rgba(99,102,241,0.1)'"
                            onblur="this.style.borderColor='#e2e8f0';this.style.boxShadow='none'">
-                    ${idReadOnly ? `<span style="font-size:12px;color:#64748b;white-space:nowrap;"><i class="bi bi-lock"></i>${window.__('modal.renameOnly')}</span>` : (editableId.original ? `<span style="font-size:12px;color:#94a3b8;white-space:nowrap;">${window.__('modal.renameHint')}</span>` : '')}
+                    ${idReadOnly ? `<span style="font-size:12px;color: var(--text-muted);white-space:nowrap;"><i class="bi bi-lock"></i>${window.__('modal.renameOnly')}</span>` : (editableId.original ? `<span style="font-size:12px;color: var(--text-faint);white-space:nowrap;">${window.__('modal.renameHint')}</span>` : '')}
                 </div>
             </div>
         ` : '';
@@ -554,9 +554,9 @@
             <div class="modal fade" id="${modalId}" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
                 <div class="modal-dialog modal-dialog-centered modal-xl">
                     <div class="modal-content" style="border-radius:16px;border:none;box-shadow:0 25px 50px rgba(0,0,0,0.25);overflow:hidden;">
-                        <div class="modal-header" style="background:linear-gradient(135deg,#f8fafc 0%,#e2e8f0 100%);border-bottom:1px solid #e2e8f0;padding:18px 24px;">
+                        <div class="modal-header" style="background: linear-gradient(135deg,var(--surface-2) 0%,var(--surface-4) 100%);border-bottom: 1px solid var(--border-color);padding:18px 24px;">
                             <h5 class="modal-title" style="font-weight:600;font-size:16px;display:flex;align-items:center;gap:10px;">
-                                <span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#818cf8);color:#fff;font-size:16px;">
+                                <span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background: linear-gradient(135deg,var(--primary-solid-2),#818cf8);color:#fff;font-size:16px;">
                                     <i class="bi bi-file-code"></i>
                                 </span>
                                 ${title}
@@ -565,12 +565,12 @@
                         </div>
                         <div class="modal-body" style="padding:0;">
                             ${idInputHtml}
-                            ${config.hint ? `<div style="margin:10px 24px 0 24px;padding:10px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:12px;color:#0369a1;display:flex;align-items:flex-start;gap:8px;"><i class="bi bi-info-circle" style="font-size:14px;margin-top:1px;flex-shrink:0;"></i><span>${config.hint}</span></div>` : ''}
-                            ${supportsForm ? `<div style="padding:8px 24px;border-bottom:1px solid #e2e8f0;display:flex;gap:6px;"><button type="button" class="btn btn-sm ${mode==='form'?'btn-primary':'btn-outline-primary'}" onclick="DashboardModals.switchJsonModalMode('${modalId}','form')"><i class="bi bi-ui-checks-grid me-1"></i>${window.__('modal.formMode')||'Form'}</button><button type="button" class="btn btn-sm ${mode==='json'?'btn-primary':'btn-outline-primary'}" onclick="DashboardModals.switchJsonModalMode('${modalId}','json')"><i class="bi bi-braces me-1"></i>${window.__('modal.jsonMode')||'JSON'}</button></div>` : ''}
+                            ${config.hint ? `<div style="margin:10px 24px 0 24px;padding:10px 14px;background: var(--info-bg);border:1px solid #bae6fd;border-radius:8px;font-size:12px;color: var(--info-color);display:flex;align-items:flex-start;gap:8px;"><i class="bi bi-info-circle" style="font-size:14px;margin-top:1px;flex-shrink:0;"></i><span>${config.hint}</span></div>` : ''}
+                            ${supportsForm ? `<div style="padding:8px 24px;border-bottom: 1px solid var(--border-color);display:flex;gap:6px;"><button type="button" class="btn btn-sm ${mode==='form'?'btn-primary':'btn-outline-primary'}" onclick="DashboardModals.switchJsonModalMode('${modalId}','form')"><i class="bi bi-ui-checks-grid me-1"></i>${window.__('modal.formMode')||'Form'}</button><button type="button" class="btn btn-sm ${mode==='json'?'btn-primary':'btn-outline-primary'}" onclick="DashboardModals.switchJsonModalMode('${modalId}','json')"><i class="bi bi-braces me-1"></i>${window.__('modal.jsonMode')||'JSON'}</button></div>` : ''}
                             <div id="${modalId}-form-area" data-schema-type="${schemaType||''}" style="display:${mode==='form'?'block':'none'};padding:14px 20px;overflow:auto;height:${editorHeight}px;background:#f8fafc;"></div>
                             <div id="${modalId}-editor" style="display:${mode==='json'?'block':'none'};height:${editorHeight}px;border:none;"></div>
                         </div>
-                        <div class="modal-footer" style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 24px;gap:8px;">
+                        <div class="modal-footer" style="background: var(--surface-2);border-top: 1px solid var(--border-color);padding:14px 24px;gap:8px;">
                             <div style="flex:1;display:flex;align-items:center;gap:8px;">
                                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="DashboardModals.formatJson('${modalId}')" title="${window.__('modal.format')}">
                                     <i class="bi bi-code-slash me-1"></i>${window.__('modal.format')}
@@ -665,7 +665,7 @@
                 console.warn('[Modals] Monaco not available, using textarea fallback');
                 const editorContainer = document.getElementById(modalId + '-editor');
                 editorContainer.innerHTML = `
-                    <textarea class="form-control" id="${modalId}-textarea" style="width:100%;height:100%;border:none;font-family:monospace;font-size:13px;padding:16px;resize:none;background:#f8f9fa;"
+                    <textarea class="form-control" id="${modalId}-textarea" style="width:100%;height:100%;border:none;font-family:monospace;font-size:13px;padding:16px;resize:none;background: var(--surface-2);"
                         ${readOnly ? 'readonly' : ''}>${jsonContent}</textarea>
                 `;
                 return Promise.resolve();
@@ -676,7 +676,7 @@
             const editorContainer = document.getElementById(modalId + '-editor');
             if (editorContainer) {
                 editorContainer.innerHTML = `
-                    <textarea class="form-control" id="${modalId}-textarea" style="width:100%;height:100%;border:none;font-family:monospace;font-size:13px;padding:16px;resize:none;background:#f8f9fa;"
+                    <textarea class="form-control" id="${modalId}-textarea" style="width:100%;height:100%;border:none;font-family:monospace;font-size:13px;padding:16px;resize:none;background: var(--surface-2);"
                         ${readOnly ? 'readonly' : ''}>${jsonContent}</textarea>
                 `;
             }

@@ -15,10 +15,10 @@
         letter-spacing: .02em; white-space: nowrap;
     }
     .plg-scope + .plg-scope { margin-left: 4px; }
-    .plg-scope--route   { background: #eff6ff; color: #2563eb; }
-    .plg-scope--cluster { background: #f0fdf4; color: #15803d; }
+    .plg-scope--route   { background: var(--info-bg); color: var(--info-color); }
+    .plg-scope--cluster { background: var(--success-bg); color: var(--success-color); }
     /* Enabled but bound to no target: visible so "on" is never mistaken for "working" */
-    .plg-unbound { color: #b45309; font-weight: 600; }
+    .plg-unbound { color: var(--warning-color); font-weight: 600; }
     /* The one state with an unambiguous next step gets a labelled button. */
     .plg-bind-cta { white-space: nowrap; padding: 2px 9px; font-size: 12px; }
 </style>

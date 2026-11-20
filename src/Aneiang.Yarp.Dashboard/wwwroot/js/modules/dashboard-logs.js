@@ -314,7 +314,7 @@
                 pathContent += `<span class="badge ${mClass}" style="min-width:45px;text-align:center;font-size:10px;font-weight:700">${meta.method}</span>`;
             }
             if (meta.upstreamPath) {
-                pathContent += `<code style="background:#f1f5f9;padding:1px 6px;border-radius:3px;font-size:11px;color:#0f172a;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${window.DashboardUtils.escapeHtml(meta.upstreamPath)}</code>`;
+                pathContent += `<code style="background: var(--surface-3);padding:1px 6px;border-radius:3px;font-size:11px;color: var(--text-primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${window.DashboardUtils.escapeHtml(meta.upstreamPath)}</code>`;
             }
 
             // Status code (for responses)
@@ -531,7 +531,7 @@
                 detailEl.setAttribute('data-detail-loaded', 'true');
             } catch (error) {
                 console.error('[Logs] Failed to load paired detail:', error);
-                detailEl.innerHTML = `<div style="color:#dc2626;padding:12px;"><i class="bi bi-x-circle me-1"></i>${__('index.log.loadDetailFailed')}</div>`;
+                detailEl.innerHTML = `<div style="color: var(--danger-color);padding:12px;"><i class="bi bi-x-circle me-1"></i>${__('index.log.loadDetailFailed')}</div>`;
             }
         },
 
@@ -613,8 +613,8 @@
 
             // Exception
             if (responseDetail.exception) {
-                dtHtml.push(`<div style="color:#dc2626;margin-top:6px"><strong>${__('index.log.exception')}</strong></div>`);
-                dtHtml.push(`<pre style="background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:8px;margin:4px 0 0;overflow-x:auto;white-space:pre-wrap;word-break:break-all;font-size:11px;color:#991b1b;">${window.DashboardUtils.escapeHtml(responseDetail.exception)}</pre>`);
+                dtHtml.push(`<div style="color: var(--danger-color);margin-top:6px"><strong>${__('index.log.exception')}</strong></div>`);
+                dtHtml.push(`<pre style="background: var(--danger-bg);border: 1px solid var(--danger-border);border-radius:4px;padding:8px;margin:4px 0 0;overflow-x:auto;white-space:pre-wrap;word-break:break-all;font-size:11px;color:#991b1b;">${window.DashboardUtils.escapeHtml(responseDetail.exception)}</pre>`);
             }
 
             detailEl.innerHTML = dtHtml.join('');
@@ -671,7 +671,7 @@
                 detailEl.setAttribute('data-detail-loaded', 'true');
             } catch (error) {
                 console.error('[Logs] Failed to load detail:', error);
-                detailEl.innerHTML = `<div style="color:#dc2626;padding:12px;"><i class="bi bi-x-circle me-1"></i>${__('index.log.loadDetailFailed')}</div>`;
+                detailEl.innerHTML = `<div style="color: var(--danger-color);padding:12px;"><i class="bi bi-x-circle me-1"></i>${__('index.log.loadDetailFailed')}</div>`;
             }
         },
 
@@ -742,7 +742,7 @@
             else {
                 // Non-proxy log entry
                 if (detail.message) {
-                    dtHtml.push(`<div class="mb-2"><strong>${__('index.log.message')}</strong><br><span style="color:#475569;word-break:break-all;">${window.DashboardUtils.escapeHtml(detail.message)}</span></div>`);
+                    dtHtml.push(`<div class="mb-2"><strong>${__('index.log.message')}</strong><br><span style="color: var(--text-secondary);word-break:break-all;">${window.DashboardUtils.escapeHtml(detail.message)}</span></div>`);
                 }
             }
 
@@ -756,8 +756,8 @@
 
             // Exception
             if (detail.exception) {
-                dtHtml.push(`<div style="color:#dc2626;margin-top:6px"><strong>${__('index.log.exception')}</strong></div>`);
-                dtHtml.push(`<pre style="background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:8px;margin:4px 0 0;overflow-x:auto;white-space:pre-wrap;word-break:break-all;font-size:11px;color:#991b1b;">${window.DashboardUtils.escapeHtml(detail.exception)}</pre>`);
+                dtHtml.push(`<div style="color: var(--danger-color);margin-top:6px"><strong>${__('index.log.exception')}</strong></div>`);
+                dtHtml.push(`<pre style="background: var(--danger-bg);border: 1px solid var(--danger-border);border-radius:4px;padding:8px;margin:4px 0 0;overflow-x:auto;white-space:pre-wrap;word-break:break-all;font-size:11px;color:#991b1b;">${window.DashboardUtils.escapeHtml(detail.exception)}</pre>`);
             }
 
             detailEl.innerHTML = dtHtml.join('');
@@ -1346,7 +1346,7 @@
             // Copy button
             const copyBtn = window.DashboardDOM.create('button', {
                 className: 'btn btn-sm btn-link p-0',
-                innerHTML: '<i class="bi bi-clipboard" style="color:#94a3b8"></i>',
+                innerHTML: '<i class="bi bi-clipboard" style="color: var(--text-faint)"></i>',
                 style: { marginLeft: '4px', opacity: '0.6', transition: 'all 0.2s ease' },
                 events: {
                     click: (e) => {
@@ -1475,8 +1475,8 @@
 
             // Exception
             if (responseEntry.exception) {
-                dtHtml.push(`<div style="color:#dc2626;margin-top:6px"><strong>${__('index.log.exception')}</strong></div>`);
-                dtHtml.push(`<pre style="background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:8px;margin:4px 0 0;overflow-x:auto;white-space:pre-wrap;word-break:break-all;font-size:11px;color:#991b1b;">${window.DashboardUtils.escapeHtml(responseEntry.exception)}</pre>`);
+                dtHtml.push(`<div style="color: var(--danger-color);margin-top:6px"><strong>${__('index.log.exception')}</strong></div>`);
+                dtHtml.push(`<pre style="background: var(--danger-bg);border: 1px solid var(--danger-border);border-radius:4px;padding:8px;margin:4px 0 0;overflow-x:auto;white-space:pre-wrap;word-break:break-all;font-size:11px;color:#991b1b;">${window.DashboardUtils.escapeHtml(responseEntry.exception)}</pre>`);
             }
 
             detail.innerHTML = dtHtml.join('');
@@ -1564,7 +1564,7 @@
             // Copy button (small icon button)
             const copyBtn = window.DashboardDOM.create('button', {
                 className: 'btn btn-sm btn-link p-0',
-                innerHTML: '<i class="bi bi-clipboard" style="color:#94a3b8"></i>',
+                innerHTML: '<i class="bi bi-clipboard" style="color: var(--text-faint)"></i>',
                 style: { marginLeft: '8px', opacity: '0.6', transition: 'all 0.2s ease' },
                 events: {
                     click: (e) => {
@@ -1769,13 +1769,13 @@
 
                 // Message (full content)
                 dtHtml.push(`<div class="mb-2"><strong>${__('index.log.message')}</strong><br>`);
-                dtHtml.push(`<span style="color:#475569;word-break:break-all;">${window.DashboardUtils.escapeHtml(entry.message || '')}</span></div>`);
+                dtHtml.push(`<span style="color: var(--text-secondary);word-break:break-all;">${window.DashboardUtils.escapeHtml(entry.message || '')}</span></div>`);
             }
 
             // Exception (for any type)
             if (entry.exception) {
-                dtHtml.push(`<div style="color:#dc2626;margin-top:6px"><strong>${__('index.log.exception')}</strong></div>`);
-                dtHtml.push(`<pre style="background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:8px;margin:4px 0 0;overflow-x:auto;white-space:pre-wrap;word-break:break-all;font-size:11px;color:#991b1b;">${window.DashboardUtils.escapeHtml(entry.exception)}</pre>`);
+                dtHtml.push(`<div style="color: var(--danger-color);margin-top:6px"><strong>${__('index.log.exception')}</strong></div>`);
+                dtHtml.push(`<pre style="background: var(--danger-bg);border: 1px solid var(--danger-border);border-radius:4px;padding:8px;margin:4px 0 0;overflow-x:auto;white-space:pre-wrap;word-break:break-all;font-size:11px;color:#991b1b;">${window.DashboardUtils.escapeHtml(entry.exception)}</pre>`);
             }
                 
             detail.innerHTML = dtHtml.join('');

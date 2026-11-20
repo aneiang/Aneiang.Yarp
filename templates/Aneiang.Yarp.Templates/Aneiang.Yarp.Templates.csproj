@@ -16,8 +16,8 @@
     <Authors>AneiangSoft Team</Authors>
     <Company>AneiangSoft</Company>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/aneiangsoft/Aneiang.Yarp</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/aneiangsoft/Aneiang.Yarp</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/aneiang/Aneiang.Yarp</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/aneiang/Aneiang.Yarp</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
 
     <TargetFramework>net8.0</TargetFramework>
@@ -32,7 +32,7 @@
 
   <ItemGroup>
     <Content Include="content\**\*" Exclude="content\**\bin\**;content\**\obj\**" />
-    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 
 </Project>

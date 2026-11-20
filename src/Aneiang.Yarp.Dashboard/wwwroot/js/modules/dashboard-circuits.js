@@ -165,7 +165,7 @@
             var map = (config && typeof config === 'object') ? config : {};
             var clusterIds = Object.keys(map);
 
-            var head = '<div class="mt-4 pt-3" style="border-top:1px solid var(--border-light,#f1f5f9);">' +
+            var head = '<div class="mt-4 pt-3" style="border-top: 1px solid var(--border-light,var(--border-light));">' +
                 '<div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">' +
                     '<div style="font-weight:600;font-size:13px;"><i class="bi bi-sliders2 me-2"></i>' +
                         __('circuit.thresholds.title') + '</div>' +

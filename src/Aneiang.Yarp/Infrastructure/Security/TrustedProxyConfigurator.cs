@@ -2,7 +2,9 @@ using System.Net;
 using Aneiang.Yarp.Models;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.HttpOverrides;
+#if !NET10_0_OR_GREATER
 using Network = Microsoft.AspNetCore.HttpOverrides.IPNetwork;
+#endif
 
 namespace Aneiang.Yarp.Infrastructure.Security;
 
@@ -48,7 +50,7 @@ public static class TrustedProxyConfigurator
         // The framework trusts loopback out of the box. Starting from an empty list keeps the rule
         // simple to state: an address is trusted because it was written down, nothing else.
         forwarded.KnownProxies.Clear();
-        forwarded.KnownNetworks.Clear();
+        ClearNetworks(forwarded);
 
         var rejected = new List<string>();
 
@@ -71,38 +73,72 @@ public static class TrustedProxyConfigurator
         {
             if (string.IsNullOrWhiteSpace(entry)) continue;
 
-            if (!TryParseNetwork(entry.Trim(), out var network))
+            if (!TryParseNetwork(entry.Trim(), out var prefix, out var length))
             {
                 rejected.Add(entry);
                 continue;
             }
 
-            forwarded.KnownNetworks.Add(network);
+            AddNetwork(forwarded, prefix, length);
         }
 
         if (rejected.Count > 0)
             warning = $"Ignored {rejected.Count} unparsable trusted proxy entr{(rejected.Count == 1 ? "y" : "ies")}: {string.Join(", ", rejected)}.";
 
-        if (forwarded.KnownProxies.Count == 0 && forwarded.KnownNetworks.Count == 0)
+        if (forwarded.KnownProxies.Count == 0 && NetworkCount(forwarded) == 0)
             return null;
 
         return forwarded;
     }
 
-    private static bool TryParseNetwork(string value, out Network network)
+    /// <summary>Number of trusted networks on either framework generation.</summary>
+    internal static int NetworkCount(ForwardedHeadersOptions options)
+#if NET10_0_OR_GREATER
+        => options.KnownIPNetworks.Count;
+#else
+        => options.KnownNetworks.Count;
+#endif
+
+    /// <remarks>
+    /// .NET 10 replaced <c>KnownNetworks</c> (element type <c>Microsoft.AspNetCore.HttpOverrides.IPNetwork</c>)
+    /// with <c>KnownIPNetworks</c> (element type <c>System.Net.IPNetwork</c>). Same job, different names:
+    /// the old pair is obsolete on net10, the new pair does not exist before it. One split here beats a
+    /// blanket <c>NoWarn</c> that would also hide the next rename.
+    /// </remarks>
+    private static void AddNetwork(ForwardedHeadersOptions options, IPAddress prefix, int length)
     {
-        network = default!;
+#if NET10_0_OR_GREATER
+        options.KnownIPNetworks.Add(new System.Net.IPNetwork(prefix, length));
+#else
+        options.KnownNetworks.Add(new Network(prefix, length));
+#endif
+    }
+
+    private static void ClearNetworks(ForwardedHeadersOptions options)
+    {
+#if NET10_0_OR_GREATER
+        options.KnownIPNetworks.Clear();
+#else
+        options.KnownNetworks.Clear();
+#endif
+    }
+
+    private static bool TryParseNetwork(string value, out IPAddress prefix, out int length)
+    {
+        prefix = IPAddress.None;
+        length = 0;
 
         var slash = value.IndexOf('/', StringComparison.Ordinal);
         if (slash <= 0 || slash == value.Length - 1) return false;
 
-        if (!IPAddress.TryParse(value[..slash], out var prefix)) return false;
-        if (!int.TryParse(value[(slash + 1)..], out var length)) return false;
+        if (!IPAddress.TryParse(value[..slash], out var address)) return false;
+        if (!int.TryParse(value[(slash + 1)..], out var parsedLength)) return false;
 
-        var maxLength = prefix.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? 32 : 128;
-        if (length < 0 || length > maxLength) return false;
+        var maxLength = address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? 32 : 128;
+        if (parsedLength < 0 || parsedLength > maxLength) return false;
 
-        network = new Network(prefix, length);
+        prefix = address;
+        length = parsedLength;
         return true;
     }
 }

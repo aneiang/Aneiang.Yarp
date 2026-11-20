@@ -318,7 +318,9 @@ public class GatewayPluginManager : IGatewayPluginManager, IPluginActivationStat
     /// <inheritdoc />
     public PluginStateChangeResult InstallPlugin(string sourceDirectory)
     {
-        if (!_externalPluginHost.TryInstall(sourceDirectory, out var error))
+        // Built-in ids are off limits: the merge below would drop the external manifest without
+        // saying so, leaving an installed plugin that never appears in any list.
+        if (!_externalPluginHost.TryInstall(sourceDirectory, id => _plugins.ContainsKey(id), out var error))
             return new(false, error);
 
         // Register the newly installed manifest

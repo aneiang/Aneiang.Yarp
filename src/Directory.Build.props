@@ -7,8 +7,8 @@
     <Copyright>Copyright © AneiangSoft $([System.DateTime]::Now.Year)</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageIcon>logo.png</PackageIcon>
-    <PackageProjectUrl>https://github.com/aneiangsoft/Aneiang.Yarp</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/aneiangsoft/Aneiang.Yarp</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/aneiang/Aneiang.Yarp</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/aneiang/Aneiang.Yarp</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -31,10 +31,18 @@
     <AnalysisMode>Default</AnalysisMode>
   </PropertyGroup>
 
+  <!--
+    Package metadata files live at the repository root, one level above this props file.
+
+    Forward slashes and PackagePath="/" are deliberate. On Linux a backslash inside an item
+    Include is not a directory separator, so "..\logo.png" is a file name, not a parent path;
+    once a pack pipeline normalizes that name, the same file can be counted twice and NuGet
+    fails the whole pack with NU5050 ("logo.png" used multiple times). One spelling, one entry.
+  -->
   <ItemGroup>
-    <None Include="$(MSBuildThisFileDirectory)..\README.md" Pack="true" PackagePath="\" />
-    <None Include="$(MSBuildThisFileDirectory)..\README.zh-CN.md" Pack="true" PackagePath="\" />
-    <None Include="$(MSBuildThisFileDirectory)..\logo.png" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)../README.md" Link="README.md" Pack="true" PackagePath="/" />
+    <None Include="$(MSBuildThisFileDirectory)../README.zh-CN.md" Link="README.zh-CN.md" Pack="true" PackagePath="/" />
+    <None Include="$(MSBuildThisFileDirectory)../logo.png" Link="logo.png" Pack="true" PackagePath="/" Visible="false" />
   </ItemGroup>
 
 </Project>

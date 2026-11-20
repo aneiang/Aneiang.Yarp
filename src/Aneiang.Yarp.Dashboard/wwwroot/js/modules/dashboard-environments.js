@@ -83,6 +83,15 @@
             var editingRuntime = !!data.isEditingRuntime;
 
             wrap.hidden = false;
+
+            // 侧栏那块环境信息跟着这里的真实数据走：单环境时由服务端渲染出
+            // ASPNETCORE_ENVIRONMENT，多环境时以「当前正在编辑的环境」为准。
+            var metaEnv = document.getElementById('sidebar-meta-env');
+            if (metaEnv) {
+                var current = (data.environments || []).filter(function (e) { return e.isCurrent; })[0];
+                if (current && current.name) metaEnv.textContent = current.name;
+            }
+
             wrap.className = 'env-switch ' + (editingRuntime ? 'is-editing-runtime' : 'is-not-runtime');
 
             if (warn) warn.hidden = editingRuntime;

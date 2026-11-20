@@ -245,7 +245,17 @@ public sealed class ExternalGatewayPluginHost : IDisposable
         }
     }
 
-    private static void ValidateManifest(PluginManifest manifest, string manifestPath)
+    /// <summary>
+    /// Rejects a manifest the host cannot honour, with a message that names the field and the fix.
+    /// </summary>
+    /// <remarks>
+    /// Everything here fails at discovery/install time on purpose. The alternative - accepting the
+    /// manifest and failing later - has produced both of the confusing states this host has seen:
+    /// a plugin that installs, loads, reports healthy and then never runs (missing entry assembly
+    /// resolved to an empty pipeline), and a binding save that returns 500 because the plugin never
+    /// declared <c>schemas</c>.
+    /// </remarks>
+    private void ValidateManifest(PluginManifest manifest, string manifestPath)
     {
         if (string.IsNullOrWhiteSpace(manifest.Id)) throw new InvalidDataException("id is required.");
         if (!PluginIdPattern.IsMatch(manifest.Id))
@@ -256,8 +266,136 @@ public sealed class ExternalGatewayPluginHost : IDisposable
         if (string.IsNullOrWhiteSpace(manifest.EntryAssembly)) throw new InvalidDataException("entryAssembly is required for external plugins.");
         if (string.IsNullOrWhiteSpace(manifest.EntryType)) throw new InvalidDataException("entryType is required for external plugins.");
         if (Path.IsPathRooted(manifest.EntryAssembly)) throw new InvalidDataException("entryAssembly must be relative to plugin.json.");
-        _ = manifestPath;
+
+        if (manifest.Scopes is null || manifest.Scopes.Count == 0)
+            throw new InvalidDataException("scopes is required: declare at least one of \"Route\" or \"Cluster\", otherwise there is nothing this plugin can be bound to.");
+
+        /* The assembly has to sit next to plugin.json in the source directory being installed from,
+           so this check covers install and upgrade as well as discovery. */
+        var pluginDirectory = Path.GetDirectoryName(manifestPath);
+        if (!string.IsNullOrEmpty(pluginDirectory))
+        {
+            var assemblyPath = Path.Combine(pluginDirectory, manifest.EntryAssembly);
+            if (!File.Exists(assemblyPath))
+                throw new InvalidDataException(
+                    $"entryAssembly '{manifest.EntryAssembly}' was not found next to plugin.json in '{pluginDirectory}'. Publish the plugin (dotnet publish) and install the publish output, not the project directory.");
+
+            /* Reading the metadata name costs a file open and catches the most common packaging
+               mistake - a .dll that is actually a text file, a zip, or a 0-byte leftover from a
+               half-finished copy. Without it the plugin installs, reports enabled, and only fails
+               when the runtime domain tries to load it. */
+            try
+            {
+                System.Reflection.AssemblyName.GetAssemblyName(assemblyPath);
+            }
+            catch (Exception exception) when (exception is BadImageFormatException or FileLoadException)
+            {
+                throw new InvalidDataException(
+                    $"entryAssembly '{manifest.EntryAssembly}' is not a loadable .NET assembly ({exception.GetType().Name}). Build it for the host's target framework and reinstall.");
+            }
+        }
+
+        ValidateSchemas(manifest);
     }
+
+    /// <summary>
+    /// Checks the configuration schemas the console renders binding forms from.
+    /// </summary>
+    /// <remarks>
+    /// The rules are the ones the host actually relies on, not the whole JSON Schema spec: a schema
+    /// that is syntactically valid but shaped differently silently produces a form with no fields,
+    /// which reads as "the plugin has no settings" rather than as an error.
+    /// </remarks>
+    private void ValidateSchemas(PluginManifest manifest)
+    {
+        if (manifest.Schemas is null)
+            throw new InvalidDataException(
+                "schemas is required. Declare one entry per configuration version, or use an empty array (\"schemas\": []) for a plugin that takes no configuration.");
+
+        var seenVersions = new HashSet<int>();
+        for (var index = 0; index < manifest.Schemas.Count; index++)
+        {
+            var schema = manifest.Schemas[index];
+            var label = $"schemas[{index}]";
+            if (schema is null) throw new InvalidDataException($"{label} is null.");
+
+            if (schema.Version < 1)
+                throw new InvalidDataException($"{label}.version must be 1 or greater (got {schema.Version}); versions are integers and the binding stores the one it was saved with.");
+            if (!seenVersions.Add(schema.Version))
+                throw new InvalidDataException($"{label}.version {schema.Version} is declared more than once; every schema version must appear exactly once.");
+
+            var raw = schema.ConfigJsonSchema;
+            if (string.IsNullOrWhiteSpace(raw))
+                throw new InvalidDataException(
+                    $"{label}.configJsonSchema is empty. It must be a JSON string containing the schema, e.g. \"configJsonSchema\": \"{{\\\"type\\\":\\\"object\\\",\\\"properties\\\":{{}}}}\".");
+
+            JsonDocument document;
+            try
+            {
+                document = JsonDocument.Parse(raw);
+            }
+            catch (JsonException exception)
+            {
+                throw new InvalidDataException(
+                    $"{label}.configJsonSchema is not valid JSON: {exception.Message} Remember that the schema is a JSON *string* inside plugin.json, so its own double quotes must be escaped.");
+            }
+
+            using (document)
+            {
+                var root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object)
+                    throw new InvalidDataException($"{label}.configJsonSchema must be a JSON object; got {root.ValueKind}.");
+
+                if (!root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String ||
+                    !string.Equals(type.GetString(), "object", StringComparison.Ordinal))
+                    throw new InvalidDataException(
+                        $"{label}.configJsonSchema must declare \"type\": \"object\" at the root. Without it the console renders no binding form at all, while the server still validates the saved JSON.");
+
+                WarnOnUnsupportedKeywords(root, label);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Logs the keywords this host's validator and form renderer do not implement.
+    /// </summary>
+    /// <remarks>
+    /// These are warnings, not errors: a schema may legitimately carry annotations for other tools.
+    /// <c>$ref</c> is the one worth shouting about - a schema that delegates its properties to a
+    /// definition looks complete in review and constrains nothing at runtime.
+    /// </remarks>
+    private void WarnOnUnsupportedKeywords(JsonElement root, string label)
+    {
+        var pending = new Queue<JsonElement>();
+        pending.Enqueue(root);
+        var reported = new HashSet<string>(StringComparer.Ordinal);
+
+        while (pending.Count > 0)
+        {
+            var element = pending.Dequeue();
+            if (element.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in element.EnumerateObject())
+                {
+                    if ((property.NameEquals("$ref") || property.NameEquals("$defs") || property.NameEquals("if") ||
+                         property.NameEquals("not") || property.NameEquals("patternProperties")) &&
+                        reported.Add(property.Name))
+                    {
+                        _logger.LogWarning(
+                            "Plugin manifest schema {Schema}: '{Keyword}' is not supported by this host and will be ignored when validating and rendering configuration",
+                            label, property.Name);
+                    }
+
+                    pending.Enqueue(property.Value);
+                }
+            }
+            else if (element.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in element.EnumerateArray()) pending.Enqueue(item);
+            }
+        }
+    }
+
 
     /// <summary>
     /// Resolves a path inside <paramref name="root"/> and refuses anything that would land outside it.
@@ -302,6 +440,15 @@ public sealed class ExternalGatewayPluginHost : IDisposable
     {
         foreach (var (pluginId, contextReference) in _unloadingContexts.ToArray())
         {
+            /* The plugin was disabled and then enabled again: the new instance is already loaded,
+               so the old context's lifetime must not keep overwriting the status with
+               UnloadPending. Drop the stale tracking entry instead. */
+            if (_loaded.ContainsKey(pluginId))
+            {
+                _unloadingContexts.Remove(pluginId);
+                continue;
+            }
+
             if (contextReference.IsAlive)
             {
                 UpdateStatus(pluginId, ExternalPluginRegistrationStatus.UnloadPending, isCollectible: true, isLoadContextAlive: true);
@@ -314,7 +461,14 @@ public sealed class ExternalGatewayPluginHost : IDisposable
     }
 
     /// <summary>Install a plugin from a source directory by copying it into the plugin root and re-discovering.</summary>
-    public bool TryInstall(string sourceDirectory, out string? error)
+    /// <param name="sourceDirectory">Directory containing plugin.json and the plugin assemblies.</param>
+    /// <param name="isIdReserved">
+    /// Optional check for ids the host cannot hand to an external plugin (built-ins). Without it an
+    /// external plugin that reuses a built-in id installs, appears in the market, and is then silently
+    /// dropped when the manifests are merged - the worst possible outcome to debug.
+    /// </param>
+    /// <param name="error">Human-readable reason when the install is refused.</param>
+    public bool TryInstall(string sourceDirectory, Func<string, bool>? isIdReserved, out string? error)
     {
         error = null;
         try
@@ -343,6 +497,12 @@ public sealed class ExternalGatewayPluginHost : IDisposable
             if (_registrations.ContainsKey(manifest.Id))
             {
                 error = $"Plugin '{manifest.Id}' is already registered. Use upgrade instead.";
+                return false;
+            }
+
+            if (isIdReserved != null && isIdReserved(manifest.Id))
+            {
+                error = $"Plugin id '{manifest.Id}' is already used by a built-in plugin. Rename the plugin before installing.";
                 return false;
             }
 

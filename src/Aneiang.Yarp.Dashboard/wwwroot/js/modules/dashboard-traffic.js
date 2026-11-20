@@ -99,7 +99,12 @@
                     plugins: { legend: { display: false } },
                     scales: {
                         x: { grid: { display: false }, ticks: { font: { size: 10 } } },
-                        y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 10 } } }
+                        // 网格颜色按当前主题取，硬编码的黑网格在深色下等于没有
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: (window.AneiangTheme ? AneiangTheme.chartColors().grid : 'rgba(0,0,0,0.05)') },
+                            ticks: { font: { size: 10 } }
+                        }
                     }
                 }
             });

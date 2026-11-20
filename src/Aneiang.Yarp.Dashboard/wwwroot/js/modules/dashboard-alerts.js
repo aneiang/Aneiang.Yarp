@@ -190,13 +190,13 @@
 
             var incidents = this._activeIncidents();
             if (incidents.length === 0) {
-                host.innerHTML = '<div style="font-size:12px;color:#94a3b8;padding:6px 0 12px;">' +
+                host.innerHTML = '<div style="font-size:12px;color: var(--text-faint);padding:6px 0 12px;">' +
                     '<i class="bi bi-shield-check me-1"></i>' + this.esc(this.t('active.empty')) + '</div>';
                 return;
             }
 
             var self = this;
-            var html = '<div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:8px;">' +
+            var html = '<div style="font-size:12px;font-weight:600;color: var(--text-secondary);margin-bottom:8px;">' +
                 this.esc(this.t('active.title')) + '</div>';
 
             incidents.forEach(function (incident) {
@@ -213,18 +213,18 @@
                     '<span style="width:8px;height:8px;border-radius:50%;background:' + color + ';' +
                     (incident.state === 'Firing' ? 'box-shadow:0 0 0 4px ' + color + '22;' : '') + '"></span>' +
                     '<span style="font-weight:600;font-size:13px;">' + self.esc(incident.ruleName) + '</span>' +
-                    '<span style="font-size:10px;padding:1px 6px;border-radius:999px;background:#f1f5f9;color:#475569;">' +
+                    '<span style="font-size:10px;padding:1px 6px;border-radius:999px;background: var(--surface-3);color: var(--text-secondary);">' +
                     self.esc(stateLabel) + '</span>' +
-                    '<span style="font-size:10px;padding:1px 6px;border-radius:999px;background:#eff6ff;color:#1d4ed8;">' +
+                    '<span style="font-size:10px;padding:1px 6px;border-radius:999px;background: var(--info-bg);color: var(--info-color);">' +
                     self.esc(self._scopeLabel(incident.scopeKind, incident.scope)) + '</span>' +
                     '</div>' +
-                    '<div style="font-size:12px;color:#334155;margin-top:4px;">' +
+                    '<div style="font-size:12px;color: var(--text-secondary);margin-top:4px;">' +
                     '<strong style="color:' + color + ';">' + self.esc(incident.lastValueLabel) + '</strong>' +
                     ' / ' + self.esc(self.t('col.threshold')) + ' ' + self.esc(incident.thresholdLabel) +
                     ' · ' + incident.lastSamples + ' ' + self.esc(self.t('samples')) +
                     ' · ' + self._duration(incident.elapsedSeconds) +
                     '</div>' +
-                    '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">' + self.esc(incident.lastReason || '') + '</div>' +
+                    '<div style="font-size:11px;color: var(--text-faint);margin-top:2px;">' + self.esc(incident.lastReason || '') + '</div>' +
                     '</div>' +
                     '<div style="display:flex;gap:6px;flex-shrink:0;">' +
                     '<button type="button" class="btn btn-sm btn-outline-secondary malert-mute" data-id="' +
@@ -252,8 +252,8 @@
             var rules = this._data.rules || [];
             if (rules.length === 0) {
                 body.innerHTML = '<tr><td colspan="8" class="text-center py-5">' +
-                    '<div style="font-size:13px;font-weight:600;color:#64748b;">' + this.esc(this.t('empty')) + '</div>' +
-                    '<div style="font-size:12px;color:#94a3b8;margin-top:4px;">' + this.esc(this.t('emptyHelp')) + '</div>' +
+                    '<div style="font-size:13px;font-weight:600;color: var(--text-muted);">' + this.esc(this.t('empty')) + '</div>' +
+                    '<div style="font-size:12px;color: var(--text-faint);margin-top:4px;">' + this.esc(this.t('emptyHelp')) + '</div>' +
                     '</td></tr>';
                 return;
             }
@@ -276,11 +276,11 @@
 
                 return '<tr>' +
                     '<td><div style="font-weight:600;font-size:13px;">' + self.esc(rule.name) + '</div>' +
-                    '<div style="font-size:11px;color:#94a3b8;">' + self.esc(rule.createdBy || '') + '</div></td>' +
+                    '<div style="font-size:11px;color: var(--text-faint);">' + self.esc(rule.createdBy || '') + '</div></td>' +
                     '<td style="font-size:12px;">' + self.esc(self.t('kind.' + rule.kind)) + '</td>' +
-                    '<td style="font-size:12px;color:#475569;">' + self.esc(self._scopeLabel(rule.scopeKind, rule.scope)) + '</td>' +
+                    '<td style="font-size:12px;color: var(--text-secondary);">' + self.esc(self._scopeLabel(rule.scopeKind, rule.scope)) + '</td>' +
                     '<td><code style="font-size:12px;">' + self.esc(rule.thresholdLabel) + '</code></td>' +
-                    '<td style="font-size:11px;color:#64748b;">' + rule.forSeconds + 's / ' +
+                    '<td style="font-size:11px;color: var(--text-muted);">' + rule.forSeconds + 's / ' +
                     rule.windowSeconds + 's / ' + rule.minSamples + '</td>' +
                     '<td><span style="font-size:11px;padding:1px 7px;border-radius:999px;background:' + sevColor +
                     '18;color:' + sevColor + ';">' + self.esc(self.t('severity.' + rule.severity)) + '</span></td>' +
@@ -322,15 +322,15 @@
 
             var self = this;
             host.innerHTML =
-                '<div style="font-size:12px;font-weight:600;color:#475569;margin-bottom:6px;">' +
+                '<div style="font-size:12px;font-weight:600;color: var(--text-secondary);margin-bottom:6px;">' +
                 this.esc(this.t('resolved.title')) + '</div>' +
-                '<div style="font-size:12px;color:#64748b;">' +
+                '<div style="font-size:12px;color: var(--text-muted);">' +
                 resolved.map(function (incident) {
                     var reason = self.t('reason.' + (incident.resolveReason || 'recovered'));
-                    return '<div style="padding:4px 0;border-bottom:1px dashed #e2e8f0;">' +
-                        '<i class="bi bi-check2-circle me-1" style="color:#16a34a;"></i>' +
+                    return '<div style="padding:4px 0;border-bottom: 1px dashed var(--border-color);">' +
+                        '<i class="bi bi-check2-circle me-1" style="color: var(--success-color);"></i>' +
                         self.esc(incident.ruleName) +
-                        ' <span style="color:#94a3b8;">· ' + self.esc(reason) + ' · ' +
+                        ' <span style="color: var(--text-faint);">· ' + self.esc(reason) + ' · ' +
                         self.esc(self._duration(incident.elapsedSeconds)) + '</span></div>';
                 }).join('') + '</div>';
         },
@@ -446,7 +446,7 @@
                 '<div class="modal fade" id="' + modalId + '" tabindex="-1">' +
                 '<div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content" ' +
                 'style="border-radius:16px;border:none;box-shadow:0 25px 50px rgba(0,0,0,0.25);overflow:hidden;">' +
-                '<div class="modal-header" style="background:linear-gradient(135deg,#f8fafc,#e2e8f0);border-bottom:1px solid #e2e8f0;padding:18px 24px;">' +
+                '<div class="modal-header" style="background: linear-gradient(135deg,var(--surface-2),var(--surface-4));border-bottom: 1px solid var(--border-color);padding:18px 24px;">' +
                 '<h5 class="modal-title" style="font-weight:600;font-size:16px;display:flex;align-items:center;gap:10px;">' +
                 '<span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;' +
                 'background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;font-size:16px;"><i class="bi bi-activity"></i></span>' +
@@ -469,14 +469,14 @@
                 '<div id="malert-scope-wrap"><label class="form-label" style="font-size:12px;font-weight:600;">' +
                 self.esc(self.t('form.scope')) + '</label>' +
                 '<select class="form-select form-select-sm" id="malert-scope"></select>' +
-                '<div style="font-size:11px;color:#94a3b8;margin-top:2px;" id="malert-scope-hint"></div></div>' +
+                '<div style="font-size:11px;color: var(--text-faint);margin-top:2px;" id="malert-scope-hint"></div></div>' +
 
                 '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
                 '<div><label class="form-label" style="font-size:12px;font-weight:600;" id="malert-threshold-label">' +
                 self.esc(self.t('form.threshold')) + '</label>' +
                 '<input type="number" step="any" class="form-control form-control-sm" id="malert-threshold" value="' +
                 thresholdInput + '">' +
-                '<div style="font-size:11px;color:#94a3b8;margin-top:2px;" id="malert-threshold-hint"></div></div>' +
+                '<div style="font-size:11px;color: var(--text-faint);margin-top:2px;" id="malert-threshold-hint"></div></div>' +
                 '<div><label class="form-label" style="font-size:12px;font-weight:600;">' + self.esc(self.t('form.severity')) + '</label>' +
                 '<select class="form-select form-select-sm" id="malert-severity">' + severityOptions + '</select></div>' +
                 '</div>' +
@@ -485,22 +485,22 @@
                 '<div><label class="form-label" style="font-size:12px;font-weight:600;">' + self.esc(self.t('form.window')) + '</label>' +
                 '<input type="number" class="form-control form-control-sm" id="malert-window" min="10" max="3600" value="' +
                 (rule ? rule.windowSeconds : (defaults.windowSeconds || 60)) + '">' +
-                '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">' + self.esc(self.t('form.window.hint')) + '</div></div>' +
+                '<div style="font-size:11px;color: var(--text-faint);margin-top:2px;">' + self.esc(self.t('form.window.hint')) + '</div></div>' +
                 '<div><label class="form-label" style="font-size:12px;font-weight:600;">' + self.esc(self.t('form.for')) + '</label>' +
                 '<input type="number" class="form-control form-control-sm" id="malert-for" min="0" max="3600" value="' +
                 (rule ? rule.forSeconds : (defaults.forSeconds || 60)) + '">' +
-                '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">' + self.esc(self.t('form.for.hint')) + '</div></div>' +
+                '<div style="font-size:11px;color: var(--text-faint);margin-top:2px;">' + self.esc(self.t('form.for.hint')) + '</div></div>' +
                 '<div><label class="form-label" style="font-size:12px;font-weight:600;">' + self.esc(self.t('form.minSamples')) + '</label>' +
                 '<input type="number" class="form-control form-control-sm" id="malert-minsamples" min="1" value="' +
                 (rule ? rule.minSamples : (defaults.minSamples || 20)) + '">' +
-                '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">' + self.esc(self.t('form.minSamples.hint')) + '</div></div>' +
+                '<div style="font-size:11px;color: var(--text-faint);margin-top:2px;">' + self.esc(self.t('form.minSamples.hint')) + '</div></div>' +
                 '</div>' +
 
                 '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end;">' +
                 '<div><label class="form-label" style="font-size:12px;font-weight:600;">' + self.esc(self.t('form.renotify')) + '</label>' +
                 '<input type="number" class="form-control form-control-sm" id="malert-renotify" min="0" max="1440" value="' +
                 (rule ? rule.renotifyMinutes : 30) + '">' +
-                '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">' + self.esc(self.t('form.renotify.hint')) + '</div></div>' +
+                '<div style="font-size:11px;color: var(--text-faint);margin-top:2px;">' + self.esc(self.t('form.renotify.hint')) + '</div></div>' +
                 '<div style="display:flex;flex-direction:column;gap:6px;padding-bottom:4px;">' +
                 '<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;">' +
                 '<input type="checkbox" class="form-check-input mt-0" id="malert-notify-resolve"' +
@@ -510,11 +510,11 @@
                 (!rule || rule.enabled ? ' checked' : '') + '>' + self.esc(self.t('form.enabled')) + '</label>' +
                 '</div></div>' +
 
-                '<div style="font-size:11px;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;">' +
+                '<div style="font-size:11px;color: var(--text-muted);background: var(--surface-2);border: 1px solid var(--border-color);border-radius:8px;padding:8px 12px;">' +
                 '<i class="bi bi-info-circle me-1"></i>' + self.esc(self.t('hint.pipeline')) + '</div>' +
                 '</div>' +
 
-                '<div class="modal-footer" style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:14px 24px;gap:8px;">' +
+                '<div class="modal-footer" style="background: var(--surface-2);border-top: 1px solid var(--border-color);padding:14px 24px;gap:8px;">' +
                 '<button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">' +
                 self.esc(self.t('form.cancel')) + '</button>' +
                 '<button type="button" class="btn btn-primary btn-sm" id="malert-save">' +

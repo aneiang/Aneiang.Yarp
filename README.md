@@ -1,7 +1,4 @@
 <div align="center">
-<img src="cover-en.png" alt="Aneiang.Yarp — The reverse proxy & API gateway for .NET" width="100%"/>
-
-<br/>
 
 <img src="logo.png" alt="Aneiang.Yarp" width="240" style="border-radius: 15px;"/>
 
@@ -13,7 +10,7 @@ Plugin Architecture · Dashboard · Dynamic Routing · WAF · Service Discovery 
 [![NuGet](https://img.shields.io/nuget/v/Aneiang.Yarp.Dashboard.svg)](https://www.nuget.org/packages/Aneiang.Yarp.Dashboard)
 [![NuGet](https://img.shields.io/nuget/v/Aneiang.Yarp.Client.svg)](https://www.nuget.org/packages/Aneiang.Yarp.Client)
 [![YARP](https://img.shields.io/badge/YARP-2.3.0-blue.svg)](https://github.com/microsoft/reverse-proxy)
-[![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%209.0-purple.svg)](https://dotnet.microsoft.com/)
+[![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-purple.svg)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 [English](README.md) | [中文](README.zh-CN.md)
@@ -22,76 +19,9 @@ Plugin Architecture · Dashboard · Dynamic Routing · WAF · Service Discovery 
 
 ---
 
-**Aneiang.Yarp** is a production-ready API gateway built on [Microsoft YARP](https://microsoft.github.io/reverse-proxy/) 2.3.0. It ships with everything you'd otherwise build yourself: a **plugin architecture** (10 built-in plugins), a visual **management dashboard**, WAF, AI assistant, multi-provider **service discovery**, notifications, health & circuit-breaker monitoring, and **one-line client auto-registration**.
+**Aneiang.Yarp** is a production-ready API gateway built on [Microsoft YARP](https://microsoft.github.io/reverse-proxy/) 2.3.0. It ships with everything you'd otherwise build yourself: a **plugin architecture** (11 built-in plugins), a visual **management dashboard**, WAF, AI assistant, multi-provider **service discovery**, notifications, health & circuit-breaker monitoring, and **one-line client auto-registration**.
 
 [📖 Documentation](https://yarp.aneiang.com/docs/index.html#overview) · [🚀 Live Demo](https://yarp-test.aneiang.com/aneiang) `admin` / `demo123` 
-
-> **Preview release: `2.3.0.40-preview.1`** · No stable build of this version exists yet. Prerelease packages are never selected by default, so installing the templates takes an explicit version:
->
-> ```
-> dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
-> ```
->
-> Installing from the repository checkout also works: `dotnet new install ./templates/Aneiang.Yarp.Templates`. The same rule applies to `PackageReference` entries — write the full `2.3.0.40-preview.1`; a bare `2.3.0.40` will fail to restore because that version does not exist.
-
----
-
-## Aneiang.Yarp vs. Bare YARP
-
-| Need | Bare YARP | Aneiang.Yarp |
-|:-----|:----------|:-------------|
-| Management UI | Build your own | ✅ Included |
-| Edit config at runtime | Reload file only | ✅ CRUD + form/JSON editor + rollback + audit |
-| Security (WAF) | None | ✅ WAF plugin (declarative rules, IP allow/deny, SQLi / XSS / path traversal, monitor mode) |
-| Microservice registration | None | ✅ One-line REST/gRPC + heartbeat recovery |
-| Observability | Logging only | ✅ Metrics, request logs, health, circuit-breaker panel |
-| Service discovery | Manual clusters | ✅ Consul / Nacos / Eureka / K8s / HTTP-JSON / Static |
-| AI assistant | None | ✅ Chat-based management (40 tools, read/write split) |
-| Extensibility | Custom middleware | ✅ Drop-in `IGatewayPlugin` framework |
-
----
-
-## Architecture
-
-```
-                   +-----------------------------------------------------------+
-                   |                 Aneiang.Yarp Gateway (YARP 2.3.0)          |
- +-------------+   |   +------------------+  +-------------------------------+  |
- |  5+ clients  |   |   |  Web Dashboard   |  |  Management API + gRPC host   |  |
- |  (browsers/   |   |   |  Routes/Plugins  |  |  Client auto-registration     |  |
- |   apps)       |-->|   |  WAF / AI / 2FA  |  |                               |  |
- +-------------+   |   +--------+----------+  +--------------+----------------+  |
-                   |            +------------------------------------------------+ |
-                   |            |                                                  |
-                   |   +--------v---------+                                    | |
-                   |   |  Plugin Pipeline（10 built-in plugins）                     | |
-                   |   |  WAF → RateLimit → Retry → CircuitBreaker →            | |
-                   |   |  Compression → Cache → Metrics → ProxyLog              | |
-                   |   +--------+---------+                                    | |
-                   |            +------------------------------------------------+ |
-                   |            |                                                  |
-                   |   +--------v---------+   +-------------------------------+  |
-                   |   |  YARP Reverse Proxy | → | Target services / clusters |  |
-                   |   |  (dynamic routes)  |   |  (via Service Discovery)    |  |
-                   |   +--------+---------+   +-------------------------------+  |
-                   |            |
-                   |   +--------v--------+
-                   |   |  Storage: SQLite (SQLCipher AES-256) |
-                   +-----------------------------------------------------------+
-```
-
----
-
-## Highlights
-
-- **Plugin architecture** — everything is a plugin; 10 first-party plugins provide WAF, rate limiting, retry, circuit breaking, compression, caching, metrics and more. Bring your own `IGatewayPlugin` in minutes; the **Plugin Market page** shows what is installed and where it came from, and installs, upgrades or removes external plugins from a local directory.
-- **Visual dashboard** — clusters, routes, plugins, WAF, health, circuit breakers, logs, notifications, audit trail and config history in one place.
-- **Runtime dynamic routing** — create / edit clusters & routes without restarting; auto-persists and auto-recovers on restart.
-- **Native YARP config editing** — dual-mode **form + JSON** editor that works directly on the standard YARP schema.
-- **Multi-provider service discovery** — Consul, Nacos, Eureka, Kubernetes, HTTP-JSON, Static.
-- **One-line client registration** — microservices register on startup and unregister on shutdown over REST or gRPC, with heartbeat self-healing.
-- **AI assistant** — manage the gateway by chat; 40 Function-Calling tools with a strict read/write permission split.
-- **Flexible deployment** — `Auto` / `AllInOne` / `Split` / `ProxyOnly` / `DashboardOnly` with role-based endpoints.
 
 ---
 
@@ -152,20 +82,39 @@ app.Run();
 
 ---
 
-## Package Structure
+## Why Aneiang.Yarp
 
-| Package | Purpose | YARP |
-|:--------|:--------|:---:|
-| **Aneiang.Yarp** | Gateway core: dynamic routing, IP isolation, API auth, plugin execution | ✅ |
-| **Aneiang.Yarp.Dashboard** | Web admin panel + AI assistant | via core |
-| **Aneiang.Yarp.Client** | One-line auto-registration (no YARP dependency) | ❌ |
-| **Aneiang.Yarp.Storage.Sqlite** | SQLite storage with SQLCipher AES-256 | via storage |
-| **Aneiang.Yarp.Storage.Abstractions** | Storage interfaces & entities | ❌ |
-| **Aneiang.Yarp.Grpc** | gRPC registration protocol | ❌ |
-| **Aneiang.Yarp.Plugin.Abstractions** | Plugin contract (`IGatewayPlugin`) | ❌ |
-| **Aneiang.Yarp.Plugin.\*** | 10 first-party plugins, pulled in individually | via core |
+### Aneiang.Yarp vs. Bare YARP
 
-**.NET 8.0 / 9.0**.
+| Need | Bare YARP | Aneiang.Yarp |
+|:-----|:----------|:-------------|
+| Management UI | Build your own | ✅ Included |
+| Edit config at runtime | Reload file only | ✅ CRUD + form/JSON editor + rollback + audit |
+| Security (WAF) | None | ✅ WAF plugin (declarative rules, IP allow/deny, SQLi / XSS / path traversal, monitor mode) |
+| Microservice registration | None | ✅ One-line REST/gRPC + heartbeat recovery |
+| Observability | Logging only | ✅ Metrics, request logs, health, circuit-breaker panel |
+| Service discovery | Manual clusters | ✅ Consul / Nacos / Eureka / K8s / HTTP-JSON / Static |
+| AI assistant | None | ✅ Chat-based management (40 tools, read/write split) |
+| Extensibility | Custom middleware | ✅ Drop-in `IGatewayPlugin` framework |
+
+---
+
+### Architecture
+
+![Architecture](docs/architecture-en.png)
+
+---
+
+### Highlights
+
+- **Plugin architecture** — everything is a plugin; 10 first-party plugins provide WAF, rate limiting, retry, circuit breaking, compression, caching, metrics and more. Bring your own `IGatewayPlugin` in minutes; the **Plugin Market page** shows what is installed and where it came from, and installs, upgrades or removes external plugins from a local directory.
+- **Visual dashboard** — clusters, routes, plugins, WAF, health, circuit breakers, logs, notifications, audit trail and config history in one place.
+- **Runtime dynamic routing** — create / edit clusters & routes without restarting; auto-persists and auto-recovers on restart.
+- **Native YARP config editing** — dual-mode **form + JSON** editor that works directly on the standard YARP schema.
+- **Multi-provider service discovery** — Consul, Nacos, Eureka, Kubernetes, HTTP-JSON, Static.
+- **One-line client registration** — microservices register on startup and unregister on shutdown over REST or gRPC, with heartbeat self-healing.
+- **AI assistant** — manage the gateway by chat; 40 Function-Calling tools with a strict read/write permission split.
+- **Flexible deployment** — `Auto` / `AllInOne` / `Split` / `ProxyOnly` / `DashboardOnly` with role-based endpoints.
 
 ---
 
@@ -189,7 +138,9 @@ app.Run();
 
 ---
 
-## Service Discovery
+## Core Capabilities
+
+### Service Discovery
 
 `ServiceDiscoveryRefreshService` periodically resolves a cluster's destinations from a registry and publishes a new YARP snapshot — no restart. Bound per cluster (`service-discovery` plugin binding).
 
@@ -206,7 +157,7 @@ Config: `Mode` (default `Static`), `Endpoint`, `ServiceName`, `Namespace` (`defa
 
 ---
 
-## Observability & Production Readiness (2.3.0.40)
+### Observability & Production Readiness
 
 - **Prometheus metrics** — `GET /metrics` exposes the standard text format: `gateway_requests_total`, `gateway_request_duration_seconds` (histogram), `gateway_responses_total{class}`, `gateway_inflight_requests`, `gateway_circuits{state}`, `gateway_config_version`. Collection happens inside the proxy pipeline, so it works whether or not any plugin is bound. Series count is capped at 300; anything beyond collapses into `route="other"` to keep cardinality bounded.
 - **Config pre-flight** — `POST /api/config/validate` returns field-addressed errors and warnings before a save; `GET /api/config/integrity` audits the whole configuration (routes pointing at missing clusters, clusters with no destinations, duplicate match paths). **Self-registration, batch import, rollback and the AI assistant all go through the same gate.**
@@ -225,7 +176,7 @@ The Grafana dashboard template ships inside the package at `content/observabilit
 
 ---
 
-## Canary Releases (2.3.0.40)
+### Canary Releases
 
 The built-in `Weighted` load balancing policy splits traffic **exactly** by destination weight, not "roughly by weight".
 
@@ -250,7 +201,7 @@ The built-in `Weighted` load balancing policy splits traffic **exactly** by dest
 
 Cluster metadata overrides: `Weighted.WeightKey`, `Weighted.DefaultWeight`, `Weighted.TagKey`, `Weighted.HeaderName`.
 
-### Automatic ramp and rollback
+#### Automatic ramp and rollback
 
 Weights decide the split; something still has to watch the result. That is the rollout state machine — reachable from the canary button on each row of the Dashboard's Clusters page, or directly via `POST /api/canary/rollouts`:
 
@@ -297,7 +248,7 @@ Defaults can be overridden in `appsettings.json`:
 
 **Plugin extension point** — `PluginCapability` gains `LoadBalancingPolicy` and `Transform`. A third-party plugin implements `IGatewayPluginHostServices.ConfigureHostServices(IServiceCollection)` to register its own policy. Note this receives the *host* container; policies registered from the plugin's runtime container are invisible to YARP.
 
-### Metric Alerts (2.3.0.40)
+#### Metric Alerts
 
 A canary rolls itself back, but only while someone is watching. For the hours nobody is watching, thresholds on 5xx rate, p99 latency and open circuit breakers do the shouting. Configure it under **Notifications → Metric Alerts**, or call `POST /api/alerts/rules`:
 
@@ -335,7 +286,7 @@ Defaults are overridable under `Aneiang:Yarp:Dashboard:Alerting` (`TickSeconds`,
 
 ---
 
-## Distributed Tracing (2.3.0.40)
+### Distributed Tracing
 
 Metrics tell you how much is failing. They cannot tell you which hop failed. With tracing on, every stage of a request through the gateway gets its own span — see them on the dashboard's **Tracing** page (or `GET /api/tracing`):
 
@@ -394,7 +345,7 @@ Endpoints: `GET /api/tracing` (status + most recent traces), `GET /api/tracing/t
 
 ---
 
-## Fault Injection (2.3.0.40)
+### Fault Injection
 
 Everything above — retries, circuit breaking, metrics, alerts, automatic rollback — is only verified when a real failure happens. Failures happen at the worst possible time, and almost always when nobody is watching the dashboard. Fault injection flips it around: **manufacture the failure on purpose, then check whether those components do what you said they would.**
 
@@ -443,7 +394,7 @@ The panel's toggle does the same thing.
 
 ---
 
-## WAF (2.3.0.40)
+### WAF
 
 The WAF used to be five hard-coded checkers behind a row of switches: SQL injection was all-on or all-off, there was no way to say "only on `/api`", and adding "block requests whose UA is sqlmap" meant changing code.
 
@@ -468,7 +419,7 @@ It is now a **declarative rule pipeline**. A rule is an optional detector, an op
 }
 ```
 
-## The three parts
+#### The three parts
 
 | Part | Values | Meaning |
 |:--|:--|:--|
@@ -487,7 +438,7 @@ Conditions are one uniform shape — `source` × `op` — instead of a field per
 
 `op` supports `equals` / `contains` / `prefix` / `suffix` / `regex` / `cidr` / `greaterThan` / `lessThan`; `matchMode` decides whether conditions combine as `all` (default) or `any`.
 
-## Editing rules in the dashboard
+#### Editing rules in the dashboard
 
 Hand-writing the JSON above is not how anyone should configure a WAF. In the dashboard a rule is a card whose title reads as a sentence:
 
@@ -507,7 +458,7 @@ A few deliberate choices:
 - **Five templates**: SQL injection, XSS, path traversal, IP range, observe-only. Starting from a filled card beats starting from fourteen empty fields
 - **Rules can be reordered.** Order matters: an `allow` near the top short-circuits everything below it
 
-## Rate limiting: a gate, not traffic shaping
+#### Rate limiting: a gate, not traffic shaping
 
 The `rate-limit` action does not answer "what is this route's quota?" It answers "someone keeps hitting the same rule — make them wait":
 
@@ -526,7 +477,7 @@ Past five attempts the request gets 429 with `Retry-After`. A few deliberate cho
 - **Bare numbers are refused.** `300` is not 300 seconds — `TimeSpan.Parse("300")` is 300 *days*. Better to drop the rule with a warning at validation time than to amplify a unit typo into a three-month ban.
 - `partition` accepts `ip` (default) / `path` / `ip-path` / `global`.
 
-## monitor: watch the hits before enforcing
+#### monitor: watch the hits before enforcing
 
 With `"mode": "monitor"` the rules still run and still log, but nothing is blocked:
 
@@ -536,7 +487,7 @@ With `"mode": "monitor"` the rules still run and still log, but nothing is block
 
 That is the only way to find out which real requests a new rule would reject before it starts rejecting them.
 
-## What gets inspected
+#### What gets inspected
 
 Only bodies that can be read **whole** — truncation is deliberately not attempted:
 
@@ -550,7 +501,7 @@ Only bodies that can be read **whole** — truncation is deliberately not attemp
 
 An inspected body is rewound, so the rest of the pipeline — including the forwarder — sees the original request untouched.
 
-## What a block looks like
+#### What a block looks like
 
 ```json
 { "error": "Forbidden", "message": "Blocked by security policy", "waf": true, "rule": "sql" }
@@ -562,7 +513,7 @@ The response carries `X-Waf-Rule: sql`, which answers the first question anyone 
 { "response": { "statusCode": 429, "contentType": "text/plain", "body": "slow down" } }
 ```
 
-## Facts worth knowing
+#### Facts worth knowing
 
 - **IP and size checks are a preamble no rule can bypass.** An `allow` rule exempts content inspection, never an IP ban — otherwise one mistyped condition switches the blocklist off
 - **Existing configuration upgrades in place.** `enableSqlInjectionDetection`, `ipWhitelist`, `maxRequestBodySize` and friends are all still there; with `rules` empty the classic three-rule pipeline is synthesised, so behaviour matches the previous version — minus the false positives
@@ -573,7 +524,7 @@ The response carries `X-Waf-Rule: sql`, which answers the first question anyone 
 
 ---
 
-## Multi-Environment (2.3.0.40)
+### Multi-Environment
 
 One configuration, one environment. Splitting dev / staging / prod needs **two separate answers to two separate questions**: which environment's configuration the gateway is **serving**, and which one you are **editing**. Most tools collapse those into one switch, and then "let me take a look at staging" quietly moves production traffic.
 
@@ -630,7 +581,7 @@ A few facts worth knowing before using it:
 - **Logs, metrics and traces are runtime data.** After switching to an environment that never handled traffic, those pages are empty. That is not a bug: there is no traffic there.
 - **Environment names are limited to letters, digits, `_` and `-`**, because the name becomes part of a file name. `../prod` fails at configuration time rather than at the moment the store is opened.
 
-### Environment diff and one-click promotion
+#### Environment diff and one-click promotion
 
 Once dev looks right, promoting it to prod is two questions: **what actually differs**, and **is this the same thing I reviewed**:
 
@@ -656,7 +607,9 @@ Deliberate choices:
 
 ---
 
-## Roles and permissions (2.3.0.40)
+## Access Control & Management API
+
+### Roles and permissions
 
 Three roles, split by **blast radius rather than seniority**:
 
@@ -699,7 +652,7 @@ See [`docs/adr/ADR-004-rbac-three-roles.md`](docs/adr/ADR-004-rbac-three-roles.m
 
 ---
 
-## Management API reference (2.3.0.40)
+### Management API reference
 
 The dashboard *is* the API, so the reference is generated from the routes that are actually mapped rather than hand-written:
 
@@ -720,33 +673,9 @@ A few notes:
 
 ---
 
-## Deployment (2.3.0.40)
+## Plugin System
 
-Three ways to take it, differing in "do you own the image":
-
-```bash
-# 1. Your own project (recommended): one command, ships a Dockerfile and a README
-# Preview: the version is explicit; drop the "::<version>" suffix once a stable build exists
-dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
-dotnet new aneiang-yarp -n MyGateway && cd MyGateway && dotnet run
-
-# 2. Kubernetes: the Helm chart. Leave the password empty and install generates one into NOTES
-helm install gw deploy/helm/aneiang-yarp --namespace gateway --create-namespace
-
-# 3. The official reference image (runs this repo's SampleGateway; for trials and integration tests)
-docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:2.3.0.40-preview.1 .
-```
-
-Two things to know first:
-
-- **The config store is a single SQLite file, so one replica is the correct number.** Two replicas are two route tables that do not know about each other; the load balancer alternates dashboard requests between them and "the route I just saved is gone". Scale the data plane with `Deployment:Mode: Split`, not with `replicaCount: 2` — the chart refuses to render that and says why.
-- **The store must live outside the container.** It holds every route, snapshot and audit record; both official artifacts handle it (`VOLUME /app/data`, and a PVC annotated with `helm.sh/resource-policy: keep`).
-
-Full details — probes, credentials, security context, verification checklist — in [`deploy/README.md`](deploy/README.md).
-
----
-
-## Plugin development (2.3.0.40)
+### Plugin development
 
 Out-of-tree plugins are separate assemblies — no need to rebuild the gateway to install one:
 
@@ -773,22 +702,7 @@ for `plugin.json`, are in [`docs/plugins/plugin-compatibility.md`](docs/plugins/
 
 ---
 
-## What We Deliberately Do Not Build
-
-Stating the boundaries up front prevents the wrong tool being picked for the job. None of these are "not done yet" — they are **intentional non-goals**:
-
-| Non-goal | Why | Use instead |
-|:--|:--|:--|
-| **API portal / developer self-service console** | It turns this into a second Kong Dev Portal, while the gateway's value is data-plane stability, not doc hosting | A dedicated portal; this repo ships `<prefix>/api-docs` and `api/openapi.json`, which is what integrators need |
-| **Built-in IdP / user directory** | Identity is a specialist domain; a home-grown account system only weakens the security boundary | Keycloak, Auth0, Azure AD — the gateway validates and forwards tokens |
-| **Log storage and search** | The gateway collects and forwards; storing and querying is Elasticsearch / Loki's job | `proxy-log` plugin output plus an external log platform |
-| **Service mesh control plane** | Sidecar and ingress-gateway are different architectures; combining them adds both complexities | Istio / Linkerd |
-| **Kubernetes Ingress Controller** | Needs CRDs, a reconcile loop and K8s lifecycle semantics — a product, not a feature | ingress-nginx, Traefik, the official YARP ingress path |
-| **Distributed rate limiting (cross-instance counters)** | An external counter (Redis) is a new failure domain; per-instance limiting covers most ingress cases | A Redis limiter ahead of `rate-limit`, or divide the quota by instance count |
-
----
-
-## Built-in Plugins
+### Built-in Plugins
 
 | ID | Scope | What it does |
 |:---|:------|:-------------|
@@ -806,7 +720,67 @@ Stating the boundaries up front prevents the wrong tool being picked for the job
 
 ---
 
-## Documentation
+## Deployment
+
+Three ways to take it, differing in "do you own the image":
+
+```bash
+# 1. Your own project (recommended): one command, ships a Dockerfile and a README
+# Preview: the version is explicit; drop the "::<version>" suffix once a stable build exists
+dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
+dotnet new aneiang-yarp -n MyGateway && cd MyGateway && dotnet run
+
+# 2. Kubernetes: the Helm chart. Leave the password empty and install generates one into NOTES
+helm install gw deploy/helm/aneiang-yarp --namespace gateway --create-namespace
+
+# 3. The official reference image (runs this repo's SampleGateway; for trials and integration tests)
+docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:2.3.0.40-preview.1 .
+```
+
+Two things to know first:
+
+- **The config store is a single SQLite file, so one replica is the correct number.** Two replicas are two route tables that do not know about each other; the load balancer alternates dashboard requests between them and "the route I just saved is gone". Scale the data plane with `Deployment:Mode: Split`, not with `replicaCount: 2` — the chart refuses to render that and says why.
+- **The store must live outside the container.** It holds every route, snapshot and audit record; both official artifacts handle it (`VOLUME /app/data`, and a PVC annotated with `helm.sh/resource-policy: keep`).
+
+Full details — probes, credentials, security context, verification checklist — in [`deploy/README.md`](deploy/README.md).
+
+---
+
+## What We Deliberately Do Not Build
+
+Stating the boundaries up front prevents the wrong tool being picked for the job. None of these are "not done yet" — they are **intentional non-goals**:
+
+| Non-goal | Why | Use instead |
+|:--|:--|:--|
+| **API portal / developer self-service console** | It turns this into a second Kong Dev Portal, while the gateway's value is data-plane stability, not doc hosting | A dedicated portal; this repo ships `<prefix>/api-docs` and `api/openapi.json`, which is what integrators need |
+| **Built-in IdP / user directory** | Identity is a specialist domain; a home-grown account system only weakens the security boundary | Keycloak, Auth0, Azure AD — the gateway validates and forwards tokens |
+| **Log storage and search** | The gateway collects and forwards; storing and querying is Elasticsearch / Loki's job | `proxy-log` plugin output plus an external log platform |
+| **Service mesh control plane** | Sidecar and ingress-gateway are different architectures; combining them adds both complexities | Istio / Linkerd |
+| **Kubernetes Ingress Controller** | Needs CRDs, a reconcile loop and K8s lifecycle semantics — a product, not a feature | ingress-nginx, Traefik, the official YARP ingress path |
+| **Distributed rate limiting (cross-instance counters)** | An external counter (Redis) is a new failure domain; per-instance limiting covers most ingress cases | A Redis limiter ahead of `rate-limit`, or divide the quota by instance count |
+
+---
+
+## Appendix
+
+### Package Structure
+
+| Package | Purpose | YARP |
+|:--------|:--------|:---:|
+| **Aneiang.Yarp** | Gateway core: dynamic routing, IP isolation, API auth, plugin execution | ✅ |
+| **Aneiang.Yarp.Dashboard** | Web admin panel + AI assistant | via core |
+| **Aneiang.Yarp.Client** | One-line auto-registration (no YARP dependency) | ❌ |
+| **Aneiang.Yarp.Storage.Sqlite** | SQLite storage with SQLCipher AES-256 | via storage |
+| **Aneiang.Yarp.Storage.Abstractions** | Storage interfaces & entities | ❌ |
+| **Aneiang.Yarp.Grpc** | gRPC registration protocol | ❌ |
+| **Aneiang.Yarp.Plugin.Abstractions** | Plugin contract (`IGatewayPlugin`) | ❌ |
+| **Aneiang.Yarp.Plugin.\*** | 10 first-party plugins, pulled in individually | via core |
+
+**.NET 8.0 / 9.0 / 10.0**.
+
+---
+
+### Documentation
 
 Full documentation lives at **[yarp.aneiang.com](https://yarp.aneiang.com)**.
 
@@ -823,7 +797,7 @@ Full documentation lives at **[yarp.aneiang.com](https://yarp.aneiang.com)**.
 
 ---
 
-## Contributing
+### Contributing
 
 We welcome contributions!
 
@@ -838,7 +812,7 @@ Report bugs and feature requests via GitHub Issues. All first-party packages are
 
 ---
 
-## NuGet
+### NuGet
 
 | Package | NuGet |
 |:--------|:-----:|
@@ -850,11 +824,11 @@ Report bugs and feature requests via GitHub Issues. All first-party packages are
 | **Aneiang.Yarp.Grpc** | [![NuGet](https://img.shields.io/nuget/v/Aneiang.Yarp.Grpc.svg)](https://www.nuget.org/packages/Aneiang.Yarp.Grpc) |
 | **Aneiang.Yarp.Plugin.Abstractions** | [![NuGet](https://img.shields.io/nuget/v/Aneiang.Yarp.Plugin.Abstractions.svg)](https://www.nuget.org/packages/Aneiang.Yarp.Plugin.Abstractions) |
 
-**.NET 8.0 / 9.0** · **YARP 2.3.0**
+**.NET 8.0 / 9.0 / 10.0** · **YARP 2.3.0**
 
 ---
 
-## License
+### License
 
 [MIT](LICENSE)
 

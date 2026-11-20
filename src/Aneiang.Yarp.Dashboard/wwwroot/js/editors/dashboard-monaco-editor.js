@@ -34,7 +34,9 @@
                 var config = Object.assign({
                     value: options.value || '',
                     language: 'json',
-                    theme: 'vs-dark',
+                    // 编辑器跟着控制台配色走：浅色下用浅底，深色下用 vs-dark，
+                    // 否则浅色界面里嵌一块黑框，视觉上像另一套系统
+                    theme: (window.AneiangTheme && AneiangTheme.getTheme() === 'dark') ? 'vs-dark' : 'vs',
                     automaticLayout: true,
                     minimap: { enabled: false },
                     scrollBeyondLastLine: false,

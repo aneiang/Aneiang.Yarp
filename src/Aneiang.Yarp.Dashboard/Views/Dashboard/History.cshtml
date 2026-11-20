@@ -8,56 +8,56 @@
     /* ── Configuration History (compact) ── */
     .history-shell { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
     .history-timeline { position: relative; }
-    .history-timeline::before { content: ''; position: absolute; left: 13px; top: 10px; bottom: 10px; width: 2px; background: #e2e8f0; }
+    .history-timeline::before { content: ''; position: absolute; left: 13px; top: 10px; bottom: 10px; width: 2px; background: var(--surface-4); }
     .history-item { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; margin-bottom: 8px; }
     .history-dot { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 13px; z-index: 1; }
-    .history-dot.update { background: #6366f1; }
+    .history-dot.update { background: var(--primary-solid-2); }
     .history-dot.delete { background: #ef4444; }
     .history-dot.rollback { background: #f59e0b; }
     .history-dot.import { background: #0ea5e9; }
     .history-dot.rename { background: #8b5cf6; }
     .history-dot.manual { background: #10b981; }
-    .history-entry-card { background: #fff; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; transition: border-color .15s ease; cursor: pointer; }
+    .history-entry-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; transition: border-color .15s ease; cursor: pointer; }
     .history-entry-card:hover, .history-entry-card.active { border-color: rgba(99,102,241,.45); }
     .history-entry-card h6 { font-size: 13px; }
-    .history-version { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; color: #94a3b8; word-break: break-all; }
+    .history-version { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; color: var(--text-faint); word-break: break-all; }
     .history-meta { display: flex; flex-wrap: wrap; gap: 8px; color: var(--text-muted); font-size: 11.5px; }
     .history-side { position: sticky; top: 82px; }
-    .history-detail-card { background: #fff; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }
+    .history-detail-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }
     .history-detail-header { padding: 12px 14px; border-bottom: 1px solid var(--border-light, #f1f5f9); font-weight: 600; font-size: 13px; }
     .history-detail-body { padding: 14px; }
-    .history-filter-card { border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; padding: 10px; background: #fff; }
-    .history-empty-state { background: #fff; border: 1px dashed var(--border-color); border-radius: 8px; padding: 36px 20px; text-align: center; }
+    .history-filter-card { border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; background: var(--card-bg); }
+    .history-empty-state { background: var(--card-bg); border: 1px dashed var(--border-color); border-radius: 8px; padding: 36px 20px; text-align: center; }
     .history-action-bar { display: flex; gap: 6px; flex-wrap: wrap; }
     .history-meta .btn { padding: 2px 8px; font-size: 11.5px; }
     /* ── Integrity report ── */
     .integ-summary { display: flex; gap: 10px; flex-wrap: wrap; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 14px; }
-    .integ-summary.ok { background: #f0fdf4; border-color: #bbf7d0; }
-    .integ-summary.bad { background: #fef2f2; border-color: #fecaca; }
-    .integ-summary.warn { background: #fffbeb; border-color: #fde68a; }
+    .integ-summary.ok { background: var(--success-bg); border-color: #bbf7d0; }
+    .integ-summary.bad { background: var(--danger-bg); border-color: var(--danger-border); }
+    .integ-summary.warn { background: var(--warning-bg); border-color: var(--warning-border); }
     .integ-summary-num { font-size: 22px; font-weight: 700; line-height: 1; }
     .integ-group-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin: 14px 0 8px; }
-    .integ-item { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 8px; background: #fff; }
-    .integ-item.error { border-left: 3px solid #ef4444; }
+    .integ-item { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 8px; background: var(--card-bg); }
+    .integ-item.error { border-left: 3px solid var(--danger-color); }
     .integ-item.warning { border-left: 3px solid #f59e0b; }
     .integ-item-msg { font-size: 13px; line-height: 1.5; }
-    .integ-item-field { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; color: #94a3b8; word-break: break-all; margin-top: 3px; }
-    .integ-item-hint { font-size: 12px; color: #0f766e; margin-top: 4px; }
+    .integ-item-field { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; color: var(--text-faint); word-break: break-all; margin-top: 3px; }
+    .integ-item-hint { font-size: 12px; color: var(--success-text-soft); margin-top: 4px; }
     .integ-item-actions { display: flex; gap: 4px; }
     .integ-item-actions .btn { padding: 2px 8px; font-size: 11.5px; white-space: nowrap; }
     .integ-empty { text-align: center; padding: 34px 16px; color: var(--text-muted); }
     /* ── Snapshot queue bar ── */
-    .history-queue-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 8px 12px; margin-bottom: 14px; border-radius: 8px; border: 1px solid var(--border-light, #f1f5f9); background: #f8fafc; font-size: 12px; color: var(--text-muted); }
-    .history-queue-bar.degraded { border-color: #fde68a; background: #fffbeb; color: #92400e; }
+    .history-queue-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 8px 12px; margin-bottom: 14px; border-radius: 8px; border: 1px solid var(--border-light); background: var(--surface-2); font-size: 12px; color: var(--text-muted); }
+    .history-queue-bar.degraded { border-color: var(--warning-border); background: var(--warning-bg); color: var(--warning-color); }
     .history-queue-bar i { font-size: 12.5px; opacity: .75; }
     .history-queue-bar .hq-item { display: inline-flex; align-items: center; gap: 5px; }
     .history-queue-bar .hq-num { font-weight: 650; font-variant-numeric: tabular-nums; }
-    .history-queue-bar .hq-num.bad { color: #b91c1c; }
+    .history-queue-bar .hq-num.bad { color: var(--danger-color); }
     @@media (max-width: 1100px) { .history-shell { grid-template-columns: 1fr; } .history-side { position: static; } }
 </style>
 
 <div class="dash-page-head">
-    <h2 class="dash-page-head-title"><i class="bi bi-clock-history" style="color:#6366f1;"></i><span data-i18n="history.title">配置变更历史</span></h2>
+    <h2 class="dash-page-head-title"><i class="bi bi-clock-history" style="color: var(--primary-light);"></i><span data-i18n="history.title">配置变更历史</span></h2>
     <div class="dash-page-head-actions">
         <button class="btn btn-sm btn-success" id="history-export-btn">
             <i class="bi bi-download me-1"></i><span data-i18n="history.export">导出配置</span>

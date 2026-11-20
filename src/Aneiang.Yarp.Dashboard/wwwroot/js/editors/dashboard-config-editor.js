@@ -295,9 +295,9 @@
             errors.concat(warnings).forEach(function(issue) {
                 var colour = issue.severity === 'Error' ? '#b91c1c' : '#b45309';
                 html += '<li style="color:' + colour + ';">' +
-                    '<code style="font-size:11.5px;background:#f1f5f9;padding:1px 5px;border-radius:4px;">' + esc(issue.field) + '</code> ' +
+                    '<code style="font-size:11.5px;background: var(--surface-3);padding:1px 5px;border-radius:4px;">' + esc(issue.field) + '</code> ' +
                     esc(issue.message) +
-                    (issue.hint ? '<br><span style="color:#64748b;font-size:11.5px;">' + esc(issue.hint) + '</span>' : '') +
+                    (issue.hint ? '<br><span style="color: var(--text-muted);font-size:11.5px;">' + esc(issue.hint) + '</span>' : '') +
                     '</li>';
             });
 

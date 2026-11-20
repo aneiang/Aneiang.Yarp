@@ -304,8 +304,8 @@
     window.DashboardUtils.renderJsonBlock = function(obj, title) {
         const json = JSON.stringify(obj, null, 2);
         return `<details style="margin:4px 0 0;">
-            <summary style="cursor:pointer;color:#0ea5e9;font-weight:500;">${title}</summary>
-            <pre style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:4px;padding:8px;margin:4px 0 0;overflow-x:auto;white-space:pre-wrap;word-break:break-all;font-size:12px;color:#334155;line-height:1.6;">${window.DashboardUtils.escapeHtml(json)}</pre>
+            <summary style="cursor:pointer;color: var(--info-color);font-weight:500;">${title}</summary>
+            <pre style="background: var(--surface-3);border: 1px solid var(--border-strong);border-radius:4px;padding:8px;margin:4px 0 0;overflow-x:auto;white-space:pre-wrap;word-break:break-all;font-size:12px;color: var(--text-secondary);line-height:1.6;">${window.DashboardUtils.escapeHtml(json)}</pre>
         </details>`;
     };
 

@@ -6,8 +6,14 @@
 #
 # The store path is overridden below because a relative path resolves next to the binary, which is
 # read-only for the non-root user this image runs as. The volume keeps routes across restarts.
+#
+# DOTNET_VERSION must match the project's TargetFramework: an SDK cannot build a framework newer
+# than itself. The ARG keeps the template default; when the generated project targets a newer
+# framework, pass the matching tag explicitly:
+#   docker build --build-arg DOTNET_VERSION=10.0 .
+ARG DOTNET_VERSION=8.0
 
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS build
 WORKDIR /src
 
 COPY *.csproj ./
@@ -16,7 +22,7 @@ RUN dotnet restore
 COPY . ./
 RUN dotnet publish -c Release -o /app/publish --no-restore /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS runtime
 
 # curl exists only for HEALTHCHECK: the aspnet image ships neither curl nor wget, and a probe that
 # always fails because its binary is missing is worse than no probe.

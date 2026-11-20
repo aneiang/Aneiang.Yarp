@@ -3,6 +3,12 @@ using System.Text.Json.Serialization;
 namespace Aneiang.Yarp.Plugins;
 
 /// <summary>Static metadata describing a gateway plugin without activating its runtime implementation.</summary>
+/// <remarks>
+/// <see cref="Schemas"/> is required for external plugins: one entry per configuration version, or an
+/// empty array for a plugin that takes no configuration. Every <c>ConfigJsonSchema</c> is parsed and
+/// shape-checked when the plugin is installed, because a schema the console cannot render is otherwise
+/// indistinguishable from a plugin without settings.
+/// </remarks>
 public sealed record PluginManifest(
     string Id,
     string Name,
@@ -68,6 +74,34 @@ public sealed record PluginResourceRequirements(
     bool NetworkConnections = false);
 
 /// <summary>Reference to a versioned configuration schema supplied by a plugin.</summary>
+/// <param name="Version">
+/// Integer configuration version, starting at 1 and increasing by 1 per breaking change.
+/// Bindings store the version they were saved with; changing it on a binding runs the
+/// matching <see cref="IPluginConfigurationMigrator"/>.
+/// </param>
+/// <param name="Reference">
+/// Documentation pointer only (<c>builtin://plugins/{id}/schemas/config-v{n}.json</c> by convention).
+/// Nothing reads it, so it is the one place worth spending a line on where the schema came from.
+/// </param>
+/// <param name="ConfigJsonSchema">
+/// The schema itself, as a JSON **string** - the manifest is JSON, so this value is a string
+/// containing JSON and its quotes are escaped. The console renders the binding form from it and
+/// the server validates every save against it, so it has to follow the host's subset of JSON Schema:
+/// <list type="bullet">
+/// <item>root must be an object declaring <c>"type": "object"</c>; without it the form renders empty;</item>
+/// <item>supported keywords: type, properties, required, additionalProperties, enum, const,
+/// anyOf/oneOf/allOf, items, min/max Items+Length+Properties, minimum, maximum, pattern,
+/// and <c>"format": "duration"</c>;</item>
+/// <item><c>anyOf</c>/<c>oneOf</c> branches WITH a <c>title</c> render as a mode selector, branches
+/// WITHOUT one are folded into a single field accepting any of the branch values;</item>
+/// <item><c>$ref</c>, <c>$defs</c>, if/then/else, not and patternProperties are ignored -
+/// a warning is logged at install time, nothing else happens;</item>
+/// <item><c>title</c> is the field label (external plugins have no translation keys), and
+/// <c>description</c> becomes the help text.</item>
+/// </list>
+/// Use <c>"{}"</c> (or an empty <c>schemas</c> array) only for a plugin that takes no configuration:
+/// it validates nothing and renders no form. Full guide: docs page <c>plugin-config-schema</c>.
+/// </param>
 public sealed record PluginSchemaReference(
     int Version,
     string Reference,

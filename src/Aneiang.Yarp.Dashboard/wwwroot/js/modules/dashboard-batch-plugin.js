@@ -53,7 +53,7 @@
         var scope = scopeName(opts.scope);
         return ''
             + '<div class="modal-header">'
-            +   '<h5 class="modal-title"><i class="bi bi-plug me-2" style="color:#3b82f6;"></i>' + esc(__('batch.bindPluginTitle', '批量绑插件')) + '</h5>'
+            +   '<h5 class="modal-title"><i class="bi bi-plug me-2" style="color: var(--info-color);"></i>' + esc(__('batch.bindPluginTitle', '批量绑插件')) + '</h5>'
             +   '<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>'
             + '</div>'
             + '<div class="modal-body">'

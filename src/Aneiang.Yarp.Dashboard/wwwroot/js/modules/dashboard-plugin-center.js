@@ -43,12 +43,15 @@
     }
 
     /* ── Tab groups ──
-       Ordered from "changes request behaviour" to "observes it". */
+       Ordered from "changes request behaviour" to "observes it", plus a last group
+       for plugins this file does not know about (external ones, and any built-in
+       added later than the registry). */
     var GROUPS = [
         { id: 'traffic', labelKey: 'pc.group.traffic', label: '流量控制' },
         { id: 'security', labelKey: 'pc.group.security', label: '安全防护' },
         { id: 'stability', labelKey: 'pc.group.stability', label: '稳定性' },
-        { id: 'observe', labelKey: 'pc.group.observe', label: '可观测' }
+        { id: 'observe', labelKey: 'pc.group.observe', label: '可观测' },
+        { id: 'extend', labelKey: 'pc.group.extend', label: '扩展插件' }
     ];
 
     /* ── Plugin registry ──
@@ -107,9 +110,114 @@
     var configModules = {};  /* plugin id -> PluginBindingManager instance */
     var activeTab = null;
 
+    /* ── Tab bar budget ──
+       The built-in groups are a closed set (11 today), so they can be laid out flat.
+       Extensions are not: every installed plugin would add a tab, and the bar has no
+       upper bound. So an extension earns a tab only when it is actually in use -
+       bound to at least one target, or opened by hand from the picker. The bar then
+       reflects "what is running here" instead of "what happens to be installed". */
+    var bindCounts = {};        /* pluginId -> binding count */
+    var pinnedExtensions = {};  /* pluginId -> true, opened from the picker this session */
+    var pickerEl = null;
+    var pickerAnchor = null;
+
+    /* ── What the page actually renders ──
+       REGISTRY only carries the hand-written bits (icon, colour, tab group, one-line
+       purpose) for the built-in plugins. Everything else - external plugins, and any
+       built-in added after this file was last touched - is merged in from /api/plugins,
+       otherwise those plugins would install and bind fine from the market page but
+       never show a tab here. */
+    var entries = REGISTRY.slice();
+    var discovered = false;
+
     function findEntry(id) {
-        for (var i = 0; i < REGISTRY.length; i++) { if (REGISTRY[i].id === id) return REGISTRY[i]; }
+        for (var i = 0; i < entries.length; i++) { if (entries[i].id === id) return entries[i]; }
         return null;
+    }
+
+    /* An external plugin declares `scopes` (array). This page gives each plugin one
+       tab, so pick the scope that carries the request pipeline when both are offered. */
+    function pickScope(plugin) {
+        var scopes = Array.isArray(plugin.scopes) ? plugin.scopes : [];
+        if (!scopes.length) return 'Route';
+        return scopes.indexOf('Route') >= 0 ? 'Route' : scopes[0];
+    }
+
+    function extensionEntry(plugin) {
+        var id = plugin.pluginId;
+        var scope = pickScope(plugin);
+        var description = plugin.description || '';
+        return {
+            id: id,
+            group: 'extend',
+            scope: scope,
+            icon: 'bi-puzzle',
+            color: 'text-secondary',
+            name: plugin.displayName || id,
+            about: description,
+            external: !plugin.isBuiltIn,
+            config: {
+                pluginId: id,
+                scope: scope,
+                containerId: 'pc-' + id + '-content',
+                refreshTimeId: 'pc-' + id + '-refresh-time',
+                moduleName: 'ExtensionModule',
+                icon: 'bi-puzzle',
+                color: 'text-secondary',
+                descText: description
+            }
+        };
+    }
+
+    async function discoverPlugins() {
+        if (discovered) return;
+        discovered = true;
+        if (!window.DashboardApi || !window.DashboardApi.getPlugins) return;
+        try {
+            var plugins = await window.DashboardApi.getPlugins();
+            (Array.isArray(plugins) ? plugins : []).forEach(function (plugin) {
+                if (!plugin || !plugin.pluginId || findEntry(plugin.pluginId)) return;
+                entries.push(extensionEntry(plugin));
+            });
+        } catch (error) {
+            /* The registry is still enough to render the built-in tabs; a failed
+               discovery must not take the whole page down with it. */
+            discovered = false;
+            console.warn('[PluginCenter] plugin discovery failed', error);
+        }
+    }
+
+    /* One request for every binding, grouped by plugin - cheaper (and more reliable)
+       than asking each plugin's panel before the tab bar can be painted. */
+    async function loadBindingCounts() {
+        if (!window.DashboardApi || !window.DashboardApi.getBindings) return;
+        try {
+            var bindings = await window.DashboardApi.getBindings();
+            var counts = {};
+            (Array.isArray(bindings) ? bindings : []).forEach(function (b) {
+                if (!b || !b.pluginId) return;
+                counts[b.pluginId] = (counts[b.pluginId] || 0) + 1;
+            });
+            bindCounts = counts;
+        } catch (error) {
+            /* Without counts every extension only shows up via the picker, which is
+               degraded but still usable - a failed count must not empty the page. */
+            console.warn('[PluginCenter] binding counts unavailable', error);
+        }
+    }
+
+    function isTabVisible(entry) {
+        if (entry.group !== 'extend') return true;
+        return !!pinnedExtensions[entry.id] || (bindCounts[entry.id] || 0) > 0;
+    }
+
+    /* Extensions that exist but have no tab - the picker's "not shown yet" set. */
+    function hiddenExtensions() {
+        return entries.filter(function (e) { return e.group === 'extend' && !isTabVisible(e); });
+    }
+
+    function extensionEntries() {
+        return entries.filter(function (e) { return e.group === 'extend'; });
     }
 
     function scopeShort(scope) {
@@ -126,26 +234,217 @@
         html += ' data-plugin="' + entry.id + '" title="' + esc(scopeShort(entry.scope)) + ' · ' + esc(aboutOf(entry)) + '"';
         html += ' onclick="PluginCenter.activate(\'' + entry.id + '\')">';
         html += '<i class="bi ' + entry.icon + ' ' + entry.color + '"></i>';
-        html += '<span>' + esc(t('plugin.name.' + entry.id, entry.id)) + '</span>';
+        html += '<span>' + esc(t('plugin.name.' + entry.id, entry.name || entry.id)) + '</span>';
         html += '<span class="pc-scope pc-scope--' + entry.scope.toLowerCase() + '">' + esc(scopeShort(entry.scope)) + '</span>';
         html += '</button>';
         return html;
     }
 
+    /* Trailing entry of the extensions group. Always rendered while extensions are
+       installed - once everything is pinned the label becomes "all extensions", so
+       the list stays reachable instead of vanishing together with its last item. */
+    function moreButton(hiddenCount, totalCount) {
+        var label = hiddenCount > 0
+            ? t('pc.more', '更多扩展')
+            : t('pc.more.all', '全部扩展');
+        var badge = hiddenCount > 0 ? hiddenCount : totalCount;
+        return '<button type="button" class="pc-tab-more" data-act="more-plugins" ' +
+            'title="' + esc(t('pc.more.hint', '已安装的扩展插件，选中后固定到标签栏')) + '">' +
+            '<i class="bi bi-three-dots"></i>' +
+            '<span>' + esc(label) + '</span>' +
+            '<span class="pc-tab-more__count">' + badge + '</span>' +
+            '</button>';
+    }
+
     function renderTabBar(container) {
+        /* Every button is about to be replaced, including the picker's trigger - an
+           open panel would end up anchored to a detached node. */
+        if (pickerEl) closePicker();
+
         var html = '<div class="pc-tabs-bar">';
         GROUPS.forEach(function (group) {
-            var items = REGISTRY.filter(function (e) { return e.group === group.id; });
-            if (!items.length) return;
+            var items = entries.filter(function (e) { return e.group === group.id && isTabVisible(e); });
+            var isExtend = group.id === 'extend';
+            var pending = isExtend ? hiddenExtensions().length : 0;
+            var extTotal = isExtend ? extensionEntries().length : 0;
+            /* The extensions group stays present as long as anything is installed:
+               when every extension has a tab, the picker becomes its "all" entry. */
+            if (!items.length && !extTotal) return;
+
+            /* In-use first: it keeps the busiest extension next to the divider instead
+               of wherever it happened to be installed. */
+            if (isExtend) {
+                items.sort(function (a, b) {
+                    var diff = (bindCounts[b.id] || 0) - (bindCounts[a.id] || 0);
+                    if (diff) return diff;
+                    return t('plugin.name.' + a.id, a.name || a.id)
+                        .localeCompare(t('plugin.name.' + b.id, b.name || b.id));
+                });
+            }
+
             html += '<div class="pc-tab-group">';
             html += '<span class="pc-tab-group-label">' + esc(t(group.labelKey, group.label)) + '</span>';
             html += '<div class="pc-tab-group-items">';
             items.forEach(function (e) { html += tabButton(e); });
+            if (extTotal) html += moreButton(pending, extTotal);
             html += '</div>';
             html += '</div>';
         });
         html += '</div>';
         container.innerHTML = html;
+    }
+
+    /* ── Extension picker ──
+       A searchable overlay rather than more tabs: with 50 installed extensions the
+       question is "where is the one I want", not "show me all 50". */
+    function positionPicker(anchor) {
+        if (!pickerEl || !anchor) return;
+        /* Wide enough to read a name and its one-liner, never wider than the viewport. */
+        var width = Math.min(368, window.innerWidth - 24);
+        pickerEl.style.width = width + 'px';
+
+        var rect = anchor.getBoundingClientRect();
+        var left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
+        var top = rect.bottom + 6;
+        pickerEl.style.left = left + 'px';
+        pickerEl.style.top = top + 'px';
+
+        /* Not enough room below (short window or mobile): open upwards instead. */
+        if (top + pickerEl.offsetHeight > window.innerHeight - 12) {
+            var above = rect.top - pickerEl.offsetHeight - 6;
+            if (above > 12) pickerEl.style.top = above + 'px';
+        }
+    }
+
+    function onPickerResize() {
+        positionPicker(pickerAnchor);
+    }
+
+    function togglePicker(anchor) {
+        if (pickerEl) { closePicker(); return; }
+
+        pickerEl = document.createElement('div');
+        pickerEl.className = 'pc-picker';
+        pickerEl.innerHTML =
+            '<div class="pc-picker__head">' +
+                '<i class="bi bi-search"></i>' +
+                '<input type="text" class="pc-picker__search" ' +
+                    'placeholder="' + esc(t('pc.more.search', '搜索插件名称或 ID')) + '" />' +
+            '</div>' +
+            '<div class="pc-picker__list"></div>' +
+            '<div class="pc-picker__foot">' +
+                esc(t('pc.more.foot', '已安装的全部扩展插件。标有「已绑定」或「已固定」的已经在标签栏上。')) +
+            '</div>';
+        document.body.appendChild(pickerEl);
+
+        pickerAnchor = anchor;
+        positionPicker(anchor);
+
+        var input = pickerEl.querySelector('.pc-picker__search');
+        renderPickerList();
+        input.addEventListener('input', function () {
+            renderPickerList(input.value);
+        });
+        input.focus();
+
+        /* Deferred so the click that opened the picker cannot immediately close it. */
+        setTimeout(function () {
+            document.addEventListener('mousedown', onPickerOutside);
+            document.addEventListener('keydown', onPickerKey);
+            window.addEventListener('resize', onPickerResize);
+        }, 0);
+    }
+
+    /* Lists every extension, not only the ones without a tab: the ones already on the
+       bar stay visible (with the reason why) so the list never looks like plugins
+       went missing after being pinned. */
+    function renderPickerList(keyword) {
+        if (!pickerEl) return;
+        var list = pickerEl.querySelector('.pc-picker__list');
+        if (!list) return;
+
+        var kw = (keyword || '').trim().toLowerCase();
+        /* Same order as the tab bar: bound first, then pinned, then by name - so the
+           plugins the user is actually running are never buried at the bottom. */
+        var all = extensionEntries().sort(function (a, b) {
+            var diff = (bindCounts[b.id] || 0) - (bindCounts[a.id] || 0);
+            if (diff) return diff;
+            if (!!pinnedExtensions[a.id] !== !!pinnedExtensions[b.id]) {
+                return pinnedExtensions[a.id] ? -1 : 1;
+            }
+            return t('plugin.name.' + a.id, a.name || a.id)
+                .localeCompare(t('plugin.name.' + b.id, b.name || b.id));
+        });
+        var shown = all.filter(function (e) {
+            if (!kw) return true;
+            var name = t('plugin.name.' + e.id, e.name || e.id).toLowerCase();
+            return name.indexOf(kw) >= 0 ||
+                e.id.toLowerCase().indexOf(kw) >= 0 ||
+                String(e.about || '').toLowerCase().indexOf(kw) >= 0;
+        });
+
+        if (!shown.length) {
+            list.innerHTML = '<div class="pc-picker__empty">' +
+                esc(all.length
+                    ? t('pc.more.empty', '没有匹配的插件')
+                    : t('pc.more.none', '还没有安装扩展插件')) +
+                '</div>';
+            return;
+        }
+
+        list.innerHTML = shown.map(function (e) {
+            var bound = bindCounts[e.id] || 0;
+            var mark = bound > 0
+                ? '<span class="pc-picker__flag">' + esc(t('pc.more.bound', '已绑定')) + ' ' + bound + '</span>'
+                : (pinnedExtensions[e.id] ? '<span class="pc-picker__flag">' + esc(t('pc.more.pinned', '已固定')) + '</span>' : '');
+            return '<button type="button" class="pc-picker__item" data-pick="' + esc(e.id) + '">' +
+                '<i class="bi ' + e.icon + ' ' + e.color + '"></i>' +
+                '<span class="pc-picker__meta">' +
+                    '<span class="pc-picker__name">' +
+                        esc(t('plugin.name.' + e.id, e.name || e.id)) + '</span>' +
+                    '<span class="pc-picker__desc">' + esc(e.about || e.id) + '</span>' +
+                '</span>' +
+                mark +
+                '<span class="pc-scope pc-scope--' + e.scope.toLowerCase() + '">' +
+                    esc(scopeShort(e.scope)) + '</span>' +
+                '</button>';
+        }).join('');
+
+        Array.prototype.forEach.call(list.querySelectorAll('[data-pick]'), function (btn) {
+            btn.addEventListener('click', function () {
+                pickExtension(btn.getAttribute('data-pick'));
+            });
+        });
+    }
+
+    async function pickExtension(id) {
+        pinnedExtensions[id] = true;
+        closePicker();
+        var container = document.getElementById('pc-tab-bar');
+        if (container) renderTabBar(container);
+        await activate(id);
+    }
+
+    function onPickerOutside(event) {
+        if (!pickerEl || pickerEl.contains(event.target)) return;
+        /* Clicking the trigger is handled by its own click listener - closing here
+           would just reopen on the click that follows. */
+        if (event.target.closest && event.target.closest('[data-act="more-plugins"]')) return;
+        closePicker();
+    }
+
+    function onPickerKey(event) {
+        if (event.key === 'Escape') closePicker();
+    }
+
+    function closePicker() {
+        if (!pickerEl) return;
+        document.removeEventListener('mousedown', onPickerOutside);
+        document.removeEventListener('keydown', onPickerKey);
+        window.removeEventListener('resize', onPickerResize);
+        pickerEl.remove();
+        pickerEl = null;
+        pickerAnchor = null;
     }
 
     /* ── Panel header ──
@@ -157,7 +456,7 @@
             '<span class="pc-head__icon ' + entry.color + '"><i class="bi ' + entry.icon + '"></i></span>' +
             '<div class="pc-head__body">' +
                 '<div class="pc-head__title">' +
-                    '<span class="pc-head__name">' + esc(t('plugin.name.' + entry.id, entry.id)) + '</span>' +
+                    '<span class="pc-head__name">' + esc(t('plugin.name.' + entry.id, entry.name || entry.id)) + '</span>' +
                     '<span class="pc-scope pc-scope--' + entry.scope.toLowerCase() + '">● ' + esc(scopeShort(entry.scope)) + '</span>' +
                     '<code class="pc-head__id">' + esc(entry.id) + '</code>' +
                 '</div>' +
@@ -186,6 +485,21 @@
         var enabled = !!plugin.enabled;
         var total = bindings.length;
         var live = bindings.filter(function (b) { return b.enabled; }).length;
+
+        /* Promote an extension the moment it gets its first binding, so the tab bar
+           does not disagree with the header right above it. Demotion is deliberately
+           left to the next page load: removing the last binding should not make the
+           tab you are working in disappear underneath you. */
+        if (entry.group === 'extend') {
+            var had = bindCounts[entry.id] || 0;
+            bindCounts[entry.id] = total;
+            if (had === 0 && total > 0) {
+                var bar = document.getElementById('pc-tab-bar');
+                if (bar && !bar.querySelector('.pc-tab-btn[data-plugin="' + entry.id + '"]')) {
+                    renderTabBar(bar);
+                }
+            }
+        }
 
         /* ③ activation state - the line that makes "enabled but unbound" obvious */
         var stateEl = host.querySelector('.pc-head__state');
@@ -391,10 +705,31 @@
         var tabBarContainer = document.getElementById('pc-tab-bar');
         if (!tabBarContainer) return;
 
-        renderTabBar(tabBarContainer);
+        /* Discovery has to finish before the tab bar is painted: the initial tab is
+           the first entry, and a deep link to #<external-id> only resolves once that
+           plugin is in `entries`. Binding counts come next, because they decide which
+           extensions get a tab. */
+        await discoverPlugins();
+        await loadBindingCounts();
 
         var hash = decodeURIComponent(window.location.hash.replace('#', ''));
-        var initial = findEntry(hash) ? hash : REGISTRY[0].id;
+        var target = findEntry(hash);
+
+        /* A deep link to an unbound extension would otherwise land on a plugin that
+           has no tab - pin it so the bar always reflects the panel on screen. */
+        if (target && target.group === 'extend' && !isTabVisible(target)) {
+            pinnedExtensions[target.id] = true;
+        }
+
+        renderTabBar(tabBarContainer);
+
+        /* Delegated once: renderTabBar replaces the children, not the container. */
+        tabBarContainer.addEventListener('click', function (event) {
+            var trigger = event.target.closest ? event.target.closest('[data-act="more-plugins"]') : null;
+            if (trigger) togglePicker(trigger);
+        });
+
+        var initial = target ? hash : entries[0].id;
         await activate(initial);
 
         window.addEventListener('hashchange', function () {

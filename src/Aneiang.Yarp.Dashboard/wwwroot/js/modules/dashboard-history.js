@@ -208,7 +208,7 @@
                 <div class="history-detail-body">
                     <div class="mb-3">
                         <div class="text-muted small mb-1">${__('history.versionId')}</div>
-                        <code class="d-block p-2 rounded" style="background:#f8fafc;word-break:break-all;">${this.escape(entry.versionId)}</code>
+                        <code class="d-block p-2 rounded" style="background: var(--surface-2);word-break:break-all;">${this.escape(entry.versionId)}</code>
                     </div>
                     <div class="row g-2 mb-3">
                         <div class="col-6"><div class="border rounded p-2"><div class="text-muted small">${__('history.routes')}</div><div class="fw-bold">${entry.routeCount}</div></div></div>
@@ -381,8 +381,8 @@
 
             if (total === 0) {
                 html += '<div class="integ-summary ok">' +
-                    '<i class="bi bi-check-circle-fill" style="color:#10b981;font-size:22px;"></i>' +
-                    '<div><div class="integ-summary-num" style="color:#047857;">0</div>' +
+                    '<i class="bi bi-check-circle-fill" style="color: var(--success-color);font-size:22px;"></i>' +
+                    '<div><div class="integ-summary-num" style="color: var(--success-color);">0</div>' +
                     '<div class="small text-muted">' + this.escape(__('history.integrity.clean')) + '</div></div>' +
                     '</div>' +
                     '<div class="integ-empty"><i class="bi bi-shield-check" style="font-size:34px;opacity:.35;"></i>' +
@@ -407,13 +407,13 @@
                 '</div>';
 
             if (errors.length) {
-                html += '<div class="integ-group-title"><i class="bi bi-x-circle me-1" style="color:#ef4444;"></i>' +
+                html += '<div class="integ-group-title"><i class="bi bi-x-circle me-1" style="color: var(--danger-color);"></i>' +
                     this.escape(__('history.integrity.errors')) + ' · ' + errors.length + '</div>';
                 html += errors.map(item => this._integrityRow(item, 'error')).join('');
             }
 
             if (warnings.length) {
-                html += '<div class="integ-group-title"><i class="bi bi-exclamation-triangle me-1" style="color:#f59e0b;"></i>' +
+                html += '<div class="integ-group-title"><i class="bi bi-exclamation-triangle me-1" style="color: var(--warning-color);"></i>' +
                     this.escape(__('history.integrity.warnings')) + ' · ' + warnings.length + '</div>';
                 html += warnings.map(item => this._integrityRow(item, 'warning')).join('');
             }

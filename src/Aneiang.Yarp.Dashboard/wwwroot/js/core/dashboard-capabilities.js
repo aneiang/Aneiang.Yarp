@@ -300,10 +300,83 @@
         return true;
     }
 
+    /* oneOf / anyOf 有两种完全不同的用法，长得一样但意思相反：
+       1. 真正的分支选择——每个分支带 title，让用户选一种写法（如"按固定值 / 按区间"）；
+       2. JSON Schema 的取值并集——例如「0 关闭」与「400-599 生效」，分支只为校验服务，没有 title。
+       第二种若也渲染成下拉框，用户看到的就是"选项 1 / 选项 2"，选中后还得猜这一项要填什么。
+       这里把没有 title 的并集折回单个字段：数值并集取外包络做输入框，读取时仍按原分支校验，
+       既不会出现假选项，也不会让 300 这种"看着合法其实无效"的值存进去。 */
+    function foldUnion(property, choices) {
+        var branches = choices.map(expandSchema);
+        if (branches.some(function (branch) { return branch && branch.title; })) return null;
+
+        var numeric = branches.every(function (branch) {
+            if (typeof branch.const === 'number') return true;
+            if (Array.isArray(branch.enum) && branch.enum.length) return branch.enum.every(function (item) { return typeof item === 'number'; });
+            var branchType = schemaType(branch);
+            return branchType === 'number' || branchType === 'integer';
+        });
+
+        // 非数值并集没法用一个控件表达，退回第一个分支：信息有损，但不至于长出假选项
+        var base = numeric
+            ? (branches.find(function (branch) { return schemaType(branch); }) || {})
+            : branches[0];
+        var merged = mergeSchema(property, base);
+        delete merged.oneOf;
+        delete merged.anyOf;
+        // mergeSchema 总会把 properties 归一成对象，空对象仍然 truthy，会被当成"对象字段"
+        // 渲染出一个只有图例没有内容的空框——这里必须清掉
+        if (merged.properties && !Object.keys(merged.properties).length) delete merged.properties;
+        if (Array.isArray(merged.required) && !merged.required.length) delete merged.required;
+        if (!numeric) return merged;
+
+        var bounds = branches.map(function (branch) {
+            if (typeof branch.const === 'number') return { low: branch.const, high: branch.const };
+            if (Array.isArray(branch.enum) && branch.enum.length) {
+                return { low: Math.min.apply(null, branch.enum), high: Math.max.apply(null, branch.enum) };
+            }
+            return {
+                low: typeof branch.minimum === 'number' ? branch.minimum : null,
+                high: typeof branch.maximum === 'number' ? branch.maximum : null
+            };
+        });
+        if (bounds.every(function (bound) { return bound.low !== null; })) merged.minimum = Math.min.apply(null, bounds.map(function (bound) { return bound.low; }));
+        if (bounds.every(function (bound) { return bound.high !== null; })) merged.maximum = Math.max.apply(null, bounds.map(function (bound) { return bound.high; }));
+        merged.__union = branches;
+        return merged;
+    }
+
+    function unionAccepts(branches, value) {
+        return branches.some(function (branch) {
+            if (typeof branch.const === 'number') return value === branch.const;
+            if (Array.isArray(branch.enum) && branch.enum.length) return branch.enum.indexOf(value) >= 0;
+            if (typeof branch.minimum === 'number' && value < branch.minimum) return false;
+            if (typeof branch.maximum === 'number' && value > branch.maximum) return false;
+            return true;
+        });
+    }
+
+    // "0 / 400–599" 这种可填值摘要，给帮助文字和校验提示共用
+    function unionHint(branches) {
+        return branches.map(function (branch) {
+            if (typeof branch.const === 'number') return String(branch.const);
+            if (Array.isArray(branch.enum) && branch.enum.length) return branch.enum.join(' / ');
+            if (typeof branch.minimum === 'number' && typeof branch.maximum === 'number') return branch.minimum + '–' + branch.maximum;
+            return '';
+        }).filter(Boolean).join(' / ');
+    }
+
     function schemaField(name, rawProperty, value, required, pluginId) {
         var property = expandSchema(rawProperty);
-        var type = schemaType(property);
         var choices = property.oneOf || property.anyOf;
+        if (Array.isArray(choices) && choices.length) {
+            var folded = foldUnion(property, choices);
+            if (folded) {
+                property = folded;
+                choices = null;
+            }
+        }
+        var type = schemaType(property);
         if (Array.isArray(choices) && choices.length) {
             var choiceWrapper = document.createElement('fieldset');
             choiceWrapper.className = 'border rounded-3 p-3 mb-3';
@@ -331,7 +404,7 @@
             return choiceWrapper;
         }
 
-        if (type === 'object' || property.properties || property.additionalProperties) {
+        if (type === 'object' || (property.properties && Object.keys(property.properties).length) || property.additionalProperties) {
             var objectWrapper = document.createElement('fieldset');
             objectWrapper.className = 'border rounded-3 p-3 mb-3';
             var legend = document.createElement('legend');
@@ -459,11 +532,21 @@
         input.id = id;
         var fieldDescription = localizeFieldDesc(pluginId, name) || property.description;
         if (fieldDescription) { var help = document.createElement('div'); help.className = 'form-text'; help.textContent = fieldDescription; wrapper.appendChild(help); }
+        // 并集折叠出来的字段要自己说清可填什么，否则用户只会看到一句"0 表示不注入"就去填 302
+        if (Array.isArray(property.__union)) {
+            var allowed = document.createElement('div');
+            allowed.className = 'form-text';
+            allowed.textContent = __('capability.validation.unionOnly', { values: unionHint(property.__union) });
+            wrapper.appendChild(allowed);
+        }
         wrapper.__read = function() {
             var raw = input.type === 'checkbox' ? input.checked : input.value.trim();
             input.setCustomValidity('');
             if (input.dataset.duration === 'true' && raw && !/^(?:\d+\.)?\d{1,2}:\d{2}:\d{2}(?:\.\d{1,7})?$/.test(raw)) input.setCustomValidity(__('capability.validation.durationFormat'));
             if (type === 'integer' && raw !== '' && !Number.isInteger(Number(raw))) input.setCustomValidity(__('capability.validation.integer'));
+            if (Array.isArray(property.__union) && raw !== '' && !unionAccepts(property.__union, Number(raw))) {
+                input.setCustomValidity(__('capability.validation.unionOnly', { values: unionHint(property.__union) }));
+            }
             if (!input.checkValidity()) { input.classList.add('is-invalid'); return { valid: false }; }
             input.classList.remove('is-invalid');
             if (type === 'boolean') return { valid: true, present: true, value: raw };
