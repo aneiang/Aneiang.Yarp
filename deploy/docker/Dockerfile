@@ -13,19 +13,23 @@
 #   docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:2.3.0.40 .
 
 # ── build ────────────────────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+# The SDK must be newer than the runtime: the libraries this image builds are multi-targeted
+# (net8.0;net9.0;net10.0), and `dotnet restore` evaluates every one of those even when the app
+# itself is net8.0 only. An 8.0 SDK stops at NETSDK1045 on the net9.0/net10.0 legs. The app
+# still targets net8.0 and still runs on the 8.0 runtime below — a newer SDK is a build tool,
+# not a runtime requirement.
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-# Restore before the source copy so a code change does not invalidate the NuGet layer. The project
-# graph is copied rather than just the .csproj files because directories under src/ carry their own
-# MSBuild props; enumerating individual projects here would rot the moment one is added.
+# The whole graph is copied rather than just the .csproj files: directories under src/ carry their
+# own MSBuild props and the version/icon assets, and enumerating individual projects here would rot
+# the moment one is added. The cost is that a source change re-runs restore.
 COPY Aneiang.Yarp.sln ./
 COPY src/ ./src/
 COPY samples/SampleGateway/ ./samples/SampleGateway/
 COPY README.md README.zh-CN.md logo.png ./
 RUN dotnet restore samples/SampleGateway/SampleGateway.csproj
 
-COPY samples/SampleGateway/ ./samples/SampleGateway/
 RUN dotnet publish samples/SampleGateway/SampleGateway.csproj \
       -c Release \
       -o /app/publish \
