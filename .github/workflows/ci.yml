@@ -115,10 +115,14 @@ jobs:
       # Packing on every push catches the "works in the repo, ships without a file" class of
       # bug. The Grafana board is packaged from docs/, so a wrong <None Include> path is
       # invisible until someone installs the package.
+      # Every project under src/ is packed rather than a hand-maintained list. The previous
+      # version named only two projects, so a duplicate <None Include> anywhere else — the
+      # NU5050 "logo.png packed twice" failure — passed this job and only surfaced on install.
       - name: Pack
         run: |
-          dotnet pack src/Aneiang.Yarp/Aneiang.Yarp.csproj -c Release -o out
-          dotnet pack src/Aneiang.Yarp.Dashboard/Aneiang.Yarp.Dashboard.csproj -c Release -o out
+          for p in src/*/*.csproj; do
+            dotnet pack "$p" -c Release -o out --nologo
+          done
 
       - name: Verify the Grafana template is inside the package
         run: |
