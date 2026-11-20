@@ -108,7 +108,7 @@ dotnet publish -c Release -o out
 
 ## 版本兼容
 
-本模板引用 `Aneiang.Yarp.Plugin.Abstractions` 和 `Aneiang.Yarp`，两者都是 **2.3.0.40-preview.1**，
+本模板引用 `Aneiang.Yarp.Plugin.Abstractions` 和 `Aneiang.Yarp`，两者都是 **2.3.0.40**，
 并且都带 `ExcludeAssets="runtime"`。契约与核心程序集不随插件分发 —— 宿主始终使用自己的那一份，
 所以插件与宿主的兼容性就是这条包引用的版本约束。宿主版本与契约版本同号，兼容矩阵见仓库
 `docs/plugins/plugin-compatibility.md`。

@@ -13,9 +13,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<!--<PackageReference Include="Aneiang.Yarp" Version="2.3.0.40-preview.1" />
-		<PackageReference Include="Aneiang.Yarp.Dashboard" Version="2.3.0.40-preview.1" />
-		<PackageReference Include="Aneiang.Yarp.Storage.Sqlite" Version="2.3.0.40-preview.1" />-->
+		<!--<PackageReference Include="Aneiang.Yarp" Version="2.3.0.40" />
+		<PackageReference Include="Aneiang.Yarp.Dashboard" Version="2.3.0.40" />
+		<PackageReference Include="Aneiang.Yarp.Storage.Sqlite" Version="2.3.0.40" />-->
 		<PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
 	</ItemGroup>
 

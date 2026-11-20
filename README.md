@@ -680,8 +680,7 @@ A few notes:
 Out-of-tree plugins are separate assemblies — no need to rebuild the gateway to install one:
 
 ```bash
-# Preview: the version is explicit; drop the "::<version>" suffix once a stable build exists
-dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
+dotnet new install Aneiang.Yarp.Templates
 dotnet new aneiang-yarp-plugin -n MyPlugin --PluginId my-plugin
 dotnet publish -c Release -o out
 # Dashboard → Plugin Market → Install plugin, then paste the absolute path of out/
@@ -726,15 +725,14 @@ Three ways to take it, differing in "do you own the image":
 
 ```bash
 # 1. Your own project (recommended): one command, ships a Dockerfile and a README
-# Preview: the version is explicit; drop the "::<version>" suffix once a stable build exists
-dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
+dotnet new install Aneiang.Yarp.Templates
 dotnet new aneiang-yarp -n MyGateway && cd MyGateway && dotnet run
 
 # 2. Kubernetes: the Helm chart. Leave the password empty and install generates one into NOTES
 helm install gw deploy/helm/aneiang-yarp --namespace gateway --create-namespace
 
 # 3. The official reference image (runs this repo's SampleGateway; for trials and integration tests)
-docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:2.3.0.40-preview.1 .
+docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:local .
 ```
 
 Two things to know first:

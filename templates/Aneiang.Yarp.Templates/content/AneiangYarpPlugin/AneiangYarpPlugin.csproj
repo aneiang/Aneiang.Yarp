@@ -28,7 +28,7 @@
       in a way nobody can read. It also keeps the plugin folder to your assembly plus your own
       dependencies, which is the only thing worth upgrading later.
     -->
-    <PackageReference Include="Aneiang.Yarp.Plugin.Abstractions" Version="2.3.0.40-preview.1" ExcludeAssets="runtime" />
+    <PackageReference Include="Aneiang.Yarp.Plugin.Abstractions" Version="2.3.0.40" ExcludeAssets="runtime" />
 
     <!--
       Needed for one type: IGatewaySnapshotPublisher (namespace Aneiang.Yarp.Services), the per-request
@@ -36,7 +36,7 @@
       read what was saved for it, which is why the schema in plugin.manifest.json and the code here
       are only useful together.
     -->
-    <PackageReference Include="Aneiang.Yarp" Version="2.3.0.40-preview.1" ExcludeAssets="runtime" />
+    <PackageReference Include="Aneiang.Yarp" Version="2.3.0.40" ExcludeAssets="runtime" />
   </ItemGroup>
 
   <ItemGroup>

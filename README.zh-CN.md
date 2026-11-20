@@ -701,8 +701,7 @@ GET <prefix>/api-docs           # 人看的版本：按控制器分组、可过�
 外部插件是独立的程序集，装的时候不需要重新编译网关：
 
 ```bash
-# 预览版需显式指定版本；稳定版发布后去掉 :: 及其后的后缀
-dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
+dotnet new install Aneiang.Yarp.Templates
 dotnet new aneiang-yarp-plugin -n MyPlugin --PluginId my-plugin
 dotnet publish -c Release -o out
 # 面板 →「插件市场」→ 安装外部插件，填 out 目录的绝对路径
@@ -747,15 +746,14 @@ dotnet publish -c Release -o out
 
 ```bash
 # 1. 你自己的项目（推荐）：一条命令生成，自带 Dockerfile 与 README
-# 预览版需显式指定版本；稳定版发布后去掉 :: 及其后的后缀
-dotnet new install Aneiang.Yarp.Templates::2.3.0.40-preview.1
+dotnet new install Aneiang.Yarp.Templates
 dotnet new aneiang-yarp -n MyGateway && cd MyGateway && dotnet run
 
 # 2. Kubernetes：Helm chart。密码留空则安装时随机生成，写在 NOTES 里
 helm install gw deploy/helm/aneiang-yarp --namespace gateway --create-namespace
 
 # 3. 官方参考镜像（跑本仓库的 SampleGateway，用于试跑和集成测试）
-docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:2.3.0.40-preview.1 .
+docker build -f deploy/docker/Dockerfile -t aneiang/yarp-gateway:local .
 ```
 
 两件必须先知道的事：
