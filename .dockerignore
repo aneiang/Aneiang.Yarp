@@ -11,7 +11,13 @@ obj/
 .vs/
 .vscode/
 artifacts/
-docs/
+
+# docs/ is documentation, not build input — with one exception. The dashboard project copies
+# observability/grafana-dashboard.json into its build output, so that folder has to reach the
+# context or publish fails with MSB3030. Excluding docs/* rather than docs/ keeps the parent
+# traversable, which is what makes the negation below reliable.
+docs/*
+!docs/observability
 
 # A committed store must never become the image's initial database.
 **/*.db
