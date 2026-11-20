@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Build and/or push Aneiang.Yarp NuGet packages to a NuGet source.
 .DESCRIPTION
@@ -135,6 +135,21 @@ $Projects = @(
     "src\Aneiang.Yarp.Dashboard\Aneiang.Yarp.Dashboard.csproj",
     "templates\Aneiang.Yarp.Templates\Aneiang.Yarp.Templates.csproj"
 )
+
+# ── Console encoding ──
+#
+# Windows PowerShell 5.1 decodes a native command's output with [Console]::OutputEncoding, which is
+# the OEM code page (936 on a Chinese Windows) while dotnet writes UTF-8. Every line captured by
+# `& dotnet ... 2>&1 | ForEach-Object { "$_" }` below therefore arrived as mojibake — the defect is
+# in the decoding, not in how this script writes text. Setting both variables makes the pipe decode
+# UTF-8; the console code page follows, so the output still displays correctly afterwards.
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+try {
+    [Console]::OutputEncoding = $utf8NoBom
+    $OutputEncoding = $utf8NoBom
+} catch {
+    Write-Host "    [!]  Could not switch the console to UTF-8; dotnet output may be garbled: $($_.Exception.Message)" -ForegroundColor Yellow
+}
 
 # ── Helpers ──
 
