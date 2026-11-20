@@ -65,17 +65,24 @@
   <!--
     The Grafana board ships inside the package, not only in the repo: "the template is
     somewhere on GitHub" is not instructions an operator can follow during an incident.
-    Landed in both content/ (copied to the consumer's output) and contentFiles/ (the
-    modern package layout) so it is discoverable whether the project uses
-    PackageReference assets or packages.config.
+
+    content/ only, and every path uses forward slashes. Two things fail on Linux otherwise,
+    because a backslash is a legal file-name character there rather than a separator:
+      - the destination becomes literally "content\observability\/grafana-dashboard.json",
+        so the file is in the package but unfindable by its documented path;
+      - contentFiles/ entries are handed to the consumer as build items, and with no explicit
+        build action the JSON is treated as C# and compiled — CS1001/CS1002/CS1513 in any
+        project that references this package.
+    A dashboard template is documentation, not a build asset, so it has no business in
+    contentFiles/ at all.
   -->
   <ItemGroup>
-    <None Include="..\..\docs\observability\grafana-dashboard.json" Link="observability\grafana-dashboard.json">
-      <Pack>true</Pack>
-      <PackagePath>content\observability\;contentFiles\any\any\observability\</PackagePath>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <PackageCopyToOutput>true</PackageCopyToOutput>
-    </None>
+    <None Include="../../docs/observability/grafana-dashboard.json"
+          Link="observability/grafana-dashboard.json"
+          Pack="true"
+          PackagePath="content/observability/"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
   </ItemGroup>
 
   <!--
