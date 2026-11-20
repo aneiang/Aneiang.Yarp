@@ -28,6 +28,10 @@ COPY Aneiang.Yarp.sln ./
 COPY src/ ./src/
 COPY samples/SampleGateway/ ./samples/SampleGateway/
 COPY README.md README.zh-CN.md logo.png ./
+# The dashboard project copies this into its output (it ships inside the package too), so the build
+# fails with MSB3030 if the folder is absent. Only the observability subfolder is needed: copying all
+# of docs/ would drag the documentation site into the build context.
+COPY docs/observability/ ./docs/observability/
 RUN dotnet restore samples/SampleGateway/SampleGateway.csproj
 
 RUN dotnet publish samples/SampleGateway/SampleGateway.csproj \
