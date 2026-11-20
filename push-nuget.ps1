@@ -233,9 +233,17 @@ if (-not $SkipBuild) {
         Write-Host "  Version       : from src\Directory.Build.props" -ForegroundColor Gray
     }
 
-    # Clean previous packages
+    # Clean previous packages. Delete by enumeration rather than with a wildcard:
+    # a wildcard that matches nothing raises on hosts that wrap Remove-Item with a
+    # strict delete guard, and "nothing to clean" is not an error worth failing on.
+    # The path is passed explicitly (no pipeline binding) for the same reason.
     if (Test-Path $ArtifactsDir) {
-        Remove-Item "$ArtifactsDir\*.nupkg", "$ArtifactsDir\*.snupkg" -ErrorAction SilentlyContinue
+        foreach ($pattern in @("*.nupkg", "*.snupkg")) {
+            $stale = @(Get-ChildItem -Path $ArtifactsDir -Filter $pattern -File -ErrorAction SilentlyContinue)
+            foreach ($file in $stale) {
+                Remove-Item -LiteralPath $file.FullName -Force -ErrorAction SilentlyContinue
+            }
+        }
     } else {
         New-Item -ItemType Directory -Path $ArtifactsDir -Force | Out-Null
     }
