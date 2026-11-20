@@ -45,4 +45,21 @@
     <None Include="$(MSBuildThisFileDirectory)../logo.png" Link="logo.png" Pack="true" PackagePath="/" Visible="false" />
   </ItemGroup>
 
+  <!--
+    Pack the icon exactly once.
+
+    The file named by PackageIcon can reach _PackageFiles through more than one path: the <None>
+    item above, and whatever the toolchain derives from the icon metadata itself. Both resolve to
+    "/logo.png", and NuGet does not de-duplicate them — it fails the entire pack with NU5050
+    ("/logo.png used multiple times"). Collapse every icon-shaped entry back to a single one so the
+    result does not depend on which of those paths a given SDK/NuGet build happens to take.
+  -->
+  <Target Name="_AneiangPackIconOnce" AfterTargets="_GetPackageFiles" Condition="'$(PackageIcon)' != ''">
+    <ItemGroup>
+      <_AneiangIconEntry Include="@(_PackageFiles)" Condition="'%(Filename)%(Extension)' == '$(PackageIcon)'" />
+      <_PackageFiles Remove="@(_AneiangIconEntry)" />
+      <_PackageFiles Include="$(MSBuildThisFileDirectory)../logo.png" Link="$(PackageIcon)" PackagePath="/" BuildAction="None" />
+    </ItemGroup>
+  </Target>
+
 </Project>

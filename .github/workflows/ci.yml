@@ -132,6 +132,9 @@ jobs:
               echo "--- package items mentioning logo ---"
               grep -rn "logo.png" src/*/obj/Release/*.nuspec 2>/dev/null | head -20 || true
               echo "::endgroup::"
+              # Job logs are not readable through the public API; annotations are.
+              echo "::error title=logo-files::$(git ls-files | grep -i 'logo\.png' | tr '\n' ' ')"
+              echo "::error title=logo-nuspec::$(grep -h 'logo.png' src/*/obj/Release/*.nuspec 2>/dev/null | head -3 | tr '\n' ' ')"
               exit 1
             fi
           done
