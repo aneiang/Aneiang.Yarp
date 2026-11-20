@@ -69,7 +69,7 @@ every `helm upgrade` would silently log everyone out.
 {{- $secretName := printf "%s-auth" (include "aneiang-yarp.fullname" .) -}}
 {{- $existing := lookup "v1" "Secret" .Release.Namespace $secretName -}}
 {{- if and $existing (hasKey $existing.data "jwt-password") -}}
-{{- $existing.data.jwt-password -}}
+{{- index $existing.data "jwt-password" -}}
 {{- else -}}
 {{- randAlphaNum 24 | b64enc -}}
 {{- end -}}
@@ -83,7 +83,7 @@ every `helm upgrade` would silently log everyone out.
 {{- $secretName := printf "%s-auth" (include "aneiang-yarp.fullname" .) -}}
 {{- $existing := lookup "v1" "Secret" .Release.Namespace $secretName -}}
 {{- if and $existing (hasKey $existing.data "jwt-secret") -}}
-{{- $existing.data.jwt-secret -}}
+{{- index $existing.data "jwt-secret" -}}
 {{- else -}}
 {{- randAlphaNum 48 | b64enc -}}
 {{- end -}}
