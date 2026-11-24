@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>从 2.3.0.30 到 2.3.0.40，这个版本到底加了什么</title>
+</head>
+<body style="margin:0;padding:0;background:#fff;">
+<div style="max-width:677px;margin:0 auto;padding:20px 16px 40px;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue','PingFang SC','Microsoft YaHei',sans-serif;font-size:16px;line-height:1.85;color:#333;word-wrap:break-word;">
+
+  <h1 style="font-size:24px;line-height:1.45;font-weight:700;color:#1a1a1a;margin:6px 0 6px;">从 2.3.0.30 到 2.3.0.40，这个版本到底加了什么</h1>
+  <p style="margin:0 0 22px;font-size:14px;color:#888;line-height:1.7;">原本四批的功能一次发完。这篇用大白话讲清楚多了什么。</p>
+  <p style="margin:0 0 18px;"><strong>2.3.0.30 解决的是"能不能跑起来"，2.3.0.40 解决的是"敢不敢放到线上、出了问题能不能兜住"。</strong></p>
+  <h2 style="font-size:20px;font-weight:700;color:#1a1a1a;margin:30px 0 14px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.5;">先看全景</h2>
+  <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 22px;line-height:1.6;"><thead><tr style="background:#f2f6fd;"><th style="border:1px solid #dfe6f0;padding:8px 9px;text-align:left;font-weight:700;color:#1f3a68;">能力</th><th style="border:1px solid #dfe6f0;padding:8px 9px;text-align:left;font-weight:700;color:#1f3a68;">2.3.0.30</th><th style="border:1px solid #dfe6f0;padding:8px 9px;text-align:left;font-weight:700;color:#1f3a68;">2.3.0.40</th></tr></thead><tbody><tr><td style="border:1px solid #dfe6f0;padding:8px 9px;">改配置</td><td style="border:1px solid #dfe6f0;padding:8px 9px;color:#777;">页面上能改，脚本写入会跳过检查</td><td style="border:1px solid #dfe6f0;padding:8px 9px;background:#f0f7ff;">所有入口统一检查，写错就拦</td></tr><tr><td style="border:1px solid #dfe6f0;padding:8px 9px;">灰度发布</td><td style="border:1px solid #dfe6f0;padding:8px 9px;color:#777;">没有</td><td style="border:1px solid #dfe6f0;padding:8px 9px;background:#f0f7ff;">想让谁先试就让谁先试，出错自动退</td></tr><tr><td style="border:1px solid #dfe6f0;padding:8px 9px;">看运行状态</td><td style="border:1px solid #dfe6f0;padding:8px 9px;color:#777;">只能翻日志</td><td style="border:1px solid #dfe6f0;padding:8px 9px;background:#f0f7ff;">监控大盘 + 链路追踪 + 异常告警</td></tr><tr><td style="border:1px solid #dfe6f0;padding:8px 9px;">安全</td><td style="border:1px solid #dfe6f0;padding:8px 9px;color:#777;">能登录</td><td style="border:1px solid #dfe6f0;padding:8px 9px;background:#f0f7ff;">加密、权限、操作记录全补齐</td></tr><tr><td style="border:1px solid #dfe6f0;padding:8px 9px;">多环境</td><td style="border:1px solid #dfe6f0;padding:8px 9px;color:#777;">只有一套配置</td><td style="border:1px solid #dfe6f0;padding:8px 9px;background:#f0f7ff;">测试和生产各管各的</td></tr><tr><td style="border:1px solid #dfe6f0;padding:8px 9px;">WAF 防护</td><td style="border:1px solid #dfe6f0;padding:8px 9px;color:#777;">规则得手写 JSON</td><td style="border:1px solid #dfe6f0;padding:8px 9px;background:#f0f7ff;">页面上点一点就能配</td></tr><tr><td style="border:1px solid #dfe6f0;padding:8px 9px;">插件</td><td style="border:1px solid #dfe6f0;padding:8px 9px;color:#777;">外部插件装了也用不了</td><td style="border:1px solid #dfe6f0;padding:8px 9px;background:#f0f7ff;">有插件市场，装完就能配</td></tr><tr><td style="border:1px solid #dfe6f0;padding:8px 9px;">部署</td><td style="border:1px solid #dfe6f0;padding:8px 9px;color:#777;">自己写 Dockerfile</td><td style="border:1px solid #dfe6f0;padding:8px 9px;background:#f0f7ff;">模板 + Dockerfile + Helm</td></tr><tr><td style="border:1px solid #dfe6f0;padding:8px 9px;">框架支持</td><td style="border:1px solid #dfe6f0;padding:8px 9px;color:#777;">.NET 8 / 9</td><td style="border:1px solid #dfe6f0;padding:8px 9px;background:#f0f7ff;">.NET 8 / 9 / 10</td></tr></tbody></table>
+  <p style="margin:0 0 6px;text-align:center;"><img src="../architecture-zh.png" alt="系统架构" style="width:100%;max-width:100%;display:block;border-radius:4px;" /></p>
+  <p style="margin:0 0 22px;text-align:center;font-size:13px;color:#aaa;">前面是干活的（转发请求），后面是管理的（改配置、看数据）</p>
+  <h2 style="font-size:20px;font-weight:700;color:#1a1a1a;margin:30px 0 14px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.5;">安全：从能登录到敢上线</h2>
+  <p style="margin:0 0 18px;">登录令牌只留一个安全位置，退出登录是真退；密码加密存，数据库换真加密的 SQLite，密钥不对直接打不开。谁在什么时候改了什么，都有账可查。</p>
+  <p style="margin:0 0 6px;text-align:center;"><img src="../shenji.png" alt="审计日志" style="width:100%;max-width:100%;display:block;border-radius:4px;" /></p>
+  <p style="margin:0 0 22px;text-align:center;font-size:13px;color:#aaa;">谁、做了什么、结果如何</p>
+  <p style="margin:0 0 18px;padding:12px 14px;background:#fff7ed;border-left:4px solid #f59e0b;border-radius:3px;color:#7c4a03;">⚠️ <strong>升级前必看</strong>：旧库是明文存的，升级后连接串里带 Password= 会直接打不开。删掉它，或用 sqlcipher_export() 迁移。<strong>别直接升。</strong></p>
+  <h2 style="font-size:20px;font-weight:700;color:#1a1a1a;margin:30px 0 14px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.5;">灰度：新版本先给一部分人用</h2>
+  <p style="margin:0 0 18px;">按比例分流（比如 10% 走新版本），也能用 X-Gateway-Canary 把某个人钉住先试。放量后错误率异常自动回滚；连老版本都挂了就暂停、不回滚——免得把现场毁了。</p>
+  <p style="margin:0 0 6px;text-align:center;"><img src="../route-list.png" alt="路由列表" style="width:100%;max-width:100%;display:block;border-radius:4px;" /></p>
+  <p style="margin:0 0 22px;text-align:center;font-size:13px;color:#aaa;">权重、健康状态、排序，面板上一眼看清</p>
+  <h2 style="font-size:20px;font-weight:700;color:#1a1a1a;margin:30px 0 14px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.5;">可观测：线上出问题看得见</h2>
+  <p style="margin:0 0 18px;">加了指标接口、链路追踪和告警。一个请求从进网关到后端，每段花了多久，页面上直接看瀑布图；认证失败和路径写错分开报，不用再猜"连不上"是为什么。</p>
+  <p style="margin:0 0 6px;text-align:center;"><img src="../tengji.png" alt="链路追踪" style="width:100%;max-width:100%;display:block;border-radius:4px;" /></p>
+  <p style="margin:0 0 22px;text-align:center;font-size:13px;color:#aaa;">一层层调用、耗时条、瀑布图</p>
+  <p style="margin:0 0 6px;text-align:center;"><img src="../overview.png" alt="首页概览" style="width:100%;max-width:100%;display:block;border-radius:4px;" /></p>
+  <p style="margin:0 0 22px;text-align:center;font-size:13px;color:#aaa;">请求量、成功率、集群健康</p>
+  <h2 style="font-size:20px;font-weight:700;color:#1a1a1a;margin:30px 0 14px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.5;">多环境、权限、部署</h2>
+  <p style="margin:0 0 18px;">测试和生产中各用各的数据库，切到测试改东西，生产流量一点不动。配置从测试提到生产分两步：先看差异，再用 5 分钟令牌确认。权限分只读、运维、管理员三级，按"能造成多大破坏"划分。部署给模板、Dockerfile、Helm 三件套。</p>
+  <h2 style="font-size:20px;font-weight:700;color:#1a1a1a;margin:30px 0 14px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.5;">WAF 和插件</h2>
+  <p style="margin:0 0 18px;"><strong>WAF</strong> 规则从手写 JSON 变成页面卡片，一张卡一条规则，还修了两个误拦（文件上传、首个请求）。插件顺序不再写死，外部插件终于能在面板上配置，市场装完自动进"扩展"组。</p>
+  <p style="margin:0 0 6px;text-align:center;"><img src="../waf.png" alt="WAF 规则" style="width:100%;max-width:100%;display:block;border-radius:4px;" /></p>
+  <p style="margin:0 0 22px;text-align:center;font-size:13px;color:#aaa;">一条规则一张卡片</p>
+  <p style="margin:0 0 6px;text-align:center;"><img src="../plugin.png" alt="插件市场" style="width:100%;max-width:100%;display:block;border-radius:4px;" /></p>
+  <p style="margin:0 0 22px;text-align:center;font-size:13px;color:#aaa;">内置和外部插件同屏</p>
+  <h2 style="font-size:20px;font-weight:700;color:#1a1a1a;margin:30px 0 14px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.5;">框架和升级</h2>
+  <p style="margin:0 0 18px;">net8 / net9 / net10 三目标，一份代码出三个包。老的 net8 不能删——删了外部插件全部编译不过。</p>
+  <pre style="margin:0 0 18px;padding:14px 16px;background:#f6f8fa;border-radius:5px;font-size:13.5px;line-height:1.7;color:#24292f;white-space:pre-wrap;word-break:break-all;font-family:Consolas,Monaco,'Courier New',monospace;">dotnet add package Aneiang.Yarp --version 2.3.0.40
+dotnet new install Aneiang.Yarp.Templates</pre>
+  <p style="margin:0 0 18px;">文档 yarp.aneiang.com/docs，在线 demo：yarp-test.aneiang.com/aneiang（admin / demo123），随便点，改坏了刷新就行。</p>
+  <p style="margin:0 0 6px;text-align:center;"><img src="../covers/wechat-poster.png" alt="能力总览" style="width:100%;max-width:100%;display:block;border-radius:4px;" /></p>
+  <p style="margin:0 0 22px;text-align:center;font-size:13px;color:#aaa;">一张图看完这一版</p>
+  <table style="width:100%;border-collapse:collapse;margin:0 0 20px;border:1px solid #e6e9ef;border-radius:6px;"><tr><td style="padding:14px;text-align:center;vertical-align:middle;width:110px;border:1px solid #e6e9ef;"><img src="../wechat_qrcode.jpg" alt="公众号二维码" style="width:88px;height:88px;display:block;margin:0 auto;border-radius:4px;" /></td><td style="padding:14px 16px;vertical-align:middle;border:1px solid #e6e9ef;"><p style="margin:0 0 4px;font-size:16px;font-weight:700;color:#1a1a1a;">昂耐开源 AneiangSoft</p><p style="margin:0;font-size:14px;color:#666;">写 .NET、写网关，也写踩过的坑</p></td></tr></table>
+
+  <p style="margin:24px 0 0;text-align:center;font-size:12px;color:#bbb;">本文基于 Aneiang.Yarp 2.3.0.40 更新日志（2026-11-20）。</p>
+
+</div>
+</body>
+</html>

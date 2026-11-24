@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;}
+  body{
+    font-family:"Microsoft YaHei","PingFang SC",sans-serif;
+    background:
+      radial-gradient(ellipse 42% 75% at 84% 42%,rgba(109,40,217,.32),transparent 70%),
+      radial-gradient(ellipse 40% 65% at 12% 78%,rgba(6,182,212,.18),transparent 70%),
+      linear-gradient(118deg,#080519 0%,#120733 38%,#090721 72%,#05101f 100%);
+    position:relative;color:#fff;
+  }
+  /* 光效层 */
+  .glow{position:absolute;border-radius:50%;filter:blur(45px);}
+  .g1{width:360px;height:360px;right:60px;top:-40px;background:#7c3aed;opacity:.24;}
+  .g2{width:260px;height:260px;left:260px;bottom:-90px;background:#06b6d4;opacity:.16;}
+  .g3{width:180px;height:180px;right:340px;top:150px;background:#ec4899;opacity:.18;}
+  /* 斜向光带 */
+  .beam{position:absolute;height:2px;transform-origin:left center;filter:blur(1px);}
+  .bm1{left:-4%;top:110px;width:66%;background:linear-gradient(90deg,transparent,rgba(139,92,246,.85),transparent);transform:rotate(-12deg);}
+  .bm2{left:30%;top:330px;width:80%;background:linear-gradient(90deg,transparent,rgba(6,182,212,.55),transparent);transform:rotate(-10deg);}
+  /* 点阵 */
+  .dots{position:absolute;inset:0;opacity:.5;
+    background-image:radial-gradient(rgba(167,139,250,.22) 1px,transparent 1px);
+    background-size:26px 26px;
+    -webkit-mask-image:linear-gradient(115deg,#000,transparent 65%);mask-image:linear-gradient(115deg,#000,transparent 65%);}
+
+  /* 左侧：Logo + 标题 */
+  .left{position:absolute;left:52px;top:44px;z-index:6;}
+  .brand{display:flex;align-items:center;gap:18px;}
+  .brand .logo{
+    width:92px;height:92px;flex:none;border-radius:22px;padding:8px;
+    background:linear-gradient(145deg,rgba(167,139,250,.35),rgba(6,182,212,.2));
+    border:1px solid rgba(180,160,255,.55);
+    box-shadow:0 14px 30px rgba(0,0,0,.5),0 0 34px rgba(124,58,237,.45),inset 0 1px 0 rgba(255,255,255,.3);
+    transform:perspective(500px) rotateY(-10deg);
+  }
+  .brand .logo img{width:100%;height:100%;display:block;filter:drop-shadow(0 4px 10px rgba(0,0,0,.4));}
+  .brand .txt .top{font-size:13px;letter-spacing:4px;color:#c4b5fd;}
+  .brand .txt .nm{font-size:34px;font-weight:800;letter-spacing:-1px;line-height:1.15;
+    background:linear-gradient(92deg,#fff,#ddd6fe 55%,#a5f3fc);
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+  .brand .txt .nm em{font-style:normal;background:linear-gradient(92deg,#c4b5fd,#22d3ee);
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+
+  .title-wrap{position:relative;margin-top:22px;width:640px;height:74px;}
+  .title-wrap h1{position:absolute;left:0;top:0;font-size:56px;font-weight:900;letter-spacing:-2px;white-space:nowrap;line-height:1.15;}
+  .d{color:#1a0f45;text-shadow:1px 1px 0 #2a1770,2px 2px 0 #311d85,3px 3px 0 #38239a,4px 4px 0 #3f29af,5px 5px 12px rgba(0,0,0,.6);}
+  .f{background:linear-gradient(180deg,#fff,#e9e2ff 45%,#a5b4fc);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;}
+  .f em{font-style:normal;background:linear-gradient(180deg,#a5f3fc,#22d3ee 55%,#0891b2);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+  .sub{margin-top:12px;font-size:17px;color:#d9d0ff;letter-spacing:.5px;}
+  .sub b{color:#67e8f9;}
+  .chips{display:flex;gap:9px;margin-top:18px;}
+  .chip{font-size:12.5px;color:#e8e2ff;padding:7px 14px;border-radius:18px;
+    background:linear-gradient(180deg,rgba(139,92,246,.28),rgba(40,20,90,.35));
+    border:1px solid rgba(167,139,250,.45);box-shadow:0 3px 10px rgba(0,0,0,.35),0 1px 0 rgba(255,255,255,.2) inset;}
+  .chip.c2{border-color:rgba(34,211,238,.5);}
+  .chip.c3{border-color:rgba(52,211,153,.5);}
+
+  /* 右侧版本牌 */
+  .ver{
+    position:absolute;right:48px;top:60px;width:252px;height:150px;z-index:6;
+    transform:perspective(600px) rotateY(-12deg) rotateX(6deg);
+  }
+  .ver .frame{position:absolute;inset:0;border-radius:22px;
+    background:conic-gradient(from 200deg,#22d3ee,#818cf8,#c084fc,#f472b6,#fbbf24,#22d3ee);
+    box-shadow:0 0 50px rgba(168,85,247,.6),0 20px 38px rgba(0,0,0,.6);}
+  .ver .in{position:absolute;inset:4px;border-radius:19px;
+    background:radial-gradient(circle at 28% 18%,#2b1a66,#100a33 72%);
+    box-shadow:inset 0 8px 24px rgba(0,0,0,.75),inset 0 -3px 14px rgba(140,120,255,.2);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .ver .num{font-size:41px;font-weight:900;letter-spacing:-1.5px;line-height:1;
+    background:linear-gradient(180deg,#fff,#c7d2fe 60%,#93c5fd);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+    filter:drop-shadow(0 3px 7px rgba(0,0,0,.6));}
+  .ver .lb{margin-top:11px;font-size:14px;color:#b9a5ff;letter-spacing:3px;}
+  .ver .tag{margin-top:6px;font-size:11px;color:#fcd34d;letter-spacing:1px;}
+
+  /* 环绕组件图标 */
+  .lg{position:absolute;border-radius:13px;z-index:7;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(145deg,rgba(160,130,255,.32),rgba(25,15,60,.9));
+    border:1px solid rgba(190,170,255,.5);
+    box-shadow:0 10px 20px rgba(0,0,0,.5),0 1px 0 rgba(255,255,255,.3) inset,0 0 22px rgba(139,92,246,.35);}
+  .lg img{width:25px;height:25px;filter:drop-shadow(0 1px 3px rgba(0,0,0,.5));}
+  .a1{width:46px;height:46px;left:514px;top:30px;transform:rotate(-9deg);}
+  .a2{width:42px;height:42px;right:20px;top:16px;transform:rotate(8deg);}
+  .a3{width:44px;height:44px;right:12px;top:232px;transform:rotate(-6deg);}
+  .a4{width:40px;height:40px;right:318px;top:244px;transform:rotate(10deg);}
+  .a5{width:40px;height:40px;right:318px;top:52px;transform:rotate(-8deg);}
+
+  /* 底部 */
+  .stats{position:absolute;left:52px;bottom:26px;z-index:6;display:flex;gap:22px;font-size:13px;color:#b8a8e8;}
+  .stats b{color:#fcd34d;font-size:16px;margin-right:3px;}
+  .stats span{padding-left:22px;border-left:1px solid rgba(180,160,255,.25);}
+  .stats span:first-child{padding-left:0;border-left:none;}
+
+  /* ===== 方形布局 ===== */
+  body.square .left{left:0;right:0;top:96px;text-align:center;}
+  body.square .brand{justify-content:center;gap:22px;}
+  body.square .brand .logo{width:130px;height:130px;border-radius:30px;padding:11px;}
+  body.square .brand .txt .top{font-size:17px;}
+  body.square .brand .txt .nm{font-size:50px;}
+  body.square .title-wrap{margin:30px auto 0;width:900px;height:100px;}
+  body.square .title-wrap h1{font-size:88px;letter-spacing:-3px;}
+  body.square .sub{margin-top:14px;font-size:24px;}
+  body.square .chips{justify-content:center;gap:14px;margin-top:20px;}
+  body.square .chip{font-size:17px;padding:10px 20px;}
+  body.square .ver{right:auto;left:50%;top:500px;width:470px;height:220px;margin-left:-235px;transform:perspective(700px) rotateY(-11deg) rotateX(5deg);}
+  body.square .ver .num{font-size:66px;}
+  body.square .ver .lb{font-size:22px;margin-top:14px;}
+  body.square .ver .tag{font-size:15px;margin-top:8px;}
+  body.square .lg{width:64px!important;height:64px!important;border-radius:18px;}
+  body.square .lg img{width:38px!important;height:38px!important;}
+  body.square .a1{left:40px!important;top:150px!important;}
+  body.square .a2{right:90px!important;top:280px!important;}
+  body.square .a3{left:80px!important;top:600px!important;}
+  body.square .a4{right:80px!important;top:600px!important;}
+  body.square .a5{left:50%!important;top:760px!important;margin-left:-32px;}
+  body.square .stats{left:0;right:0;bottom:42px;justify-content:center;gap:30px;font-size:16px;}
+  body.square .stats b{font-size:22px;}
+</style>
+</head>
+<body>
+  <div class="glow g1"></div><div class="glow g2"></div><div class="glow g3"></div>
+  <div class="dots"></div><div class="beam bm1"></div><div class="beam bm2"></div>
+
+  <div class="left">
+    <div class="brand">
+      <div class="logo"><img src="assets/aneiang-logo.png"></div>
+      <div class="txt">
+        <div class="top">昂耐开源</div>
+        <div class="nm">Aneiang<em>Soft</em></div>
+      </div>
+    </div>
+    <div class="title-wrap">
+      <h1 class="d">Aneiang.Yarp</h1>
+      <h1 class="f">Aneiang<em>.Yarp</em></h1>
+    </div>
+    <div class="sub">全功能 API 网关 · 插件化架构 · 动态路由 · <b>WAF 安全</b></div>
+    <div class="chips"><span class="chip">.NET 8/9/10</span><span class="chip c2">11 个内置插件</span><span class="chip c3">开源免费</span></div>
+  </div>
+
+  <div class="ver"><div class="frame"></div><div class="in">
+    <div class="num">2.3.0.40</div><div class="lb">正式版发布</div><div class="tag">· 能上线 ·</div>
+  </div></div>
+
+  <div class="lg a1"><img src="assets/dotnet.svg"></div>
+  <div class="lg a2"><img src="assets/docker.svg"></div>
+  <div class="lg a3"><img src="assets/kubernetes.svg"></div>
+  <div class="lg a4"><img src="assets/grafana.svg"></div>
+  <div class="lg a5"><img src="assets/sqlite.svg"></div>
+
+  <div class="stats"><span><b>11</b> 插件</span><span><b>40+</b> AI 工具</span><span><b>13</b> 监控面板</span><span><b>6</b> 注册中心</span></div>
+
+<script>(function(){var r=window.innerWidth/window.innerHeight;document.body.className=r<1.4?'square':'';})();</script>
+</body>
+</html>

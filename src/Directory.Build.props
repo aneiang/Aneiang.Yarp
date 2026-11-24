@@ -1,7 +1,7 @@
 <Project>
 
   <PropertyGroup>
-    <Version>2.3.0.40</Version>
+    <Version>2.3.0.41</Version>
     <Authors>AneiangSoft Team</Authors>
     <Company>AneiangSoft</Company>
     <Copyright>Copyright © AneiangSoft $([System.DateTime]::Now.Year)</Copyright>
@@ -51,12 +51,15 @@
     The file named by PackageIcon can reach _PackageFiles through more than one path: the <None>
     item above, and whatever the toolchain derives from the icon metadata itself. Both resolve to
     "/logo.png", and NuGet does not de-duplicate them — it fails the entire pack with NU5050
-    ("/logo.png used multiple times"). Collapse every icon-shaped entry back to a single one so the
-    result does not depend on which of those paths a given SDK/NuGet build happens to take.
+    ("/logo.png used multiple times"). Collapse every root-level icon entry back to a single one so
+    the result does not depend on which of those paths a given SDK/NuGet build happens to take.
+    Match on PackagePath, not file name: a file-name match also removes the Dashboard's static asset
+    (staticwebassets/images/logo.png), leaving its props pointing at a file missing from the package.
   -->
   <Target Name="_AneiangPackIconOnce" AfterTargets="_GetPackageFiles" Condition="'$(PackageIcon)' != ''">
     <ItemGroup>
-      <_AneiangIconEntry Include="@(_PackageFiles)" Condition="'%(Filename)%(Extension)' == '$(PackageIcon)'" />
+      <_AneiangIconEntry Include="@(_PackageFiles)"
+        Condition="'%(PackagePath)' == '/$(PackageIcon)' Or '%(PackagePath)' == '$(PackageIcon)'" />
       <_PackageFiles Remove="@(_AneiangIconEntry)" />
       <_PackageFiles Include="$(MSBuildThisFileDirectory)../logo.png" Link="$(PackageIcon)" PackagePath="/" BuildAction="None" />
     </ItemGroup>
